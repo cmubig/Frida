@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>paint</name>
+  <version>5.3.0</version>
+  <description>
+    Example programs for Intera SDK usage.
+  </description>
+
+  <maintainer email="rsdk.support@rethinkrobotics.com">
+    Rethink Robotics Inc.
+  </maintainer>
+  <license>Apache 2.0</license>
+  <url type="website">http://sdk.rethinkrobotics.com/intera/</url>
+  <url type="repository">
+    https://github.com/RethinkRobotics/intera_sdk
+  </url>
+  <url type="bugtracker">
+    https://github.com/RethinkRobotics/intera_sdk/issues
+  </url>
+  <author>Rethink Robotics Inc.</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <buildtool_depend condition="$ROS_PYTHON_VERSION == 2">python-setuptools</buildtool_depend>
+  <buildtool_depend condition="$ROS_PYTHON_VERSION == 3">python3-setuptools</buildtool_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>actionlib</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>control_msgs</build_depend>
+  <build_depend>trajectory_msgs</build_depend>
+  <build_depend>cv_bridge</build_depend>
+  <build_depend>dynamic_reconfigure</build_depend>
+  <build_depend>intera_core_msgs</build_depend>
+  <build_depend>intera_motion_msgs</build_depend>
+  <build_depend>intera_interface</build_depend>
+
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>actionlib</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>control_msgs</exec_depend>
+  <exec_depend>trajectory_msgs</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>dynamic_reconfigure</exec_depend>
+  <exec_depend>intera_core_msgs</exec_depend>
+  <exec_depend>intera_motion_msgs</exec_depend>
+  <exec_depend>intera_interface</exec_depend>
+  <exec_depend>joystick_drivers</exec_depend>
+
+</package>
