@@ -1,38 +1,41 @@
 #! /usr/bin/env python
 import os
+import time
+import sys
 import rospy
 import numpy as np
+from tqdm import tqdm
 
 from paint_utils import *
 
 q = np.array([0.704020578925, 0.710172716916,0.00244101361829,0.00194372088834])
 
 
-TABLE_Z = -0.095
+TABLE_Z = -0.102
 
 CANVAS_POSITION = (0,.5,TABLE_Z)
 CANVAS_WIDTH = .2
 CANVAS_HEIGHT = .2
 
 WATER_POSITION = (-.3,.6,TABLE_Z)
-RAG_POSTITION = (-.3,.5,TABLE_Z)
+RAG_POSTITION = (-.3,.3,TABLE_Z)
 
 PALLETTE_POSITION = (.3,.5,TABLE_Z)
-PAINT_DIFFERENCE = 0.06
+PAINT_DIFFERENCE = 0.03976
 
 HOVER_FACTOR = 0.1
 
 curr_position = None
 
-def global_to_canvas_coordinates(x,y,z):
-    x_new = x + CANVAS_POSITION[0]/2
-    y_new = y - CANVAS_POSITION[1]
-    z_new = z
-    return x_new, y_new, z_new
+# def global_to_canvas_coordinates(x,y,z):
+#     x_new = x + CANVAS_POSITION[0]/2
+#     y_new = y - CANVAS_POSITION[1]
+#     z_new = z
+#     return x_new, y_new, z_new
 
 def canvas_to_global_coordinates(x,y,z):
-    x_new = x - CANVAS_POSITION[0]/2
-    y_new = y + CANVAS_POSITION[1]
+    x_new = (x -.5) * CANVAS_WIDTH + CANVAS_POSITION[0]
+    y_new = y*CANVAS_HEIGHT + CANVAS_POSITION[1]
     z_new = z
     return x_new, y_new, z_new
 
@@ -84,9 +87,11 @@ def move_to(x,y,z, method='linear'):
 def dip_brush_in_water():
     hover_above(WATER_POSITION[0],WATER_POSITION[1],WATER_POSITION[2])
     move_to(WATER_POSITION[0],WATER_POSITION[1],WATER_POSITION[2])
+    rate = rospy.Rate(100)
     for i in range(5):
         noise = np.random.randn(2)*0.01
         move_to(WATER_POSITION[0]+noise[0],WATER_POSITION[1]+noise[1],WATER_POSITION[2], method='direct')
+        rate.sleep()
     hover_above(WATER_POSITION[0],WATER_POSITION[1],WATER_POSITION[2])
 
 def rub_brush_on_rag():
@@ -123,9 +128,9 @@ def paint_path(path):
     pass
 
 def paint_bezier_curve(p0,p1,p2, step_size=.005):
-    p0 = canvas_to_global_coordinates(p0[0]*CANVAS_WIDTH, p0[1]*CANVAS_HEIGHT, TABLE_Z)
-    p1 = canvas_to_global_coordinates(p1[0]*CANVAS_WIDTH, p1[1]*CANVAS_HEIGHT, TABLE_Z)
-    p2 = canvas_to_global_coordinates(p2[0]*CANVAS_WIDTH, p2[1]*CANVAS_HEIGHT, TABLE_Z)
+    p0 = canvas_to_global_coordinates(p0[0], p0[1], TABLE_Z)
+    p1 = canvas_to_global_coordinates(p1[0], p1[1], TABLE_Z)
+    p2 = canvas_to_global_coordinates(p2[0], p2[1], TABLE_Z)
 
     stroke_length = ((p1[0]-p0[0])**2 + (p1[1] - p0[1])**2)**.5 \
             + ((p2[0]-p1[0])**2 + (p2[1] - p1[1])**2)**.5
@@ -140,6 +145,18 @@ def paint_bezier_curve(p0,p1,p2, step_size=.005):
         move_to(x,y,TABLE_Z, method='direct')
     hover_above(p2[0],p2[1],TABLE_Z)
 
+def set_brush_height():
+    # set the robot arm at a location on the canvas and
+    # wait for the user to attach the brush
+
+    p = canvas_to_global_coordinates(.5, .5, TABLE_Z)
+    hover_above(p[0],p[1],TABLE_Z)
+    move_to(p[0],p[1],TABLE_Z, method='direct')
+
+    raw_input('Attach the paint brush now. Press enter to continue:')
+
+    hover_above(p[0],p[1],TABLE_Z)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Sawyer Painter')
@@ -147,7 +164,8 @@ if __name__ == '__main__':
     # parser.add_argument("file", type=str,
     #     help='Path CSV instructions.')
     args = parser.parse_args()
-    args.file = '/home/peterschaldenbrand/paint/AniPainter/animation_instructions/actions.csv'
+    # args.file = '/home/peterschaldenbrand/paint/AniPainter/animation_instructions/actions.csv'
+    args.file = '/home/peterschaldenbrand/Downloads/actions.csv'
 
     # Set which robot we talkin to
     # os.environ['ROS_MASTER_URI'] = "http://localhost:11311"
@@ -161,26 +179,36 @@ if __name__ == '__main__':
     # Initial spot
     _move(0,0.5,TABLE_Z+0.1, timeout=20, method="direct")
 
-    # instructions = np.loadtxt(args.file, delimiter=',')
+    # Allow user a chance to attach the brush
+    set_brush_height()
 
-    # curr_color = -1
-    # for instr in instructions[:3,:]:
-    #     p0, p1, p2 = instr[0:2], instr[2:4], instr[4:6]
-    #     color = instr[12]
-    #     radius = instr[6]
-    #     # if color != curr_color:
-    #     clean_paint_brush()
-    #     get_paint(color)
-    #     paint_bezier_curve(p0, p1, p2)
-    #     curr_color = color
+    instructions = np.loadtxt(args.file, delimiter=',')
 
-    get_paint(0)
-    get_paint(5)
-    get_paint(6)
-    get_paint(11)
+    curr_color = -1
+    for instr in tqdm(instructions[:,:]):
+        p0, p1, p2 = instr[0:2], instr[2:4], instr[4:6]
+        color = instr[12]
+        radius = instr[6]
+        if color != curr_color:
+            clean_paint_brush()
+        get_paint(color)
+        paint_bezier_curve(p0, p1, p2)
+        curr_color = color
 
-    paint_bezier_curve((0,0),(0,0),(0,0))
-    paint_bezier_curve((1,1),(1,1),(1,1))
+    # for i in range(12):
+    #     get_paint(i)
+    # get_paint(0)
+    # get_paint(5)
+    # get_paint(6)
+    # get_paint(11)
+
+    # clean_paint_brush()
+
+    # paint_bezier_curve((0,0),(0,0),(0,0))
+    # paint_bezier_curve((0,1),(0,1),(0,1)) # top-left
+    # paint_bezier_curve((1,0),(1,0),(1,0)) # bottom-right
+    # paint_bezier_curve((1,1),(1,1),(1,1))
+
 
     _move(0,0.5,TABLE_Z+0.1, timeout=20, method="direct")
 

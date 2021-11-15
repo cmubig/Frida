@@ -243,9 +243,9 @@ def move(position, timeout=3):
         # limb.move_to_neutral()
 
         # print('Positions:', position)
-        limb.set_joint_position_speed(speed=.15)
+        limb.set_joint_position_speed(speed=.18)
         limb.move_to_joint_positions(position, timeout=timeout,
-                                     threshold=0.008726646*1)
+                                     threshold=0.008726646*2)
         rate.sleep()
     except Exception as e:
         print('Exception while moving robot:\n', e)
