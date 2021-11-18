@@ -232,21 +232,22 @@ def inverse_kinematics(position, orientation, seed_position=None, debug=False):
 #     limb = intera_interface.Limb()
 #     return limb.ik_request(pose, joint_seed=seed_position, nullspace_goal=None)
 
-def move(position, timeout=3):
+def move(position, timeout=3, speed=0.1):
     """
     args:
         dict{'right_j0',float} - dictionary of joint to joint angle
     """
-    rate = rospy.Rate(100)
+    # rate = rospy.Rate(100)
     try:
         limb = intera_interface.Limb(synchronous_pub=False)
         # limb.move_to_neutral()
 
         # print('Positions:', position)
-        limb.set_joint_position_speed(speed=.18)
+        limb.set_joint_position_speed(speed=speed)
         limb.move_to_joint_positions(position, timeout=timeout,
-                                     threshold=0.008726646*2)
-        rate.sleep()
+                                     threshold=0.008726646*1)
+        limb.set_joint_position_speed(speed=.1)
+        # rate.sleep()
     except Exception as e:
         print('Exception while moving robot:\n', e)
 
@@ -279,6 +280,14 @@ def main():
             move(pos)
 
     good_night_robot()
+
+def display_image(file_path):
+    head_display = intera_interface.HeadDisplay()
+    # display_image params:
+    # 1. file Path to image file to send. Multiple files are separated by a space, eg.: a.png b.png
+    # 2. loop Display images in loop, add argument will display images in loop
+    # 3. rate Image display frequency for multiple and looped images.
+    head_display.display_image(file_path, False, 100)
 
 if __name__ == '__main__':
     main()
