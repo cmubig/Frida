@@ -6,6 +6,7 @@ import rospy
 import numpy as np
 from tqdm import tqdm
 import scipy.special
+import argparse
 
 from paint_utils import *
 from painter import Painter
@@ -48,12 +49,9 @@ if __name__ == '__main__':
 
     painter = Painter(robot="sawyer")
 
-    global limb
     limb = intera_interface.Limb(synchronous_pub=False)
 
-
     painter.robot.display_frida()
-
 
     instructions = load_instructions(args.file)
 
@@ -66,7 +64,7 @@ if __name__ == '__main__':
     
     for instr in tqdm(instructions[args.continue_ind:]):
         if args.type == 'cubic_bezier':
-            # Full path
+            # Cubic Bezier
             path = instr[2:]
             path = np.reshape(path, (len(path)//2, 2))
             color = instr[1]
@@ -74,7 +72,7 @@ if __name__ == '__main__':
             if color != curr_color:
                 painter.clean_paint_brush()
 
-            if color != curr_color or since_got_paint == GET_PAINT_FREQ:
+            if color != curr_color or since_got_paint == painter.GET_PAINT_FREQ:
                 painter.get_paint(color)
                 since_got_paint = 0
             since_got_paint += 1
@@ -82,16 +80,17 @@ if __name__ == '__main__':
             painter.paint_cubic_bezier(path)
             curr_color = color
         else:
-            # Bezier Curve
+            # Quadratic Bezier Curve
             p0, p1, p2 = instr[0:2], instr[2:4], instr[4:6]
             color = instr[12]
             radius = instr[6]
             if color != curr_color:
                 painter.clean_paint_brush()
 
-            if color != curr_color or since_got_paint == GET_PAINT_FREQ:
+            if color != curr_color or since_got_paint == painter.GET_PAINT_FREQ:
                 painter.get_paint(color)
                 since_got_paint = 0
+            since_got_paint += 1
 
             painter.paint_quadratic_bezier(p0, p1, p2)
             curr_color = color

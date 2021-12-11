@@ -14,7 +14,7 @@ from painting_materials import *
 
 q = np.array([0.704020578925, 0.710172716916,0.00244101361829,0.00194372088834])
 
-
+""" Height of the table wrt robot 0 z position """
 TABLE_Z = -0.099
 
 CANVAS_POSITION = (0,.5,TABLE_Z)
@@ -27,10 +27,22 @@ RAG_POSTITION = (-.3,.3,TABLE_Z)
 PALLETTE_POSITION = (.3,.5,TABLE_Z)
 PAINT_DIFFERENCE = 0.03976
 
-GET_PAINT_FREQ = 2
+""" How many times in a row can you paint with the same color before needing more paint """
+GET_PAINT_FREQ = 3
 
 HOVER_FACTOR = 0.1
 
+# def global_to_canvas_coordinates(x,y,z):
+#     x_new = x + CANVAS_POSITION[0]/2
+#     y_new = y - CANVAS_POSITION[1]
+#     z_new = z
+#     return x_new, y_new, z_new
+
+def canvas_to_global_coordinates(x,y,z):
+    x_new = (x -.5) * CANVAS_WIDTH + CANVAS_POSITION[0]
+    y_new = y*CANVAS_HEIGHT + CANVAS_POSITION[1]
+    z_new = z
+    return x_new, y_new, z_new
 
 class Painter():
 
@@ -42,6 +54,9 @@ class Painter():
         self.robot.good_morning_robot()
 
         self.curr_position = None
+        self.seed_position = None
+
+        self.GET_PAINT_FREQ = GET_PAINT_FREQ
 
         self.to_neutral()
 
@@ -59,17 +74,17 @@ class Painter():
             self.curr_position = [x, y, z]
 
         # Calculate how many
-        dist = ((x-curr_position[0])**2 + (y-curr_position[1])**2 + (z-curr_position[2])**2)**(0.5)
+        dist = ((x-self.curr_position[0])**2 + (y-self.curr_position[1])**2 + (z-self.curr_position[2])**2)**(0.5)
         n_steps = max(2, int(dist//step_size))
 
         if method == 'linear':
-            x_s = np.linspace(curr_position[0], x, n_steps)
-            y_s = np.linspace(curr_position[1], y, n_steps)
-            z_s = np.linspace(curr_position[2], z, n_steps)
+            x_s = np.linspace(self.curr_position[0], x, n_steps)
+            y_s = np.linspace(self.curr_position[1], y, n_steps)
+            z_s = np.linspace(self.curr_position[2], z, n_steps)
 
             for i in range(1,n_steps):
-                pos = self.robot.inverse_kinematics([x_s[i], y_s[i], z_s[i]], q)
-
+                pos = self.robot.inverse_kinematics([x_s[i], y_s[i], z_s[i]], q, seed_position=self.seed_position)
+                self.seed_position = pos
                 try:
                     self.robot.move_to_joint_positions(pos, timeout=timeout, speed=speed)
                 except Exception as e:
@@ -79,7 +94,8 @@ class Painter():
             pass
         else:
             # Direct
-            pos = self.robot.inverse_kinematics([x, y, z], q)
+            pos = self.robot.inverse_kinematics([x, y, z], q, seed_position=self.seed_position)
+            self.seed_position = pos
             self.robot.move_to_joint_positions(pos, timeout=timeout, speed=speed)
 
         self.curr_position = [x, y, z]
@@ -127,6 +143,8 @@ class Painter():
         for i in range(3):
             noise = np.clip(np.random.randn(2)*0.0025, a_min=-.005, a_max=0.005)
             self.move_to(x+noise[0],y+noise[1],z, method='direct')
+        rate = rospy.Rate(100)
+        rate.sleep()
         self.move_to(x,y,z + 0.02, speed=0.2)
         self.hover_above(x,y,z)
 

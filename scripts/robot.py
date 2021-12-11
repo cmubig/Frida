@@ -1,4 +1,5 @@
 #! /usr/bin/env python
+import os
 
 import rospy
 from geometry_msgs.msg import (
@@ -21,12 +22,12 @@ from intera_interface import CHECK_VERSION
 
 class Robot:
     def __init__(self, debug, node_name="painting"):
-        self.debug = debug
+        self.debug_bool = debug
 
         rospy.init_node(node_name)
 
     def debug(self, msg):
-        if self.debug:
+        if self.debug_bool:
             print(msg)
 
     def good_morning_robot(self):
@@ -39,9 +40,15 @@ class Robot:
         raise Exception("This method must be implemented")
 
 
-class Sawyer(Robot):
+class Sawyer(Robot, object):
     def __init__(self, debug=True):
-        super().__init__(debug)
+        super(Sawyer, self).__init__(debug)
+
+        self.limb = intera_interface.Limb(synchronous_pub=False)
+
+        self.ns = "ExternalTools/right/PositionKinematicsNode/IKService"
+        self.iksvc = rospy.ServiceProxy(self.ns, SolvePositionIK, persistent=True)
+        rospy.wait_for_service(self.ns, 5.0)
 
     def good_morning_robot(self):
         self.debug("Getting robot state... ")
@@ -57,7 +64,7 @@ class Sawyer(Robot):
             """
             self.debug("\nExiting example...")
             limb = intera_interface.Limb(synchronous_pub=True)
-            limb.move_to_neutral(speed=.15)
+            limb.move_to_neutral(speed=.2)
 
         rospy.on_shutdown(clean_shutdown)
         self.debug("Excecuting... ")
@@ -79,8 +86,6 @@ class Sawyer(Robot):
         return:
             dict{'right_j0',float} - dictionary of joint to joint angle
         """
-        ns = "ExternalTools/right/PositionKinematicsNode/IKService"
-        iksvc = rospy.ServiceProxy(ns, SolvePositionIK)
         ikreq = SolvePositionIKRequest()
         hdr = Header(stamp=rospy.Time.now(), frame_id='base')
         pose = PoseStamped(
@@ -106,7 +111,7 @@ class Sawyer(Robot):
 
         if (seed_position is not None):
             # Optional Advanced IK parameters
-            rospy.loginfo("Running Advanced IK Service Client example.")
+            # rospy.loginfo("Running Advanced IK Service Client example.")
             # The joint seed is where the IK position solver starts its optimization
             ikreq.seed_mode = ikreq.SEED_USER
             seed = JointState()
@@ -133,8 +138,7 @@ class Sawyer(Robot):
             # ikreq.nullspace_gain.append(0.4)
 
         try:
-            rospy.wait_for_service(ns, 5.0)
-            resp = iksvc(ikreq)
+            resp = self.iksvc(ikreq)
         except (rospy.ServiceException, rospy.ROSException) as e:
             rospy.logerr("Service call failed: %s" % (e,))
             return False
@@ -179,20 +183,20 @@ class Sawyer(Robot):
         """
         # rate = rospy.Rate(100)
         try:
-            limb = intera_interface.Limb(synchronous_pub=False)
-            # limb.move_to_neutral()
-
             # print('Positions:', position)
-            limb.set_joint_position_speed(speed=speed)
-            limb.move_to_joint_positions(position, timeout=timeout,
-                                         threshold=0.008726646*1)
-            limb.set_joint_position_speed(speed=.1)
+            self.limb.set_joint_position_speed(speed=speed)
+            self.limb.move_to_joint_positions(position, timeout=timeout,
+                                         threshold=0.008726646)
+            self.limb.set_joint_position_speed(speed=.1)
             # rate.sleep()
         except Exception as e:
             print('Exception while moving robot:\n', e)
+            import traceback
+            import sys
+            print(traceback.format_exc())
 
 
-    def display_image(file_path):
+    def display_image(self, file_path):
         head_display = intera_interface.HeadDisplay()
         # display_image params:
         # 1. file Path to image file to send. Multiple files are separated by a space, eg.: a.png b.png
