@@ -12,10 +12,12 @@ from painter import Painter
 from robot import *
 
 
+
 def load_instructions(fn):
     '''
     Load instructions into a list of lists
     '''
+
     instructions = []
     with open(fn, 'r') as f:
         lines = f.readlines()
@@ -24,15 +26,17 @@ def load_instructions(fn):
                 instructions.append(np.array([float(s) for s in line.split(',')]))
     return instructions
 
+limb = None
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Sawyer Painter')
 
     parser.add_argument("--file", type=str,
-        default='/home/peterschaldenbrand/Downloads/abby_traced_actions.csv',
+        default='/home/peterschaldenbrand/Downloads/vangogh.csv',
         help='Path CSV instructions.')
 
     parser.add_argument('--type', default='cubic_bezier', type=str, help='Type of instructions: [cubic_bezier | bezier]')
+    parser.add_argument('--continue_ind', default=0, type=int, help='Instruction to start from. Default 0.')
 
     args = parser.parse_args()
     # args.file = '/home/peterschaldenbrand/paint/AniPainter/animation_instructions/actions.csv'
@@ -43,6 +47,9 @@ if __name__ == '__main__':
     # os.environ['ROS_HOSTNAME'] = "localhost"
 
     painter = Painter(robot="sawyer")
+
+    global limb
+    limb = intera_interface.Limb(synchronous_pub=False)
 
 
     painter.robot.display_frida()
@@ -56,7 +63,8 @@ if __name__ == '__main__':
 
     curr_color = -1
     since_got_paint = 0
-    for instr in tqdm(instructions[:]):
+    
+    for instr in tqdm(instructions[args.continue_ind:]):
         if args.type == 'cubic_bezier':
             # Full path
             path = instr[2:]
@@ -87,6 +95,7 @@ if __name__ == '__main__':
 
             painter.paint_quadratic_bezier(p0, p1, p2)
             curr_color = color
+
     painter.clean_paint_brush()
 
     # for i in range(12):
