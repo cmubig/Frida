@@ -143,8 +143,8 @@ class Painter():
         for i in range(3):
             noise = np.clip(np.random.randn(2)*0.0025, a_min=-.005, a_max=0.005)
             self.move_to(x+noise[0],y+noise[1],z, method='direct')
-        rate = rospy.Rate(100)
-        rate.sleep()
+            rate = rospy.Rate(100)
+            rate.sleep()
         self.move_to(x,y,z + 0.02, speed=0.2)
         self.hover_above(x,y,z)
 

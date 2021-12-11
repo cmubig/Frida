@@ -27,13 +27,12 @@ def load_instructions(fn):
                 instructions.append(np.array([float(s) for s in line.split(',')]))
     return instructions
 
-limb = None
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Sawyer Painter')
 
     parser.add_argument("--file", type=str,
-        default='/home/peterschaldenbrand/Downloads/vangogh.csv',
+        default='/home/peterschaldenbrand/Downloads/david_lynch.csv',
         help='Path CSV instructions.')
 
     parser.add_argument('--type', default='cubic_bezier', type=str, help='Type of instructions: [cubic_bezier | bezier]')
@@ -49,9 +48,9 @@ if __name__ == '__main__':
 
     painter = Painter(robot="sawyer")
 
-    limb = intera_interface.Limb(synchronous_pub=False)
-
     painter.robot.display_frida()
+
+    # painter.robot.take_picture()
 
     instructions = load_instructions(args.file)
 

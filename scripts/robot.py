@@ -209,3 +209,41 @@ class Sawyer(Robot, object):
         # get the file path for rospy_tutorials
         ros_dir = rospack.get_path('paint')
         self.display_image(os.path.join(str(ros_dir), 'scripts', 'frida.jpg'))
+
+    def take_picture(self):
+        import cv2
+        from cv_bridge import CvBridge, CvBridgeError
+        import matplotlib.pyplot as plt
+        def show_image_callback(img_data):
+            """The callback function to show image by using CvBridge and cv
+            """
+            bridge = CvBridge()
+            try:
+                cv_image = bridge.imgmsg_to_cv2(img_data, "bgr8")
+            except CvBridgeError as err:
+                rospy.logerr(err)
+                return
+
+            # edge_str = ''
+            # cv_win_name = ' '.join(['heyyyy', edge_str])
+            # cv2.namedWindow(cv_win_name, 0)
+            # refresh the image on the screen
+            # cv2.imshow(cv_win_name, cv_image)
+            # cv2.waitKey(3)
+            plt.imshow(cv_image[:,:,::-1])
+            plt.show()
+        rp = intera_interface.RobotParams()
+        valid_cameras = rp.get_camera_names()
+        print('valid_cameras', valid_cameras)
+
+        camera = 'head_camera'
+        # camera = 'right_hand_camera'
+        cameras = intera_interface.Cameras()
+        if not cameras.verify_camera_exists(camera):
+            rospy.logerr("Could not detect the specified camera, exiting the example.")
+            return
+        rospy.loginfo("Opening camera '{0}'...".format(camera))
+        cameras.start_streaming(camera)
+        cameras.set_callback(camera, show_image_callback,
+            rectify_image=False)
+        raw_input('Attach the paint brush now. Press enter to continue:')
