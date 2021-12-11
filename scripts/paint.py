@@ -12,6 +12,7 @@ from paint_utils import *
 q = np.array([0.704020578925, 0.710172716916,0.00244101361829,0.00194372088834])
 
 
+""" Height of the table wrt robot 0 z position """
 TABLE_Z = -0.099
 
 CANVAS_POSITION = (0,.5,TABLE_Z)
@@ -24,7 +25,8 @@ RAG_POSTITION = (-.3,.3,TABLE_Z)
 PALLETTE_POSITION = (.3,.5,TABLE_Z)
 PAINT_DIFFERENCE = 0.03976
 
-GET_PAINT_FREQ = 2
+""" How many times in a row can you paint with the same color before needing more paint """
+GET_PAINT_FREQ = 3
 
 HOVER_FACTOR = 0.1
 
@@ -49,6 +51,8 @@ def display_frida():
     ros_dir = rospack.get_path('paint')
     display_image(os.path.join(str(ros_dir), 'scripts', 'frida.jpg'))
 
+seed_position = None
+
 def _move(x, y, z, timeout=20, method='linear', step_size=.2, speed=0.1):
     '''
     Move to given x, y, z in global coordinates
@@ -56,7 +60,7 @@ def _move(x, y, z, timeout=20, method='linear', step_size=.2, speed=0.1):
         method 'linear'|'curved'|'direct'
     '''
 
-    global curr_position
+    global curr_position, seed_position
     if curr_position is None:
         curr_position = [x, y, z]
 
@@ -70,10 +74,11 @@ def _move(x, y, z, timeout=20, method='linear', step_size=.2, speed=0.1):
         z_s = np.linspace(curr_position[2], z, n_steps)
 
         for i in range(1,n_steps):
-            pos = inverse_kinematics([x_s[i], y_s[i], z_s[i]], q)
+            pos = inverse_kinematics([x_s[i], y_s[i], z_s[i]], q, seed_position=seed_position)
+            seed_position = pos
 
             try:
-                move(pos, timeout=timeout, speed=speed)
+                move(limb, pos, timeout=timeout, speed=speed)
             except Exception as e:
                 print("error moving robot: ", e)
     elif method == 'curved':
@@ -81,8 +86,9 @@ def _move(x, y, z, timeout=20, method='linear', step_size=.2, speed=0.1):
         pass
     else:
         # Direct
-        pos = inverse_kinematics([x, y, z], q)
-        move(pos, timeout=timeout, speed=speed)
+        pos = inverse_kinematics([x, y, z], q, seed_position=seed_position)
+        seed_position = pos
+        move(limb, pos, timeout=timeout, speed=speed)
 
     curr_position = [x, y, z]
 
@@ -91,8 +97,8 @@ def hover_above(x,y,z, method='linear'):
     # rate = rospy.Rate(100)
     # rate.sleep()
 
-def move_to(x,y,z, method='linear', speed=0.05):
-    _move(x,y,z, method=method, speed=speed)
+def move_to(x,y,z, method='linear', speed=0.05, timeout=5):
+    _move(x,y,z, method=method, speed=speed, timeout=timeout)
 
 def dip_brush_in_water():
     hover_above(WATER_POSITION[0],WATER_POSITION[1],WATER_POSITION[2])
@@ -152,6 +158,7 @@ def paint_path(path, step_size=.005):
     p0 = canvas_to_global_coordinates(path[0,0], path[0,1], TABLE_Z)
     hover_above(p0[0], p0[1], TABLE_Z)
     move_to(p0[0], p0[1], TABLE_Z + 0.02, speed=0.2)
+    move_to(p0[0], p0[1], TABLE_Z)
     p3 = None
 
     for i in range(1, len(path)-1, 3):
@@ -227,6 +234,7 @@ def paint_bezier_curve(p0,p1,p2, step_size=.005):
 
     hover_above(p0[0], p0[1], TABLE_Z)
     move_to(p0[0], p0[1], TABLE_Z + 0.02, speed=0.2)
+    move_to(p0[0], p0[1], TABLE_Z)
     for t in np.linspace(0,1,n):
         x = (1-t)**2*p0[0] + 2*(1-t)*t*p1[0] + t**2*p2[0]
         y = (1-t)**2*p0[1] + 2*(1-t)*t*p1[1] + t**2*p2[1]
@@ -245,15 +253,17 @@ def set_brush_height():
 
     hover_above(p[0],p[1],TABLE_Z)
 
+limb = None
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Sawyer Painter')
 
     parser.add_argument("--file", type=str,
-        default='/home/peterschaldenbrand/Downloads/abby_traced_actions.csv',
+        default='/home/peterschaldenbrand/Downloads/vangogh.csv',
         help='Path CSV instructions.')
 
     parser.add_argument('--type', default='full_path', type=str, help='Type of instructions: [full_path | bezier]')
+    parser.add_argument('--continue_ind', default=0, type=int, help='Instruction to start from. Default 0.')
 
     args = parser.parse_args()
     # args.file = '/home/peterschaldenbrand/paint/AniPainter/animation_instructions/actions.csv'
@@ -264,6 +274,9 @@ if __name__ == '__main__':
     # os.environ['ROS_HOSTNAME'] = "localhost"
 
     rospy.init_node("painting")
+
+    global limb
+    limb = intera_interface.Limb(synchronous_pub=False)
 
     good_morning_robot()
 
@@ -285,7 +298,8 @@ if __name__ == '__main__':
 
     curr_color = -1
     since_got_paint = 0
-    for instr in tqdm(instructions[:]):
+
+    for instr in tqdm(instructions[args.continue_ind:]):
         if args.type == 'full_path':
             # Full path
             path = instr[2:]
@@ -312,6 +326,7 @@ if __name__ == '__main__':
             get_paint(color)
             paint_bezier_curve(p0, p1, p2)
             curr_color = color
+
     clean_paint_brush()
 
     # for i in range(12):

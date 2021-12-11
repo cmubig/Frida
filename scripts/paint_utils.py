@@ -37,7 +37,7 @@ def good_morning_robot():
         """
         print("\nExiting example...")
         limb = intera_interface.Limb(synchronous_pub=True)
-        limb.move_to_neutral(speed=.15)
+        limb.move_to_neutral(speed=.2)
 
     rospy.on_shutdown(clean_shutdown)
     print("Excecuting... ")
@@ -115,6 +115,9 @@ def fk_service_client(joint_angles, limb = "right"):
         pos[name] = position
     return pos
 
+ns = "ExternalTools/right/PositionKinematicsNode/IKService"
+iksvc = rospy.ServiceProxy(ns, SolvePositionIK, persistent=True)
+rospy.wait_for_service(ns, 5.0)
 
 def inverse_kinematics(position, orientation, seed_position=None, debug=False):
     """
@@ -126,8 +129,6 @@ def inverse_kinematics(position, orientation, seed_position=None, debug=False):
     return:
         dict{'right_j0',float} - dictionary of joint to joint angle
     """
-    ns = "ExternalTools/right/PositionKinematicsNode/IKService"
-    iksvc = rospy.ServiceProxy(ns, SolvePositionIK)
     ikreq = SolvePositionIKRequest()
     hdr = Header(stamp=rospy.Time.now(), frame_id='base')
     pose = PoseStamped(
@@ -153,7 +154,7 @@ def inverse_kinematics(position, orientation, seed_position=None, debug=False):
 
     if (seed_position is not None):
         # Optional Advanced IK parameters
-        rospy.loginfo("Running Advanced IK Service Client example.")
+        # rospy.loginfo("Running Advanced IK Service Client example.")
         # The joint seed is where the IK position solver starts its optimization
         ikreq.seed_mode = ikreq.SEED_USER
         seed = JointState()
@@ -180,7 +181,6 @@ def inverse_kinematics(position, orientation, seed_position=None, debug=False):
         # ikreq.nullspace_gain.append(0.4)
 
     try:
-        rospy.wait_for_service(ns, 5.0)
         resp = iksvc(ikreq)
     except (rospy.ServiceException, rospy.ROSException) as e:
         rospy.logerr("Service call failed: %s" % (e,))
@@ -230,22 +230,22 @@ def inverse_kinematics(position, orientation, seed_position=None, debug=False):
 #         dict{'right_j0',float} - dictionary of joint to joint angle
 #     """
 #     limb = intera_interface.Limb()
-#     return limb.ik_request(pose, joint_seed=seed_position, nullspace_goal=None)
+#     return limb.ik_request(position, joint_seed=seed_position, nullspace_goal=None)
 
-def move(position, timeout=3, speed=0.1):
+def move(limb, position, timeout=3, speed=0.1):
     """
     args:
         dict{'right_j0',float} - dictionary of joint to joint angle
     """
     # rate = rospy.Rate(100)
     try:
-        limb = intera_interface.Limb(synchronous_pub=False)
+        # limb = intera_interface.Limb(synchronous_pub=False)
         # limb.move_to_neutral()
 
         # print('Positions:', position)
         limb.set_joint_position_speed(speed=speed)
         limb.move_to_joint_positions(position, timeout=timeout,
-                                     threshold=0.008726646*1)
+                                     threshold=0.008726646)
         limb.set_joint_position_speed(speed=.1)
         # rate.sleep()
     except Exception as e:
