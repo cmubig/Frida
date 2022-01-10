@@ -21,10 +21,10 @@ CANVAS_POSITION = (0,.5,TABLE_Z)
 CANVAS_WIDTH = .2
 CANVAS_HEIGHT = .2
 
-WATER_POSITION = (-.3,.6,TABLE_Z)
-RAG_POSTITION = (-.3,.3,TABLE_Z)
+WATER_POSITION = (-.4,.6,TABLE_Z)
+RAG_POSTITION = (-.4,.3,TABLE_Z)
 
-PALLETTE_POSITION = (.3,.5,TABLE_Z)
+PALLETTE_POSITION = (-.3,.5,TABLE_Z)
 PAINT_DIFFERENCE = 0.03976
 
 """ How many times in a row can you paint with the same color before needing more paint """

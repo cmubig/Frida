@@ -11,7 +11,7 @@ import argparse
 from paint_utils import *
 from painter import Painter
 from robot import *
-
+from camera import WebCam
 
 
 def load_instructions(fn):
@@ -32,7 +32,7 @@ if __name__ == '__main__':
         description='Sawyer Painter')
 
     parser.add_argument("--file", type=str,
-        default='/home/peterschaldenbrand/Downloads/david_lynch.csv',
+        default='/home/peterschaldenbrand/Downloads/daff.csv',
         help='Path CSV instructions.')
 
     parser.add_argument('--type', default='cubic_bezier', type=str, help='Type of instructions: [cubic_bezier | bezier]')
@@ -45,6 +45,10 @@ if __name__ == '__main__':
     # Set which robot we talkin to
     # os.environ['ROS_MASTER_URI'] = "http://localhost:11311"
     # os.environ['ROS_HOSTNAME'] = "localhost"
+
+    webcam = WebCam()
+    #webcam.test()
+    webcam.calibrate_canvas()
 
     painter = Painter(robot="sawyer")
 
