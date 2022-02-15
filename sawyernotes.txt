@@ -1,0 +1,50 @@
+# Field Service Menu
+# Dynamic IP.  
+# Check hostname.  Assuming it is "sawyerbot" for this.
+# If the hostname is not set in FSM, it is the control box's serial number
+
+ifconfig enp0s31f6
+# inet address should not be set
+# Turn on robot
+sudo avahi-autoipd enp0s31f6
+avahi-resolve-host-name sawyerbot.local
+# Returns IP of robot $ROBOT_IP
+
+sudo nano /etc/hosts
+# $ROBOT_IP sawyerbot.local 
+
+# in intera.sh
+# robot_hostname="sawyerbot.local"
+# your_ip=$THIS_MACHINES_IP but, your_hostname="liquid.local" does the trick
+#                           Just make sure it's set in /etc/hosts
+
+./intera.sh
+rostopic list
+
+
+rosrun paint paint.py
+
+
+env | grep ROS
+# Should return something like:
+__ROS_PROMPT=1
+ROS_ETC_DIR=/opt/ros/melodic/etc/ros
+ROS_ROOT=/opt/ros/melodic/share/ros
+ROS_MASTER_URI=http://sawyerbot.local:11311
+ROS_VERSION=1
+ROS_PYTHON_VERSION=2
+ROS_IP=172.26.116.102
+ROS_PACKAGE_PATH=/home/peterschaldenbrand/ros_ws/src:/opt/ros/melodic/share
+ROSLISP_PACKAGE_DIRECTORIES=/home/peterschaldenbrand/ros_ws/devel/share/common-lisp
+ROS_DISTRO=melodic
+
+
+
+# SIMULATION
+
+./intera.sh sim
+roslaunch sawyer_gazebo sawyer_world.launch
+
+# Diff tab
+./intera.sh sim
+rosrun paint paint.py
