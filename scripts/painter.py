@@ -16,6 +16,7 @@ q = np.array([0.704020578925, 0.710172716916,0.00244101361829,0.00194372088834])
 
 """ Height of the table wrt robot 0 z position """
 TABLE_Z = -0.099
+INIT_TABLE_Z = 0
 
 CANVAS_POSITION = (0,.5,TABLE_Z)
 CANVAS_WIDTH = .2
@@ -101,7 +102,7 @@ class Painter():
         self.curr_position = [x, y, z]
 
     def hover_above(self, x,y,z, method='linear'):
-        self._move(x,y,z+HOVER_FACTOR, method=method, speed=0.4)
+        self._move(x,y,z+HOVER_FACTOR, method=method, speed=0.2)
         # rate = rospy.Rate(100)
         # rate.sleep()
 
@@ -216,3 +217,53 @@ class Painter():
         raw_input('Attach the paint brush now. Press enter to continue:')
 
         self.hover_above(p[0],p[1],TABLE_Z)
+
+    def set_table_height(self):
+        '''
+        Let the user use the arrow keys to lower the paint brush to find 
+        how tall the table is (z)
+        '''
+        import intera_external_devices
+        done = False
+
+        global INIT_TABLE_Z, TABLE_Z
+        curr_z = INIT_TABLE_Z
+        p = canvas_to_global_coordinates(.5, .5, curr_z)
+        self.hover_above(p[0],p[1],curr_z)
+        self.move_to(p[0],p[1],curr_z, method='direct')
+
+        print("Controlling height of brush.")
+        print("Use up/down arrow keys to set the brush to touching the table")
+        print("Esc to quit.")
+        while not done and not rospy.is_shutdown():
+            c = intera_external_devices.getch()
+            if c:
+                #catch Esc or ctrl-c
+                if c in ['\x1b', '\x03']:
+                    done = True
+                    TABLE_Z = curr_z
+                    return
+                elif c in bindings:
+                    cmd = bindings[c]
+                    # if c == '8' or c == 'i' or c == '9':
+                    #     cmd[0](cmd[1])
+                    #     print("command: %s" % (cmd[2],))
+                    # else:
+                    #     #expand binding to something like "set_j(right, 'j0', 0.1)"
+                    #     cmd[0](*cmd[1])
+                    #     print("command: %s" % (cmd[2],))
+                    if k=='\x1b[A':
+                        curr_z += 0.01
+                        self.move_to(p[0],p[1],curr_z, method='direct')
+                        print("up")
+                    elif k=='\x1b[B':
+                        curr_z -= 0.01
+                        self.move_to(p[0],p[1],curr_z, method='direct')
+                        print("down")
+                else:
+                    print("key bindings: ")
+                    print("  Esc: Quit")
+                    print("  ?: Help")
+                    # for key, val in sorted(list(bindings.items()),
+                    #                        key=lambda x: x[1][2]):
+                    #     print("  %s: %s" % (key, val[2]))
