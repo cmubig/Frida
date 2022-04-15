@@ -11,7 +11,7 @@ import argparse
 from paint_utils import *
 from painter import Painter
 from robot import *
-from camera import WebCam
+from dslr import WebCam
 
 
 def load_instructions(fn):
@@ -46,9 +46,9 @@ if __name__ == '__main__':
     # os.environ['ROS_MASTER_URI'] = "http://localhost:11311"
     # os.environ['ROS_HOSTNAME'] = "localhost"
 
-    webcam = WebCam()
-    #webcam.test()
-    webcam.calibrate_canvas()
+    # webcam = WebCam()
+    # #webcam.test()
+    # webcam.calibrate_canvas()
 
     painter = Painter(robot="sawyer")
 
@@ -97,7 +97,7 @@ if __name__ == '__main__':
 
             painter.paint_quadratic_bezier(p0, p1, p2)
             curr_color = color
-
+        # take a picture
     painter.clean_paint_brush()
 
     # for i in range(12):
