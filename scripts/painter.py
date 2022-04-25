@@ -3,35 +3,50 @@
 import os
 import time
 import sys
-# import rospy
 import numpy as np
 from tqdm import tqdm
 import scipy.special
+import pickle
 
 from paint_utils import *
 from robot import *
 from painting_materials import *
+from strokes import paint_stroke_library
+from simulated_painting_environment import pick_next_stroke
 
 q = np.array([0.704020578925, 0.710172716916,0.00244101361829,0.00194372088834])
+# q = np.array([0.1,0.2,0.3])
+# q = np.array([.9,.155,.127,.05])
 
-""" Height of the table wrt robot 0 z position """
-TABLE_Z = -0.099
-INIT_TABLE_Z = 0
+INIT_TABLE_Z = 0.
 
-CANVAS_POSITION = (0,.5,TABLE_Z)
-CANVAS_WIDTH = .2
-CANVAS_HEIGHT = .2
+# Dimensions of canvas in meters
+# CANVAS_WIDTH  = 0.3047 # 12"
+# CANVAS_HEIGHT = 0.2285 # 9"
+CANVAS_WIDTH  = 0.254 -0.005# 10"
+CANVAS_HEIGHT = 0.2032 -0.005# 8"
 
-WATER_POSITION = (-.4,.6,TABLE_Z)
-RAG_POSTITION = (-.4,.3,TABLE_Z)
-
-PALLETTE_POSITION = (-.3,.5,TABLE_Z)
-PAINT_DIFFERENCE = 0.03976
+# X,Y of canvas wrt to robot center (global coordinates)
+CANVAS_POSITION = (0,.5) 
 
 """ How many times in a row can you paint with the same color before needing more paint """
 GET_PAINT_FREQ = 3
 
 HOVER_FACTOR = 0.1
+
+
+# Number of cells to paint in x and y directions
+cells_x, cells_y = 3, 4
+
+# Dimensions of the cells in Meters
+#cell_dim = (0.0254, 0.0508) #h/w in meters. 1"x2"
+cell_dim_y, cell_dim_x = CANVAS_HEIGHT / cells_y, CANVAS_WIDTH / cells_x
+
+# The brush stroke starts halfway down and 20% over from left edge of cell
+down = 0.5 * cell_dim_y
+over = 0.2 * cell_dim_x
+
+from stroke_calibration import process_stroke_library
 
 # def global_to_canvas_coordinates(x,y,z):
 #     x_new = x + CANVAS_POSITION[0]/2
@@ -47,7 +62,8 @@ def canvas_to_global_coordinates(x,y,z):
 
 class Painter():
 
-    def __init__(self, robot="sawyer"):
+    def __init__(self, robot="sawyer", use_cache=False, camera=None):
+
         self.robot = None
         if robot == "sawyer":
             self.robot = Sawyer(debug=True)
@@ -61,9 +77,69 @@ class Painter():
 
         self.to_neutral()
 
+        # Set how high the table is wrt the brush
+        if use_cache:
+            params = pickle.load(open("cached_params.pkl",'rb'))
+            self.Z_CANVAS = params['Z_CANVAS']
+            self.Z_MAX_CANVAS = params['Z_MAX_CANVAS']
+        else:
+            print('Brush should be at bottom left of canvas.')
+            print('Use keys "w" and "s" to set the brush to just barely touch the canvas.')
+            p = canvas_to_global_coordinates(0, 0, INIT_TABLE_Z)
+            self.Z_CANVAS = self.set_height(p[0], p[1], INIT_TABLE_Z)[2]
+
+            print('Moving brush tip to the top right of canvas.')
+            p = canvas_to_global_coordinates(1, 1, INIT_TABLE_Z)
+            self.hover_above(p[0], p[1], self.Z_CANVAS, method='direct')
+
+            print('Move the brush to the lowest point it should go.')
+            self.Z_MAX_CANVAS = self.set_height(p[0], p[1], self.Z_CANVAS)[2]
+
+            params = {'Z_CANVAS':self.Z_CANVAS, 'Z_MAX_CANVAS':self.Z_MAX_CANVAS}
+            with open('cached_params.pkl','wb') as f:
+                pickle.dump(params, f)
+            self.to_neutral()
+        
+        self.Z_RANGE = np.abs(self.Z_MAX_CANVAS - self.Z_CANVAS)
+
+        self.WATER_POSITION = (-.4,.6,self.Z_CANVAS)
+        self.RAG_POSTITION = (-.4,.3,self.Z_CANVAS)
+
+        self.PALLETTE_POSITION = (-.3,.5,self.Z_CANVAS- 0.5*self.Z_RANGE)
+        self.PAINT_DIFFERENCE = 0.03976
+
+        # Setup Camera
+        self.camera = camera
+        if self.camera is not None:
+            self.camera.debug = True
+            self.camera.calibrate_canvas(use_cache=use_cache)
+            # Color callibration
+            # self.camera.get_color_correct_image()
+
+        # Get brush strokes from stroke library
+        if not os.path.exists('strokes.pkl') or not use_cache:
+            try:
+                input('Need to create stroke library. Press enter to start.')
+            except SyntaxError:
+                pass
+
+            paint_stroke_library(self)
+            self.to_neutral()
+            self.strokes = process_stroke_library(self.camera.get_canvas())
+            with open('strokes.pkl','wb') as f:
+                pickle.dump(self.strokes, f)
+        else:
+            self.strokes = pickle.load(open("strokes.pkl",'rb'))
+
+
+    def next_stroke(self, canvas, target, colors, x_y_attempts=5, weight=None, loss_fcn=lambda c,t: np.abs(c - t)):
+        return pick_next_stroke(canvas, target, self.strokes, colors, 
+                    x_y_attempts=x_y_attempts, weight=weight, loss_fcn=loss_fcn)
+
+
     def to_neutral(self):
         # Initial spot
-        self._move(0,0.5,TABLE_Z+0.1, timeout=20, method="direct")
+        self._move(0.2,0.5,INIT_TABLE_Z+0.05, timeout=20, method="direct", speed=0.25)
 
     def _move(self, x, y, z, timeout=20, method='linear', step_size=.2, speed=0.1):
         '''
@@ -102,7 +178,7 @@ class Painter():
         self.curr_position = [x, y, z]
 
     def hover_above(self, x,y,z, method='linear'):
-        self._move(x,y,z+HOVER_FACTOR, method=method, speed=0.2)
+        self._move(x,y,z+HOVER_FACTOR, method=method, speed=0.25)
         # rate = rospy.Rate(100)
         # rate.sleep()
 
@@ -110,34 +186,34 @@ class Painter():
         self._move(x,y,z, method=method, speed=speed)
 
     def dip_brush_in_water(self):
-        self.hover_above(WATER_POSITION[0],WATER_POSITION[1],WATER_POSITION[2])
-        self.move_to(WATER_POSITION[0],WATER_POSITION[1],WATER_POSITION[2], speed=0.2)
+        self.hover_above(self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2])
+        self.move_to(self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2], speed=0.2)
         rate = rospy.Rate(100)
         for i in range(5):
             noise = np.clip(np.random.randn(2)*0.01, a_min=-.02, a_max=0.02)
-            self.move_to(WATER_POSITION[0]+noise[0],WATER_POSITION[1]+noise[1],WATER_POSITION[2], method='direct')
+            self.move_to(self.WATER_POSITION[0]+noise[0],self.WATER_POSITION[1]+noise[1],self.WATER_POSITION[2], method='direct')
             rate.sleep()
-        self.hover_above(WATER_POSITION[0],WATER_POSITION[1],WATER_POSITION[2])
+        self.hover_above(self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2])
 
     def rub_brush_on_rag(self):
-        self.hover_above(RAG_POSTITION[0],RAG_POSTITION[1],RAG_POSTITION[2])
-        self.move_to(RAG_POSTITION[0],RAG_POSTITION[1],RAG_POSTITION[2], speed=0.2)
+        self.hover_above(self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2])
+        self.move_to(self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2], speed=0.2)
         for i in range(5):
             noise = np.clip(np.random.randn(2)*0.02, a_min=-.03, a_max=0.03)
-            self.move_to(RAG_POSTITION[0]+noise[0],RAG_POSTITION[1]+noise[1],RAG_POSTITION[2], method='direct')
-        self.hover_above(RAG_POSTITION[0],RAG_POSTITION[1],RAG_POSTITION[2])
+            self.move_to(self.RAG_POSTITION[0]+noise[0],self.RAG_POSTITION[1]+noise[1],self.RAG_POSTITION[2], method='direct')
+        self.hover_above(self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2])
 
     def clean_paint_brush(self):
         self.dip_brush_in_water()
         self.rub_brush_on_rag()
 
     def get_paint(self, paint_index):
-        x_offset = PAINT_DIFFERENCE * np.floor(paint_index/6)
-        y_offset = PAINT_DIFFERENCE * (paint_index%6)
+        x_offset = self.PAINT_DIFFERENCE * np.floor(paint_index/6)
+        y_offset = self.PAINT_DIFFERENCE * (paint_index%6)
 
-        x = PALLETTE_POSITION[0] + x_offset
-        y = PALLETTE_POSITION[1] + y_offset
-        z = PALLETTE_POSITION[2]
+        x = self.PALLETTE_POSITION[0] + x_offset
+        y = self.PALLETTE_POSITION[1] + y_offset
+        z = self.PALLETTE_POSITION[2] 
 
         self.hover_above(x,y,z)
         self.move_to(x,y,z + 0.02, speed=0.2)
@@ -218,52 +294,114 @@ class Painter():
 
         self.hover_above(p[0],p[1],TABLE_Z)
 
-    def set_table_height(self):
+    def set_height(self, x, y, z, move_amount=0.0015):
         '''
-        Let the user use the arrow keys to lower the paint brush to find 
-        how tall the table is (z)
+        Let the user use keyboard keys to lower the paint brush to find 
+        how tall something is (z).
+        User preses escape to end, then this returns the x, y, z of the end effector
         '''
         import intera_external_devices
-        done = False
 
-        global INIT_TABLE_Z, TABLE_Z
-        curr_z = INIT_TABLE_Z
-        p = canvas_to_global_coordinates(.5, .5, curr_z)
-        self.hover_above(p[0],p[1],curr_z)
-        self.move_to(p[0],p[1],curr_z, method='direct')
+        curr_z = z
+        curr_x = x
+        curr_y = y 
+
+        self.hover_above(curr_x, curr_y, curr_z)
+        self.move_to(curr_x, curr_y, curr_z, method='direct')
 
         print("Controlling height of brush.")
-        print("Use up/down arrow keys to set the brush to touching the table")
+        print("Use w/s for up/down to set the brush to touching the table")
         print("Esc to quit.")
-        while not done and not rospy.is_shutdown():
+
+        while not rospy.is_shutdown():
             c = intera_external_devices.getch()
             if c:
                 #catch Esc or ctrl-c
                 if c in ['\x1b', '\x03']:
-                    done = True
-                    TABLE_Z = curr_z
-                    return
-                elif c in bindings:
-                    cmd = bindings[c]
-                    # if c == '8' or c == 'i' or c == '9':
-                    #     cmd[0](cmd[1])
-                    #     print("command: %s" % (cmd[2],))
-                    # else:
-                    #     #expand binding to something like "set_j(right, 'j0', 0.1)"
-                    #     cmd[0](*cmd[1])
-                    #     print("command: %s" % (cmd[2],))
-                    if k=='\x1b[A':
-                        curr_z += 0.01
-                        self.move_to(p[0],p[1],curr_z, method='direct')
-                        print("up")
-                    elif k=='\x1b[B':
-                        curr_z -= 0.01
-                        self.move_to(p[0],p[1],curr_z, method='direct')
-                        print("down")
+                    return curr_x, curr_y, curr_z
                 else:
-                    print("key bindings: ")
-                    print("  Esc: Quit")
-                    print("  ?: Help")
-                    # for key, val in sorted(list(bindings.items()),
-                    #                        key=lambda x: x[1][2]):
-                    #     print("  %s: %s" % (key, val[2]))
+                    if c=='w':
+                        curr_z += move_amount
+                    elif c=='s':
+                        curr_z -= move_amount
+                    elif c=='d':
+                        curr_x += move_amount
+                    elif c=='a':
+                        curr_x -= move_amount
+                    elif c=='r':
+                        curr_y += move_amount
+                    elif c=='f':
+                        curr_y -= move_amount
+                    else:
+                        print('Use arrow keys up and down. Esc when done.')
+                    
+                    self.move_to(curr_x, curr_y,curr_z, method='direct')
+
+    # def set_table_height(self, move_amount=0.0015):
+    #     '''
+    #     Let the user use the arrow keys to lower the paint brush to find 
+    #     how tall the table is (z)
+    #     '''
+    #     import intera_external_devices
+    #     done = False
+
+    #     global INIT_TABLE_Z, TABLE_Z
+    #     curr_z = INIT_TABLE_Z
+    #     p = canvas_to_global_coordinates(.5, .5, curr_z)
+    #     self.hover_above(p[0],p[1],curr_z)
+    #     self.move_to(p[0],p[1],curr_z, method='direct')
+    #     x, y = .5, .5
+
+    #     print("Controlling height of brush.")
+    #     print("Use w/s for up/down to set the brush to touching the table")
+    #     print("Esc to quit.")
+    #     global q
+    #     while not done and not rospy.is_shutdown():
+    #         c = intera_external_devices.getch()
+    #         if c:
+    #             #print('c', c, str(c))
+    #             #catch Esc or ctrl-c
+    #             if c in ['\x1b', '\x03']:
+    #                 #done = True
+    #                 print('DONE')
+    #                 TABLE_Z = curr_z
+    #                 return
+    #             else:
+    #                 if c=='w':
+    #                     # print(curr_z)
+    #                     curr_z += move_amount
+    #                     # print(curr_z)
+    #                     # print("up")
+    #                 elif c=='s':
+    #                     # print(curr_z)
+    #                     curr_z -= move_amount
+    #                     # print("down")
+    #                 elif c=='d':
+    #                     x += move_amount
+    #                 elif c=='a':
+    #                     x -= move_amount
+    #                 elif c=='r':
+    #                     y += move_amount
+    #                 elif c=='f':
+    #                     y -= move_amount
+    #                 elif c=='u':
+    #                     q[0] += move_amount*2
+    #                 elif c=='i':
+    #                     q[1] += move_amount*2
+    #                 elif c=='o':
+    #                     q[2] += move_amount*2
+    #                 elif c=='p':
+    #                     q[3] += move_amount*2
+    #                 elif c=='j':
+    #                     q[0] -= move_amount*2
+    #                 elif c=='k':
+    #                     q[1] -= move_amount*2
+    #                 elif c=='l':
+    #                     q[2] -= move_amount*2
+    #                 elif c==';':
+    #                     q[3] -= move_amount*2
+    #                 else:
+    #                     print('Use arrow keys up and down. Esc when done.')
+                    
+    #                 p = canvas_to_global_coordinates(x, y, curr_z)
+    #                 self.move_to(p[0],p[1],curr_z, method='direct')

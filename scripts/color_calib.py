@@ -1,7 +1,9 @@
+#! /usr/bin/env python3
+
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import macduff_finder.macduff as macduff
+import macduff as macduff
 
 '''
 Code to correct color of photo based on results from a Macbeth color checker.
@@ -94,7 +96,8 @@ def find_calib_params(img_path, disp_results=False):
     
     # check color-correct grey square
     greyval = checkr[-4]
-    greyval = t_mat @ np.append(greyval, 1)
+    #greyval = t_mat @ np.append(greyval, 1)
+    greyval = np.dot(t_mat, np.append(greyval, 1))
 
     # show results on original image
     if (disp_results):

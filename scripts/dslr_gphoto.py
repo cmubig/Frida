@@ -21,12 +21,15 @@ def camera_init():
 
 # capture image from camera object
 # returns both the filename and numpy array of target
-def capture_image(camera, channels='rgb'):
-    print('Capturing image')
+def capture_image(camera, channels='rgb', debug=False):
+    if (debug):
+        print('Capturing image')
     file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
-    print('Camera file path: {0}/{1}'.format(file_path.folder, file_path.name))
+    if (debug):
+        print('Camera file path: {0}/{1}'.format(file_path.folder, file_path.name))
     target = os.path.join('/tmp', file_path.name)
-    print('Copying image to', target)
+    if (debug):
+        print('Copying image to', target)
     camera_file = camera.file_get(
         file_path.folder, file_path.name, gp.GP_FILE_TYPE_NORMAL)
     camera_file.save(target)
@@ -35,4 +38,3 @@ def capture_image(camera, channels='rgb'):
         return target, cv2.imread(target)
     else:
         return target, plt.imread(target)
-

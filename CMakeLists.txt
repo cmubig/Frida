@@ -41,6 +41,7 @@ catkin_install_python(PROGRAMS
 
 install(
   DIRECTORY scripts/
+  DIRECTORY scripts/color_data/
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
   USE_SOURCE_PERMISSIONS
 )
