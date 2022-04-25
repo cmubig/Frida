@@ -1,3 +1,9 @@
 tqdm
 scipy
 pyrealsense2
+ptotobuf==3.17.3
+tensorboardX==2.1
+tensorboard
+torch
+torchvision
+lpips

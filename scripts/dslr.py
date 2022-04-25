@@ -3,20 +3,21 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import dslr_gphoto as dslr
+import pickle
+import os 
 
 import color_calib
 from harris import find_corners
 from intrinsic_calib import computeIntrinsic
 import glob
-
-# Letter sized paper aspect ratio
-LETTER_WH_RATIO = 279 / 216
+from painter import CANVAS_WIDTH, CANVAS_HEIGHT
 
 # https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/opencv_viewer_example.py
 
 class WebCam():
-    def __init__(self):
+    def __init__(self, debug=False):
         self.camera = dslr.camera_init()
+        self.debug = debug
         self.H_canvas = None
 
         self.has_color_info = False
@@ -26,39 +27,78 @@ class WebCam():
 
     def get_rgb_image(self, channels='rgb'):
         return dslr.capture_image(self.camera, channels)
+        # Dirty fix for image delay
+        
+        # while True:
+        #     targ, img = dslr.capture_image(self.camera, channels, self.debug)
+        #     plt.imshow(img)
+        #     plt.show()
+        # for i in range(4):
+        #     targ, img = dslr.capture_image(self.camera, channels, self.debug)
+        # return targ, img
 
     # return RGB image, color corrected
-    def get_color_correct_image(self):
+    def get_color_correct_image(self, use_cache=False):
         if not self.has_color_info:
-            input("No color info found. Beginning color calibration. Ensure you have placed Macbeth color checker in camera frame and press ENTER to continue.")
-            self.init_color_calib()
-            input("Remove color checker from frame.")
+            if not use_cache or not os.path.exists('cached_color_calibration.pkl'):
+                try:
+                    input('No color info found. Beginning color calibration. Ensure you have placed Macbeth color checker in camera frame and press ENTER to continue.')
+                except SyntaxError:
+                    pass
+                completed_color_calib = False
+                while not completed_color_calib:
+                    try:
+                        self.init_color_calib()
+                        completed_color_calib = True
+                    except:
+                        try: input('could not calibrate. Move color checker and try again (press enter when ready)')
+                        except SyntaxError: pass 
+                try:    
+                    input("Remove color checker from frame.")
+                except SyntaxError:
+                    pass
+            else:
+                params = pickle.load(open("cached_color_calibration.pkl",'rb'))
+                self.color_tmat, self.greyval = params["color_tmat"], params["greyval"]
+                self.has_color_info = True
+
         path, img = self.get_rgb_image()
 
         # has to be done for some reason
         return cv2.cvtColor(color_calib.color_calib(img, self.color_tmat, self.greyval), cv2.COLOR_BGR2RGB)
 
-    def get_canvas(self):
+    def get_canvas(self, use_cache=False):
         if self.H_canvas is None:
-            self.calibrate_canvas()
+            self.calibrate_canvas(use_cache)
         
         # use corrected image if possible
         if (self.has_color_info):
-            img = self.get_color_correct_image()
+            img = self.get_color_correct_image(use_cache)
         else:
             _, img = self.get_rgb_image()
 
         canvas = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
-        return canvas
+        w = int(img.shape[0] * (CANVAS_WIDTH/CANVAS_HEIGHT))
+        return canvas[:, :w]
 
-    def calibrate_canvas(self, show_search=False):
-        path, img = self.get_rgb_image()
+    def calibrate_canvas(self, use_cache=False):
+        img = self.get_color_correct_image(use_cache=use_cache)
         h = img.shape[0]
         # original image shape is too wide of an aspect ratio compared to paper
-        w = int(h * LETTER_WH_RATIO)
+        # w = int(h * LETTER_WH_RATIO)
+        w = int(h * (CANVAS_WIDTH/CANVAS_HEIGHT))
         assert(w <= img.shape[1])
 
-        self.canvas_points = find_corners(img, 100, show_search)
+        if use_cache and os.path.exists('cached_H_canvas.pkl'):
+            self.H_canvas = pickle.load(open("cached_H_canvas.pkl",'rb'))
+            img1_warp = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
+            # plt.imshow(img1_warp[:, :w])
+            # plt.title('Hopefully this looks like just the canvas')
+            # plt.show()
+            return
+
+
+        self.canvas_points = find_corners(img, show_search=self.debug)
 
         img_corners = img.copy()
         for corner_num in range(4):
@@ -78,14 +118,26 @@ class WebCam():
         self.H_canvas, _ = cv2.findHomography(self.canvas_points, true_points)
         img1_warp = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
         
+        # print(img1_warp[:, :w].shape)
+        # print(img1_warp.shape)
         plt.imshow(img1_warp[:, :w])
         plt.title('Hopefully this looks like just the canvas')
         plt.show()
+        # plt.imshow(img1_warp)
+        # plt.title('Hopefully this looks like just the canvas')
+        # plt.show()
+        
+        with open('cached_H_canvas.pkl','wb') as f:
+            pickle.dump(self.H_canvas, f)
 
-    def init_color_calib(self, disp_results=False):
+    def init_color_calib(self):
         path, img = self.get_rgb_image()
-        self.color_tmat, self.greyval = color_calib.find_calib_params(path, disp_results)
+        self.color_tmat, self.greyval = color_calib.find_calib_params(path, self.debug)
         self.has_color_info = True
+        
+        with open('cached_color_calibration.pkl','wb') as f:
+            params = {"color_tmat":self.color_tmat, "greyval":self.greyval}
+            pickle.dump(params, f)
 
     # intrinsic calibration of the camera
     def init_distortion_calib(self, imgs_exist=False, calib_path='./calibration/', num_imgs=10):
@@ -117,6 +169,7 @@ class WebCam():
         self.intrinsics = computeIntrinsic(images, (6, 8), (8, 8))
     
     # undistort and crop using OpenCV
+    # From OpenCV tutorials
     def undistort(self, img):
         if self.intrinsics is None:
             input("No intrinsics matrix found. You must perform intrinsics calibration.")
@@ -128,17 +181,6 @@ class WebCam():
         x, y, w, h = roi
         dst = dst[y:y+h, x:x+w]
         return dst
-
-    
-
-    def test(self):
-        img = self.get_rgb_image()
-        d = self.get_depth_image()
-
-        fig, ax = plt.subplots(1,2)
-        ax[0].imshow(img)
-        ax[1].imshow(d)
-        plt.show()
 
 def increase_brightness(img, value=30):
     # https://stackoverflow.com/questions/32609098/how-to-fast-change-image-brightness-with-python-opencv
@@ -152,11 +194,3 @@ def increase_brightness(img, value=30):
     final_hsv = cv2.merge((h, s, v))
     img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
     return img
-
-cam = WebCam()
-# cam.init_color_calib(True)
-# img = cam.get_color_correct_image()
-# plt.imshow(img)
-# plt.show()
-cam.calibrate_canvas()
-# cam.init_distortion_calib()

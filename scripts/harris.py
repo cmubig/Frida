@@ -7,10 +7,10 @@ NUM_CORNERS = 4
 corners = []
 
 
-def search_corner(harris_dest, coord, search_size=50, show_search=False):
+def search_corner(harris_dest, coord, search_size, show_search=False):
     x, y = coord
     # crop regions in search box for Harris processed image
-    sbox_harris = harris_dest[y-search_size:y+search_size, x-search_size:x+search_size]
+    sbox_harris = harris_dest[max(0, y-search_size):y+search_size, max(0,x-search_size):x+search_size]
    
     # find the location of max probability in the Harris image
     ymax, xmax = np.unravel_index(sbox_harris.argmax(), sbox_harris.shape)
@@ -22,11 +22,11 @@ def search_corner(harris_dest, coord, search_size=50, show_search=False):
         plt.show()
 
     # find the location of max probability in the original image
-    max_orig = [sum(x) for x in zip((xmax, ymax), (x-search_size, y-search_size))]
+    max_orig = [sum(x) for x in zip((xmax, ymax), (max(0,x-search_size), max(0,y-search_size)))]
 
     return max_orig
 
-def find_corners(img, search_size=50, show_search=False):
+def find_corners(img, search_size=10, show_search=False):
     
     # show image and take input
     plt.imshow(img)
@@ -42,7 +42,11 @@ def find_corners(img, search_size=50, show_search=False):
     # find true corner for each clicked corner
     for corner_num in range(NUM_CORNERS):
         coord = points[corner_num]
-        actual_corner = np.array(search_corner(harris_probs, coord, search_size, show_search))
+        try:
+            actual_corner = np.array(search_corner(harris_probs, coord, search_size, show_search))
+        except:
+            print('Error finding real corner')
+            actual_corner = coord
         points[corner_num] = actual_corner
 
     print(points)

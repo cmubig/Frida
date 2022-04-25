@@ -1,0 +1,24 @@
+dark skin
+light skin
+blue sky
+foliage
+blue flower
+bluish green
+orange
+purplish blue
+moderate red
+purple
+yellow green
+orange yellow
+blue
+green
+red
+yellow
+magenta
+cyan
+white 9.5 (.05 D)
+neutral 8 (.23 D)
+neutral 6.5 (.44 D)
+neutral 5 (.70 D)
+neutral 3.5 (1.05 D)
+black 2 (1.5 D)
