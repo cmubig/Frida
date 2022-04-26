@@ -16,10 +16,10 @@ def search_corner(harris_dest, coord, search_size, show_search=False):
     ymax, xmax = np.unravel_index(sbox_harris.argmax(), sbox_harris.shape)
     
     # show corner probabilities in search box to diagnose box size
-    if(show_search):
-        print((xmax, ymax))
-        plt.imshow(sbox_harris)
-        plt.show()
+    # if(show_search):
+    #     print((xmax, ymax))
+    #     plt.imshow(sbox_harris)
+    #     plt.show()
 
     # find the location of max probability in the original image
     max_orig = [sum(x) for x in zip((xmax, ymax), (max(0,x-search_size), max(0,y-search_size)))]
@@ -33,7 +33,7 @@ def find_corners(img, search_size=10, show_search=False):
     plt.title("Select corners of canvas. First is top-left, then clock-wise.")
     points = np.array(plt.ginput(n=NUM_CORNERS)).astype(np.int64)
 
-    print(points)
+    # print(points)
 
     # convert to grayscale and calculate corner probabilities
     gray = cv.cvtColor(img,cv.COLOR_BGR2GRAY)
@@ -49,7 +49,7 @@ def find_corners(img, search_size=10, show_search=False):
             actual_corner = coord
         points[corner_num] = actual_corner
 
-    print(points)
+    # print(points)
     return points
 
         

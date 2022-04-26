@@ -108,7 +108,7 @@ def process_img_for_logging(img, max_size=256.):
 #         if it % 10==0: color_ind = color_that_can_help_the_most(
 #             target, cv2.resize(canvas.copy()*255., (target.shape[1], target.shape[0])), colors)
 #         color = colors[color_ind]
-#         x, y, stroke_ind, rotation, canvas, loss, diff \
+#         x, y, stroke_ind, rotation, canvas, loss, diff, stroke_bool_map \
 #             = painter.next_stroke(canvas.copy()*255., target, color, x_y_attempts=1)
 
 #         if it % 20 == 0:
@@ -137,7 +137,7 @@ def paint_in_simulation(target, canvas, painter, colors):
         if it % 10==0: color_ind = color_that_can_help_the_most(
             target, cv2.resize(canvas.copy()*255., (target.shape[1], target.shape[0])), colors)
         color = colors[color_ind]
-        x, y, stroke_ind, rotation, canvas, loss, diff \
+        x, y, stroke_ind, rotation, canvas, loss, diff, stroke_bool_map \
             = painter.next_stroke(canvas.copy()*255., target, color, x_y_attempts=1, 
                 # weight=weight,
                 # # loss_fcn=lambda c,t: np.sqrt(np.abs(c - t)),
@@ -215,7 +215,7 @@ def color_that_can_help_the_most(target, canvas, colors):
                 * (255. - np.mean(np.abs(colors[color_ind][None,None,:] - target), axis=2))
         color_losses[color_ind] = np.mean(diff)
     color_probabilities = color_losses / color_losses.sum() # To Distribution
-
+    print(color_probabilities)
     color_ind = np.random.choice(len(colors), 1, p=color_probabilities)
     return int(color_ind[0])
 
@@ -248,12 +248,39 @@ def paint_finely(painter, target, colors):
 
     paint_planner(painter, target, colors,
             how_often_to_get_paint = 4,
-            strokes_per_color = 8,
+            strokes_per_color = 5,
             camera_capture_interval = 4,
             # loss_fcn = lambda c,t: np.abs(c - t) + lpips_loss(c, t)
             # loss_fcn = lambda c,t : np.mean(edge_loss(c, t))*5 + np.mean(np.abs(c - t))
         )
 
+def extract_paint_color(canvas_before, canvas_after, stroke_bool_map):
+    ''' Given a picture of the canvas before and after 
+    a brush stroke, extract the rgb color '''
+
+    # Get a boolean map of pixels that changed significantly from the two photos
+    # stroke_bool_map = cv2.resize(stroke_bool_map, (canvas_before.shape[1], canvas_before.shape[0]))
+    # stroke_bool_map = stroke_bool_map > 0.3
+    
+
+    # Median filter target image so that it's not detailed
+    og_shape = canvas_before.shape
+    canvas_before_ = cv2.resize(canvas_before, (256,256)) # For scipy memory error
+    canvas_after_ = cv2.resize(canvas_after, (256,256)) # For scipy memory error
+
+    diff = np.max(np.abs(canvas_after_.astype(np.float32) - canvas_before_.astype(np.float32)), axis=2)
+    diff = diff / 255.#diff.max()
+
+    # smooth the diff
+    diff = median_filter(diff, size=(5,5))
+    diff = cv2.resize(diff,  (og_shape[1], og_shape[0]))
+    
+    stroke_bool_map = diff > .3
+    if stroke_bool_map.astype(np.float32).sum() < 10: # at least 10 pixels
+        return None
+
+    color = [np.median(canvas_after[:,:,ch][stroke_bool_map]) for ch in range(3)]
+    return np.array(color)
 
 global_it = 0
 def paint_planner(painter, target, colors, 
@@ -261,33 +288,30 @@ def paint_planner(painter, target, colors,
         strokes_per_color,
         camera_capture_interval,
         weight=None, loss_fcn=None):
+    camera_capture_interval = 1################
+
     curr_color = None
     canvas_after = painter.camera.get_canvas()
     consecutive_paints = 0 
     full_sim_canvas = canvas_after.copy()
     global global_it
-    for it in tqdm(range(10000)):
+    og_target = target.copy()
+    for it in tqdm(range(2000)):
         canvas_before = canvas_after
         
         if it % strokes_per_color == 0:
-            # color_ind = int(np.floor(it / 30. + 2)%args.n_colors)
+            # color_ind = int(np.floor(it / 30. )%args.n_colors)
             # Pick which color to work with next based on how much it can help
             color_ind = 0
             while color_ind == 0:
                 color_ind = color_that_can_help_the_most(target, canvas_before, colors)
             color = colors[color_ind]
 
-        # x, y, stroke_ind, rotation, sim_canvas, loss, diff \
-        #     = painter.next_stroke(canvas_before, target, color, 
-        #         # weight=weight,#content_mask, 
-        #         # loss_fcn=loss_fcn,#lambda c,t: np.sqrt(np.abs(c-t))
-        #         )
-        x, y, stroke_ind, rotation, sim_canvas, loss, diff \
-            = painter.next_stroke(full_sim_canvas, target, color, 
-                # weight=weight,#content_mask, 
-                # loss_fcn=loss_fcn,#lambda c,t: np.sqrt(np.abs(c-t))
+        x, y, stroke_ind, rotation, sim_canvas, loss, diff, stroke_bool_map \
+            = painter.next_stroke(canvas_before, target, color, 
                 )
-        full_sim_canvas = apply_stroke(full_sim_canvas.copy(), painter.strokes[stroke_ind], stroke_ind, 
+
+        full_sim_canvas, _ = apply_stroke(full_sim_canvas.copy(), painter.strokes[stroke_ind], stroke_ind, 
             colors[color_ind], int(x*target.shape[1]), int((1-y)*target.shape[0]), rotation)
 
         new_paint_color = color_ind != curr_color
@@ -306,24 +330,38 @@ def paint_planner(painter, target, colors,
             painter.to_neutral()
             canvas_after = painter.camera.get_canvas()
 
+        # Update representation of paint color
+        new_paint_color = extract_paint_color(canvas_before, canvas_after, stroke_bool_map)
+        color_momentum = 0.1
+        if new_paint_color is not None:
+            colors[color_ind] = colors[color_ind] * (1-color_momentum) \
+                              + new_paint_color * color_momentum
+
         consecutive_paints += 1
 
         
-        writer.add_scalar('loss/sim_stroke', loss, it)
-        writer.add_scalar('loss/actual_stroke', np.mean(np.abs(canvas_before - canvas_after)), it)
-        writer.add_scalar('loss/loss', np.mean(np.abs(target - canvas_after)), it)
-        writer.add_scalar('loss/sim_loss', np.mean(np.abs(target - full_sim_canvas)), it)
-        writer.add_scalar('loss/sim_actual_diff', np.mean(np.abs(cv2.resize(canvas_after, (sim_canvas.shape[1], sim_canvas.shape[0])) - sim_canvas*255.)), it)
+        writer.add_scalar('loss/sim_stroke', loss, global_it)
+        writer.add_scalar('loss/actual_stroke', np.mean(np.abs(canvas_before - canvas_after)), global_it)
+        writer.add_scalar('loss/loss', np.mean(np.abs(target - canvas_after)), global_it)
+        writer.add_scalar('loss/sim_loss', np.mean(np.abs(target - full_sim_canvas)), global_it)
+        writer.add_scalar('loss/sim_actual_diff', np.mean(np.abs(cv2.resize(canvas_after, (sim_canvas.shape[1], sim_canvas.shape[0])) - sim_canvas*255.)), global_it)
 
         if it % 2 == 0:
-            writer.add_image('images/propsed_stroke', process_img_for_logging(sim_canvas), it)
-            writer.add_image('images/actual_stroke', process_img_for_logging(canvas_after), it)
-            writer.add_image('images/sim_canvas', process_img_for_logging(full_sim_canvas/255.), it)
-            # writer.add_image('images/diff', process_img_for_logging(diff/255.), it)
+            writer.add_image('images/propsed_stroke', process_img_for_logging(sim_canvas), global_it)
+            writer.add_image('images/actual_stroke', process_img_for_logging(canvas_after), global_it)
+            writer.add_image('images/sim_canvas', process_img_for_logging(full_sim_canvas/255.), global_it)
+            # writer.add_image('images/diff', process_img_for_logging(diff/255.), global_it)
             # writer.add_image('images/sim_actual_diff', 
-            #     process_img_for_logging(np.mean(np.abs(cv2.resize(canvas_after, (sim_canvas.shape[1], sim_canvas.shape[0])) - sim_canvas*255.), axis=2)), it)
+            #     process_img_for_logging(np.mean(np.abs(cv2.resize(canvas_after, (sim_canvas.shape[1], sim_canvas.shape[0])) - sim_canvas*255.), axis=2)), global_it)
 
+            all_colors = save_colors(colors)
+            # show_img(all_colors/255., title="Mix these colors, then exit this popup to start painting")
+            writer.add_image('paint_colors/are', all_colors/255., global_it)
         global_it += 1
+
+        if it % 20 == 0:
+            target = discretize_image(og_target, colors)
+            writer.add_image('target/discrete', target/255., global_it) 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -353,7 +391,8 @@ if __name__ == '__main__':
     # target = cv2.imread('/home/frida/Downloads/cutoutAbby.jpg')[:,:,::-1]
     # target = cv2.imread('/home/frida/Downloads/cutoutJean.jpg')[:,:,::-1]
     # target = cv2.imread('/home/frida/Downloads/frog.jpg')[:,:,::-1]
-    target = cv2.imread('/home/frida/Downloads/cutoutjon.jpg')[:,:,::-1]
+    # target = cv2.imread('/home/frida/Downloads/cutoutjon.jpg')[:,:,::-1]
+    target = cv2.imread('/home/frida/Downloads/cutoutTanmay.jpg')[:,:,::-1]
     
     canvas = painter.camera.get_canvas()
     target = cv2.resize(target, (canvas.shape[1], canvas.shape[0]))

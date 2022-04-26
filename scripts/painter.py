@@ -132,7 +132,7 @@ class Painter():
             self.strokes = pickle.load(open("strokes.pkl",'rb'))
 
 
-    def next_stroke(self, canvas, target, colors, x_y_attempts=5, weight=None, loss_fcn=lambda c,t: np.abs(c - t)):
+    def next_stroke(self, canvas, target, colors, x_y_attempts=10, weight=None, loss_fcn=lambda c,t: np.abs(c - t)):
         return pick_next_stroke(canvas, target, self.strokes, colors, 
                     x_y_attempts=x_y_attempts, weight=weight, loss_fcn=loss_fcn)
 

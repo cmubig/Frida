@@ -62,7 +62,16 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     # Apply the stroke to the canvas
     canvas[y_s:y_e,x_s:x_e,:] \
         = canvas[y_s:y_e,x_s:x_e,:] * (1 - s_expanded[sy_s:sy_e,sx_s:sx_e]) + s_color[sy_s:sy_e,sx_s:sx_e]
-    return canvas
+
+    # plt.imshow(s_expanded)
+    # plt.show()
+    stroke_bool_map = np.zeros((canvas.shape[0], canvas.shape[1]))
+    stroke_bool_map[y_s:y_e,x_s:x_e] = s_expanded[sy_s:sy_e,sx_s:sx_e,0]
+
+    # plt.imshow(stroke_bool_map)
+    # plt.colorbar()
+    # plt.show()
+    return canvas, stroke_bool_map
 
 
 # def pick_next_stroke(curr_canvas, target, strokes, colors):
@@ -115,7 +124,7 @@ resized_strokes = None # Cache
 resized_weight = None # Cache
 def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts, 
         weight=None,
-        loss_fcn=lambda c,t: np.abs(c - t)):
+        loss_fcn=lambda c,t: np.mean(np.abs(c - t), axis=2)):
     """
     Given the current canvas and target image, pick the next brush stroke
     """
@@ -145,9 +154,10 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
     best_x, best_y, best_rot, best_stroke, best_canvas, best_loss \
         = None, None, None, None, None, 9999999
     best_stroke_ind = None
+    best_stroke_bool_map = None
 
-    # diff = np.mean(np.abs(curr_canvas - target), axis=2) * (255. - np.mean(np.abs(color[None,None,:] - target), axis=2))
-    diff = (255. - np.mean(np.abs(color[None,None,:] - target), axis=2)) # best in practice
+    diff = np.mean(np.abs(curr_canvas - target), axis=2) * (255. - np.mean(np.abs(color[None,None,:] - target), axis=2))
+    # diff = (255. - np.mean(np.abs(color[None,None,:] - target), axis=2)) # best in practice
     # diff = np.mean(np.abs(curr_canvas - target), axis=2) 
 
     if weight is not None:
@@ -160,35 +170,52 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
     diff[:,int(diff.shape[1] - diff.shape[1]*0.05):] = 0.
     
     # Only look at indices where there is a big difference in canvas/target
-    good_y_inds, good_x_inds = np.where(diff > (np.quantile(diff, 0.9)-1e-3)) # 1e-3 to avoid where quantile is max value
+    # good_y_inds, good_x_inds = np.where(diff > (np.quantile(diff, 0.9)-1e-3)) # 1e-3 to avoid where quantile is max value
+    diff = diff/diff.sum() # turn to probability distribution
 
+    # plt.imshow(diff)
+    # plt.colorbar()
+    # plt.show()
+    target = target.astype(np.float32)
     for x_y_attempt in range(x_y_attempts): # Try a few random x/y's
         #x, y = np.random.randint(target.shape[1]), np.random.randint(target.shape[0])
-        ind = np.random.randint(len(good_x_inds))
-        x, y = good_x_inds[ind], good_y_inds[ind]  
-    
+
+        # ind = np.random.randint(len(good_x_inds))
+        #x, y = good_x_inds[ind], good_y_inds[ind]  
+        
+        y, x = np.unravel_index(np.random.choice(len(diff.flatten()), p=diff.flatten()), diff.shape)
+
+
         for stroke_ind in range(len(strokes)):
             stroke = strokes[stroke_ind]
             for rot in range(0, 360, 15):
                 #print(curr_canvas.max(), stroke.max(), x, y, color)
-                candidate_canvas = apply_stroke(curr_canvas.copy(), stroke, stroke_ind,
+                candidate_canvas, stroke_bool_map = apply_stroke(curr_canvas.copy(), stroke, stroke_ind,
                     color, x, y, rot)
 
                 
                 # if weight is not None:
                 #     loss = np.mean(weight[:,:,None] * loss_fcn(target, candidate_canvas))
                 # else:
-                loss = np.mean(loss_fcn(target, candidate_canvas))
+                loss = np.mean(loss_fcn(target, candidate_canvas.astype(np.float32)))
 
                 if loss < best_loss:
                     best_loss = loss
                     best_x, best_y, best_rot, best_stroke, best_canvas \
                         = x, y, rot, stroke, candidate_canvas
                     best_stroke_ind = stroke_ind
+                    best_stroke_bool_map = stroke_bool_map
+
+                    # plt.imshow(loss_fcn(target, candidate_canvas.astype(np.float32)))
+                    # plt.colorbar()
+                    # plt.show()
+                    # plt.imshow(np.mean(np.abs(target - candidate_canvas.astype(np.float32)), axis=2), cmap='gray')
+                    # plt.colorbar()
+                    # plt.show()
     
     # show_img(best_canvas/255.)
     return 1.*best_x/curr_canvas.shape[1], 1 - 1.*best_y/curr_canvas.shape[0],\
-            best_stroke_ind, best_rot, best_canvas/255., best_loss, diff
+            best_stroke_ind, best_rot, best_canvas/255., best_loss, diff, best_stroke_bool_map
 
 import matplotlib
 import matplotlib.pyplot as plt

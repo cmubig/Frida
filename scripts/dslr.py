@@ -29,12 +29,12 @@ class WebCam():
         return dslr.capture_image(self.camera, channels)
         # Dirty fix for image delay
         
-        # while True:
-        #     targ, img = dslr.capture_image(self.camera, channels, self.debug)
-        #     plt.imshow(img)
-        #     plt.show()
+        # # while True:
+        # #     targ, img = dslr.capture_image(self.camera, channels, self.debug)
+        # #     plt.imshow(img)
+        # #     plt.show()
         # for i in range(4):
-        #     targ, img = dslr.capture_image(self.camera, channels, self.debug)
+        #     targ, img = dslr.capture_image(self.camera, channels)
         # return targ, img
 
     # return RGB image, color corrected
