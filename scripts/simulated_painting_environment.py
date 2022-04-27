@@ -71,65 +71,22 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     # plt.imshow(stroke_bool_map)
     # plt.colorbar()
     # plt.show()
-    return canvas, stroke_bool_map
+    bbox = y_s, y_e, x_s, x_e
+    return canvas.astype(np.float32), stroke_bool_map, bbox
 
 
-# def pick_next_stroke(curr_canvas, target, strokes, colors):
-#     """
-#     Given the current canvas and target image, pick the next brush stroke
-#     """
-#     # It's faster if the images are lower resolution
-#     fact = 12
-#     curr_canvas = cv2.resize(curr_canvas.copy(), (int(curr_canvas.shape[1]/fact), int(curr_canvas.shape[0]/fact)))
-#     target = cv2.resize(target.copy(), (int(target.shape[1]/fact), int(target.shape[0]/fact)))
-#     strokes_resized = []
-#     for stroke in strokes:
-#         resized_stroke = cv2.resize(stroke.copy(), (int(stroke.shape[1]/fact), int(stroke.shape[0]/fact)))
-#         strokes_resized.append(resized_stroke)
-#     strokes = strokes_resized
-
-#     best_x, best_y, best_rot, best_stroke, best_canvas, best_loss \
-#         = None, None, None, None, None, 9999999
-#     best_color, best_color_ind = None, None
-#     best_stroke_ind = None
-#     for x_y_attempt in range(7): # Try a few random x/y's
-#         x, y = np.random.randint(target.shape[1]), np.random.randint(target.shape[0])
-#         #color = target[y, x]
-        
-#         for color_ind in range(len(colors)):
-#             color = colors[color_ind]
-#             #for stroke in strokes:
-#             for stroke_ind in range(len(strokes)):
-#                 stroke = strokes[stroke_ind]
-#                 for rot in range(0, 360, 45):
-#                     #print(curr_canvas.max(), stroke.max(), x, y, color)
-#                     candidate_canvas = apply_stroke(curr_canvas.copy(), stroke, 
-#                         color, x, y, rot)
-
-#                     loss = np.mean(np.abs(target - candidate_canvas))
-#                     #print(loss)
-#                     if loss < best_loss:
-#                         best_loss = loss
-#                         best_x, best_y, best_rot, best_stroke, best_canvas \
-#                             = x, y, rot, stroke, candidate_canvas
-#                         best_color, best_color_ind = color, color_ind
-#                         best_stroke_ind = stroke_ind
-    
-#     # show_img(best_canvas/255.)
-#     return 1.*best_x/curr_canvas.shape[1], 1 - 1.*best_y/curr_canvas.shape[0],\
-#             best_stroke_ind, best_color_ind, best_rot, best_canvas/255., best_loss
 
 resized_target = None # Cache
 resized_strokes = None # Cache
 resized_weight = None # Cache
-def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts, 
+def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts, H_coord=None,
         weight=None,
         loss_fcn=lambda c,t: np.mean(np.abs(c - t), axis=2)):
     """
     Given the current canvas and target image, pick the next brush stroke
     """
     # It's faster if the images are lower resolution
-    fact = 8
+    fact = 8#8
     curr_canvas = cv2.resize(curr_canvas.copy(), (int(target.shape[1]/fact), int(target.shape[0]/fact)))
     global resized_target, resized_strokes, resized_weight
     if resized_target is None:
@@ -190,14 +147,16 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
             stroke = strokes[stroke_ind]
             for rot in range(0, 360, 15):
                 #print(curr_canvas.max(), stroke.max(), x, y, color)
-                candidate_canvas, stroke_bool_map = apply_stroke(curr_canvas.copy(), stroke, stroke_ind,
-                    color, x, y, rot)
-
+                candidate_canvas, stroke_bool_map, bbox = \
+                    apply_stroke(curr_canvas.copy(), stroke, stroke_ind, color, x, y, rot)
+                # print(bbox)
                 
                 # if weight is not None:
                 #     loss = np.mean(weight[:,:,None] * loss_fcn(target, candidate_canvas))
                 # else:
-                loss = np.mean(loss_fcn(target, candidate_canvas.astype(np.float32)))
+                # loss = np.mean(loss_fcn(target, candidate_canvas))
+                loss = np.mean(loss_fcn(target[bbox[0]:bbox[1],bbox[2]:bbox[3],:], 
+                    candidate_canvas[bbox[0]:bbox[1],bbox[2]:bbox[3],:]))
 
                 if loss < best_loss:
                     best_loss = loss
@@ -213,6 +172,9 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
                     # plt.colorbar()
                     # plt.show()
     
+    if H_coord is not None:
+        # Translate the coordinates so they're similar
+        asdfasdf
     # show_img(best_canvas/255.)
     return 1.*best_x/curr_canvas.shape[1], 1 - 1.*best_y/curr_canvas.shape[0],\
             best_stroke_ind, best_rot, best_canvas/255., best_loss, diff, best_stroke_bool_map

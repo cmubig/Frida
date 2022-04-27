@@ -116,9 +116,9 @@ def process_stroke_library(raw_strk_lib):
             color = np.random.randint(0,high=255,size=3)
         
             x, y = np.random.randint(0,300), np.random.randint(0,300)
-            #canvas,_ = apply_stroke(canvas, stroke, color, x, y)
-            #canvas,_ = apply_stroke(canvas, stroke, color, x_start_pix, y_start_pix)
-            canvas,_ = apply_stroke(canvas, stroke, len(strokes), color, 
+            #canvas,_,_ = apply_stroke(canvas, stroke, color, x, y)
+            #canvas,_,_ = apply_stroke(canvas, stroke, color, x_start_pix, y_start_pix)
+            canvas,_,_ = apply_stroke(canvas, stroke, len(strokes), color, 
                                   x_start_pix+int(0.2*stroke.shape[1]), y_start_pix+int(0.5*stroke.shape[0]), -12)
             strokes.append(stroke)
     show_img(canvas/255.)

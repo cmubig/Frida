@@ -13,6 +13,7 @@ from robot import *
 from painting_materials import *
 from strokes import paint_stroke_library
 from simulated_painting_environment import pick_next_stroke
+from strokes import all_strokes
 
 q = np.array([0.704020578925, 0.710172716916,0.00244101361829,0.00194372088834])
 # q = np.array([0.1,0.2,0.3])
@@ -405,3 +406,175 @@ class Painter():
                     
     #                 p = canvas_to_global_coordinates(x, y, curr_z)
     #                 self.move_to(p[0],p[1],curr_z, method='direct')
+
+    def coordinate_calibration(self, debug=True):
+        import matplotlib.pyplot as plt
+        from simulated_painting_environment import apply_stroke
+        import cv2
+        # If you run painter.paint on a given x,y it will be slightly off (both in real and simulation)
+        # Close this gap by transforming the given x,y into a coordinate that painter.paint will use
+        # to perfectly hit that given x,y using a homograph transformation
+
+        # Paint 4 points and compare the x,y's in real vs. sim
+        # Compute Homography to compare these
+
+        stroke_ind = 0 # This stroke is pretty much a dot
+
+        canvas = self.camera.get_canvas()
+        canvas_width_pix, canvas_height_pix = canvas.shape[1], canvas.shape[0]
+
+        # Points for computing the homography
+        t = 0.06 # How far away from corners to paint
+        g = .2
+        homography_points = [[t,t],[1-t,t],[t,1-t],[1-t,1-t],
+                        [g,g],[1-g,g],[g,1-g],[1-g,1-g], [.3,.5], [.5,.3], [.8,.5]]
+
+
+        self.get_paint(0)
+        for canvas_coord in homography_points:
+            x_prop, y_prop = canvas_coord # Coord in canvas proportions
+            x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix) #  Coord in canvas pixels
+            x_glob,y_glob,_ = canvas_to_global_coordinates(x_prop,y_prop,None) # Coord in meters from robot
+
+            # Paint the point
+            all_strokes[stroke_ind]().paint(self, x_glob, y_glob, 0)
+
+        # Picture of the new strokes
+        self.to_neutral()
+        canvas = self.camera.get_canvas()
+        sim_canvas = canvas.copy()
+
+        sim_coords = []
+        real_coords = []
+        for canvas_coord in homography_points:
+            x_prop, y_prop = canvas_coord 
+            x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix)
+
+            # Simulation
+            sim_canvas, _, _ = apply_stroke(sim_canvas.copy(), self.strokes[stroke_ind], stroke_ind, 
+                np.array([0,0,0]), x_pix, y_pix, 0)
+
+            # Look in the region of the stroke and find the center of the stroke
+            w = int(.06 * canvas_height_pix)
+            window = canvas[y_pix-w:y_pix+w, x_pix-w:x_pix+w,:]
+            window = window.mean(axis=2)
+            window /= 255.
+            window = 1 - window
+            # plt.imshow(window, cmap='gray')
+            # plt.show()
+            window = window > 0.5
+            dark_y, dark_x = window.nonzero()
+            x_pix_real = int(np.mean(dark_x)) + x_pix-w
+            y_pix_real = int(np.mean(dark_y)) + y_pix-w
+
+            real_coords.append(np.array([x_pix_real, y_pix_real]))
+            sim_coords.append(np.array([x_pix, y_pix]))
+
+        real_coords, sim_coords = np.array(real_coords), np.array(sim_coords)
+        
+        H, _ = cv2.findHomography(real_coords, sim_coords)
+        canvas_warp = cv2.warpPerspective(canvas.copy(), H, (canvas.shape[1], canvas.shape[0]))
+
+        if debug:
+            fix, ax = plt.subplots(1,3)
+            ax[0].imshow(canvas)
+            ax[0].scatter(real_coords[:,0], real_coords[:,1], c='r')
+            ax[0].scatter(sim_coords[:,0], sim_coords[:,1], c='g')
+            ax[0].set_title('non-transformed photo')
+            # ax[].show()
+            ax[1].imshow(canvas_warp)
+            ax[1].scatter(real_coords[:,0], real_coords[:,1], c='r')
+            ax[1].scatter(sim_coords[:,0], sim_coords[:,1], c='g')
+            ax[1].set_title('warped photo')
+            # ax[].show()
+            ax[2].imshow(sim_canvas/255.)
+            ax[2].scatter(real_coords[:,0], real_coords[:,1], c='r')
+            ax[2].scatter(sim_coords[:,0], sim_coords[:,1], c='g')
+            ax[2].set_title('Simulation')
+            plt.show()
+        if debug:
+            plt.imshow(canvas)
+            plt.scatter(real_coords[:,0], real_coords[:,1], c='r')
+            plt.scatter(sim_coords[:,0], sim_coords[:,1], c='g')
+            sim_coords = np.array([int(.5*canvas_width_pix),int(.5*canvas_height_pix),1.])
+            real_coords = H.dot(sim_coords)
+            real_coords /= real_coords[2]
+            plt.scatter(real_coords[0], real_coords[1], c='r')
+            plt.scatter(sim_coords[0], sim_coords[1], c='g')
+            plt.show()
+
+        # Test the homography
+        if debug:
+            t = 0.25 # How far away from corners to paint
+            test_homog_coords = [[t,t],[1-t,t],[t,1-t],[1-t,1-t],[.5,.6],[.7,.2],[.2,.5],[0.2,.5]]
+
+            self.get_paint(0)
+            for canvas_coord in test_homog_coords:
+                x_prop, y_prop = canvas_coord 
+                sim_coords = np.array([int(x_prop*canvas_width_pix),int((1-y_prop)*canvas_height_pix),1.])
+                real_coords = H.dot(sim_coords)
+                real_coords /= real_coords[2]
+
+                x_glob,y_glob,_ = canvas_to_global_coordinates(1.*real_coords[0]/canvas_width_pix,1.-1.*real_coords[1]/canvas_height_pix,None)
+
+                # Paint the point
+                all_strokes[stroke_ind]().paint(self, x_glob, y_glob, 0)
+
+            # Picture of the new strokes
+            self.to_neutral()
+            canvas = self.camera.get_canvas()
+            sim_canvas = canvas.copy()
+
+            sim_coords = []
+            real_coords = []
+            for canvas_coord in test_homog_coords:
+                x_prop, y_prop = canvas_coord 
+                x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix)
+                homog_coords = H.dot(np.array([x_pix, y_pix, 1.]))
+                homog_coords /= homog_coords[2]
+
+                # Simulation
+                sim_canvas, _, _ = apply_stroke(sim_canvas.copy(), self.strokes[stroke_ind], stroke_ind, 
+                    np.array([0,0,0]), int(homog_coords[0]), int(homog_coords[1]), 0)
+
+                # Look in the region of the stroke and find the center of the stroke
+                w = int(.08 * canvas_height_pix)
+                window = canvas[y_pix-w:y_pix+w, x_pix-w:x_pix+w,:]
+                window = window.mean(axis=2)
+                window /= 255.
+                window = 1 - window
+                # plt.imshow(window, cmap='gray')
+                # plt.show()
+                window = window > 0.5
+                dark_y, dark_x = window.nonzero()
+                x_pix_real = int(np.mean(dark_x)) + x_pix-w
+                y_pix_real = int(np.mean(dark_y)) + y_pix-w
+
+                real_coords.append(np.array([x_pix_real, y_pix_real]))
+                sim_coords.append(np.array([x_pix, y_pix]))
+
+            real_coords, sim_coords = np.array(real_coords), np.array(sim_coords)
+
+            fix, ax = plt.subplots(1,2)
+            ax[0].imshow(canvas)
+            ax[0].scatter(real_coords[:,0], real_coords[:,1], c='r')
+            ax[0].scatter(sim_coords[:,0], sim_coords[:,1], c='g')
+            for j in range(4):
+                homog_coords = np.array([int(sim_coords[j,0]),int(sim_coords[j,1]),1.])
+                homog_coords = H.dot(homog_coords)
+                homog_coords /= homog_coords[2]
+                ax[0].scatter(homog_coords[0], homog_coords[1], c='b')
+            ax[0].set_title('')
+            ax[1].imshow(sim_canvas/255.)
+            ax[1].scatter(real_coords[:,0], real_coords[:,1], c='r')
+            ax[1].scatter(sim_coords[:,0], sim_coords[:,1], c='g')
+            for j in range(4):
+                homog_coords = np.array([int(sim_coords[j,0]),int(sim_coords[j,1]),1.])
+                homog_coords = H.dot(homog_coords)
+                homog_coords /= homog_coords[2]
+                ax[1].scatter(homog_coords[0], homog_coords[1], c='b')
+            ax[1].set_title('Simulation')
+            plt.show()
+        1/0
+        return H
+
