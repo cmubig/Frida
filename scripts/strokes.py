@@ -74,10 +74,10 @@ class StrokeA(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
         self.trajectory = [
-            [0,0,0.4],
-            [.002,0,.4],
-            [.004,0,.4],
-            [.005,0,0.4]
+            [-0.002,0,0.4],
+            [-0.001,0,.7],
+            [.000,0,.7],
+            [.002,0,0.4]
         ]
 class StrokeB(Stroke):
     def __init__(self):

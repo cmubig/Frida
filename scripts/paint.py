@@ -134,8 +134,9 @@ def paint_in_simulation(target, canvas, painter, colors):
     canvas /= 255.
     for it in tqdm(range(2000)):
         # color_ind = int(np.floor(it / 30.)%len(colors))
-        if it % 10==0: color_ind = color_that_can_help_the_most(
-            target, cv2.resize(canvas.copy()*255., (target.shape[1], target.shape[0])), colors)
+        if it % 10==0: 
+            color_ind = color_that_can_help_the_most(
+                target, cv2.resize(canvas.copy()*255., (target.shape[1], target.shape[0])), colors)
         color = colors[color_ind]
         x, y, stroke_ind, rotation, canvas, loss, diff, stroke_bool_map \
             = painter.next_stroke(canvas.copy()*255., target, color, x_y_attempts=1, 
@@ -215,7 +216,7 @@ def color_that_can_help_the_most(target, canvas, colors):
                 * (255. - np.mean(np.abs(colors[color_ind][None,None,:] - target), axis=2))
         color_losses[color_ind] = np.mean(diff)
     color_probabilities = color_losses / color_losses.sum() # To Distribution
-    print(color_probabilities)
+    # print(color_probabilities)
     color_ind = np.random.choice(len(colors), 1, p=color_probabilities)
     return int(color_ind[0])
 
@@ -311,7 +312,7 @@ def paint_planner(painter, target, colors,
             = painter.next_stroke(canvas_before, target, color, 
                 )
 
-        full_sim_canvas, _ = apply_stroke(full_sim_canvas.copy(), painter.strokes[stroke_ind], stroke_ind, 
+        full_sim_canvas, _, _ = apply_stroke(full_sim_canvas.copy(), painter.strokes[stroke_ind], stroke_ind, 
             colors[color_ind], int(x*target.shape[1]), int((1-y)*target.shape[0]), rotation)
 
         new_paint_color = color_ind != curr_color
@@ -417,6 +418,7 @@ if __name__ == '__main__':
     target = discretize_image(target, colors)
     writer.add_image('target/discrete', target/255., 0)
 
+    painter.coordinate_calibration()
 
     # Use simulated painting as target
     # target = paint_in_simulation(target_not_discrete, canvas, painter, colors)
