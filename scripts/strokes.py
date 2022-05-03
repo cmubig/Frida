@@ -1,4 +1,13 @@
 #! /usr/bin/env python3
+
+##########################################################
+#################### Copyright 2022 ######################
+################ by Peter Schaldenbrand ##################
+### The Robotics Institute, Carnegie Mellon University ###
+################ All rights reserved. ####################
+##########################################################
+
+
 import math
 import copy
 import numpy as np
@@ -16,6 +25,11 @@ Z is a proportion where 1=max push down and 0 is barely touching the canvas
 '''
 
 class Stroke(object):
+    '''
+        Abstract brush stroke class.
+        All brush strokes must have a trajectory which defines the path of the stroke
+        along with how hard to push the brush down.
+    '''
     def __init__(self):
         pass
     def paint(self, painter, x_start, y_start, rotation, step_size=.005):
@@ -74,7 +88,7 @@ class StrokeA(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
         self.trajectory = [
-            [-0.002,0,0.4],
+            [-0.002,0,0.4], # [x,y,z]
             [-0.001,0,.7],
             [.000,0,.7],
             [.002,0,0.4]
@@ -155,62 +169,4 @@ class StrokeI(Stroke):
 all_strokes = sorted(Stroke.__subclasses__(), key=lambda x : x.__class__.__name__)
 
 
-def paint_stroke_library(painter):
-    strokes = all_strokes
-    stroke_ind = 0
-    
-    rotation = 0
-    from painter import *
-    for i in range(cells_x):
-        for j in range(cells_y):
-            if stroke_ind >= len(strokes): 
-                # stroke_ind=0
-                break
-                # rotation += 3.14*.25
 
-            # painter.clean_paint_brush()
-            painter.get_paint(0)
-
-            # Get the position of the start of the stroke
-            x = CANVAS_POSITION[0] - 0.5*CANVAS_WIDTH + i * cell_dim_x + over
-            y = CANVAS_POSITION[1] + CANVAS_HEIGHT - j*cell_dim_y - down
-            
-            stroke = strokes[stroke_ind]()
-            #print(stroke)
-            stroke.paint(painter, x, y, rotation)
-
-            stroke_ind += 1
-            painter.clean_paint_brush()
-
-
-
-
-
-# def paint_stroke_library(painter):
-#     strokes = all_strokes
-#     stroke_ind = 0
-#     cells_x, cells_y = 6, 6
-#     #cell_dim = (0.0254, 0.0508) #h/w in meters. 1"x2"
-#     cell_dim_y, cell_dim_x = CANVAS_HEIGHT / cells_y, CANVAS_WIDTH / cells_x
-    
-#     # The brush stroke starts halfway down and 20% over from left edge of cell
-#     down = 0.5 * cell_dim_y
-#     over = 0.2 * cell_dim_x
-
-#     for i in range(cells_x):
-#         for j in range(cells_y):
-#             if stroke_ind >= len(strokes): stroke_ind=0#break
-
-#             painter.clean_paint_brush()
-#             painter.get_paint(0)
-
-#             # Get the position of the start of the stroke
-#             x = CANVAS_POSITION[0] - 0.5*CANVAS_WIDTH + i * cell_dim_x + over
-#             y = CANVAS_POSITION[1] + CANVAS_HEIGHT - j*cell_dim_y - down
-            
-#             stroke = strokes[stroke_ind]()
-#             #print(stroke)
-#             stroke.paint(painter, x, y, 0)
-
-#             stroke_ind += 1
-#     painter.clean_paint_brush()

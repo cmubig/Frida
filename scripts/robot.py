@@ -1,28 +1,18 @@
 #! /usr/bin/env python
 import os
 
-import rospy
-from geometry_msgs.msg import (
-    PoseStamped,
-    Pose,
-    Point,
-    Quaternion,
-)
-from std_msgs.msg import Header
-from sensor_msgs.msg import JointState
-
-from intera_core_msgs.srv import (
-    SolvePositionIK,
-    SolvePositionIKRequest,
-    SolvePositionFK,
-    SolvePositionFKRequest,
-)
-import intera_interface
-from intera_interface import CHECK_VERSION
-import PyKDL
-from tf_conversions import posemath
+##########################################################
+#################### Copyright 2022 ######################
+################ by Peter Schaldenbrand ##################
+### The Robotics Institute, Carnegie Mellon University ###
+################ All rights reserved. ####################
+##########################################################
 
 class Robot:
+    '''
+        Low-level action functionality of the robot.
+        This is an abstract class, see its children for usage.
+    '''
     def __init__(self, debug, node_name="painting"):
         self.debug_bool = debug
 
@@ -41,10 +31,48 @@ class Robot:
     def move_to_joint_positions(self, position):
         raise Exception("This method must be implemented")
 
+class SimulatedRobot(Robot, object):
+    def __init__(self, debug=True):
+        pass
+
+    def good_morning_robot(self):
+        pass
+
+    def good_night_robot(self):
+        pass
+
+    def move_to_joint_positions(self, position):
+        pass
+    def inverse_kinematics(self, position, orientation, seed_position=None, debug=False):
+        pass
+    def move_to_joint_positions(self, position, timeout=3, speed=0.1):
+        pass
+
 
 class Sawyer(Robot, object):
     def __init__(self, debug=True):
         super(Sawyer, self).__init__(debug)
+        import rospy
+
+        from geometry_msgs.msg import (
+            PoseStamped,
+            Pose,
+            Point,
+            Quaternion,
+        )
+        from std_msgs.msg import Header
+        from sensor_msgs.msg import JointState
+
+        from intera_core_msgs.srv import (
+            SolvePositionIK,
+            SolvePositionIKRequest,
+            SolvePositionFK,
+            SolvePositionFKRequest,
+        )
+        import intera_interface
+        from intera_interface import CHECK_VERSION
+        import PyKDL
+        from tf_conversions import posemath
 
         self.limb = intera_interface.Limb(synchronous_pub=False)
 

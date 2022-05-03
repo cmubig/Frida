@@ -1,10 +1,19 @@
 #! /usr/bin/env python3
 
+##########################################################
+#################### Copyright 2022 ######################
+################ by Peter Schaldenbrand ##################
+### The Robotics Institute, Carnegie Mellon University ###
+################ All rights reserved. ####################
+##########################################################
+
 import numpy as np
 import cv2
 import math
 import copy
 from scipy import ndimage
+
+from paint_utils import show_img
 
 # Save some processed strokes to save time
 # {stroke_ind+'_'+rotation+'_'+stroke_size: stroke nd.array}}
@@ -75,127 +84,3 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     return canvas.astype(np.float32), stroke_bool_map, bbox
 
 
-
-resized_target = None # Cache
-resized_strokes = None # Cache
-resized_weight = None # Cache
-def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts, H_coord=None,
-        weight=None,
-        loss_fcn=lambda c,t: np.mean(np.abs(c - t), axis=2)):
-    """
-    Given the current canvas and target image, pick the next brush stroke
-    """
-    # It's faster if the images are lower resolution
-    fact = 8#8
-    curr_canvas = cv2.resize(curr_canvas.copy(), (int(target.shape[1]/fact), int(target.shape[0]/fact)))
-    global resized_target, resized_strokes, resized_weight
-    if resized_target is None:
-        target = cv2.resize(target.copy(), (int(target.shape[1]/fact), int(target.shape[0]/fact)))
-        strokes_resized = []
-        for stroke in strokes:
-            resized_stroke = cv2.resize(stroke.copy(), (int(stroke.shape[1]/fact), int(stroke.shape[0]/fact)))
-            strokes_resized.append(resized_stroke)
-        strokes = strokes_resized
-
-        if weight is not None:
-            weight = cv2.resize(weight.copy(), (target.shape[1], target.shape[0]))
-
-        resized_target = target  # Cache
-        resized_strokes = strokes # Cache
-        resized_weight = weight # Cache
-    else:
-        strokes = resized_strokes # Cache
-        target = resized_target # Cache
-        weight = resized_weight # Cache
-
-    best_x, best_y, best_rot, best_stroke, best_canvas, best_loss \
-        = None, None, None, None, None, 9999999
-    best_stroke_ind = None
-    best_stroke_bool_map = None
-
-    diff = np.mean(np.abs(curr_canvas - target), axis=2) * (255. - np.mean(np.abs(color[None,None,:] - target), axis=2))
-    # diff = (255. - np.mean(np.abs(color[None,None,:] - target), axis=2)) # best in practice
-    # diff = np.mean(np.abs(curr_canvas - target), axis=2) 
-
-    if weight is not None:
-        diff = diff * weight
-    
-    # Ignore edges
-    diff[0:int(diff.shape[0]*0.05),:] = 0.
-    diff[int(diff.shape[0] - diff.shape[0]*0.05):,:] = 0.
-    diff[:,0:int(diff.shape[1]*0.05)] = 0.
-    diff[:,int(diff.shape[1] - diff.shape[1]*0.05):] = 0.
-    
-    # Only look at indices where there is a big difference in canvas/target
-    # good_y_inds, good_x_inds = np.where(diff > (np.quantile(diff, 0.9)-1e-3)) # 1e-3 to avoid where quantile is max value
-    diff = diff/diff.sum() # turn to probability distribution
-
-    # plt.imshow(diff)
-    # plt.colorbar()
-    # plt.show()
-    target = target.astype(np.float32)
-    for x_y_attempt in range(x_y_attempts): # Try a few random x/y's
-        #x, y = np.random.randint(target.shape[1]), np.random.randint(target.shape[0])
-
-        # ind = np.random.randint(len(good_x_inds))
-        #x, y = good_x_inds[ind], good_y_inds[ind]  
-        
-        y, x = np.unravel_index(np.random.choice(len(diff.flatten()), p=diff.flatten()), diff.shape)
-
-
-        for stroke_ind in range(len(strokes)):
-            stroke = strokes[stroke_ind]
-            for rot in range(0, 360, 15):
-                #print(curr_canvas.max(), stroke.max(), x, y, color)
-                candidate_canvas, stroke_bool_map, bbox = \
-                    apply_stroke(curr_canvas.copy(), stroke, stroke_ind, color, x, y, rot)
-                # print(bbox)
-                
-                # if weight is not None:
-                #     loss = np.mean(weight[:,:,None] * loss_fcn(target, candidate_canvas))
-                # else:
-                # loss = np.mean(loss_fcn(target, candidate_canvas))
-                loss = np.mean(loss_fcn(target[bbox[0]:bbox[1],bbox[2]:bbox[3],:], 
-                    candidate_canvas[bbox[0]:bbox[1],bbox[2]:bbox[3],:]))
-
-                if loss < best_loss:
-                    best_loss = loss
-                    best_x, best_y, best_rot, best_stroke, best_canvas \
-                        = x, y, rot, stroke, candidate_canvas
-                    best_stroke_ind = stroke_ind
-                    best_stroke_bool_map = stroke_bool_map
-
-                    # plt.imshow(loss_fcn(target, candidate_canvas.astype(np.float32)))
-                    # plt.colorbar()
-                    # plt.show()
-                    # plt.imshow(np.mean(np.abs(target - candidate_canvas.astype(np.float32)), axis=2), cmap='gray')
-                    # plt.colorbar()
-                    # plt.show()
-    
-    if H_coord is not None:
-        # Translate the coordinates so they're similar
-        asdfasdf
-    # show_img(best_canvas/255.)
-    return 1.*best_x/curr_canvas.shape[1], 1 - 1.*best_y/curr_canvas.shape[0],\
-            best_stroke_ind, best_rot, best_canvas/255., best_loss, diff, best_stroke_bool_map
-
-import matplotlib
-import matplotlib.pyplot as plt
-
-def show_img(img):
-    # Display at actual size: https://stackoverflow.com/questions/60144693/show-image-in-its-original-resolution-in-jupyter-notebook
-    # Acquire default dots per inch value of matplotlib
-    dpi = matplotlib.rcParams['figure.dpi']
-    # Determine the figures size in inches to fit your image
-    height, width = img.shape[0], img.shape[1]
-    figsize = width / float(dpi), height / float(dpi)
-
-    plt.figure(figsize=figsize)
-    plt.title("Proposed Next Stroke")
-    if len(img.shape) == 2:
-        plt.imshow(img, cmap='gray')
-    else:
-        plt.imshow(img)
-    plt.xticks([]), plt.yticks([])
-    plt.tight_layout()
-    plt.show()

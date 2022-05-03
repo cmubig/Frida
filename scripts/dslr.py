@@ -1,4 +1,11 @@
 #! /usr/bin/env python3
+##########################################################
+#################### Copyright 2022 ######################
+################ by Peter Schaldenbrand ##################
+### The Robotics Institute, Carnegie Mellon University ###
+################ All rights reserved. ####################
+##########################################################
+
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,12 +17,11 @@ import color_calib
 from harris import find_corners
 from intrinsic_calib import computeIntrinsic
 import glob
-from painter import CANVAS_WIDTH, CANVAS_HEIGHT
 
 # https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/opencv_viewer_example.py
 
 class WebCam():
-    def __init__(self, debug=False):
+    def __init__(self, opt, debug=False):
         self.camera = dslr.camera_init()
         self.debug = debug
         self.H_canvas = None
@@ -25,14 +31,17 @@ class WebCam():
         self.color_tmat = None
         self.greyval = None
 
+        self.opt = opt
+
     def get_rgb_image(self, channels='rgb'):
+        # while True:
+        #     targ, img = dslr.capture_image(self.camera, channels, self.debug)
+        #     plt.imshow(img)
+        #     plt.show()
+
         return dslr.capture_image(self.camera, channels)
-        # Dirty fix for image delay
         
-        # # while True:
-        # #     targ, img = dslr.capture_image(self.camera, channels, self.debug)
-        # #     plt.imshow(img)
-        # #     plt.show()
+        # Dirty fix for image delay
         # for i in range(4):
         #     targ, img = dslr.capture_image(self.camera, channels)
         # return targ, img
@@ -40,7 +49,7 @@ class WebCam():
     # return RGB image, color corrected
     def get_color_correct_image(self, use_cache=False):
         if not self.has_color_info:
-            if not use_cache or not os.path.exists('cached_color_calibration.pkl'):
+            if not use_cache or not os.path.exists(os.path.join(self.opt.cache_dir, 'cached_color_calibration.pkl')):
                 try:
                     input('No color info found. Beginning color calibration. Ensure you have placed Macbeth color checker in camera frame and press ENTER to continue.')
                 except SyntaxError:
@@ -58,7 +67,7 @@ class WebCam():
                 except SyntaxError:
                     pass
             else:
-                params = pickle.load(open("cached_color_calibration.pkl",'rb'))
+                params = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_color_calibration.pkl"),'rb'))
                 self.color_tmat, self.greyval = params["color_tmat"], params["greyval"]
                 self.has_color_info = True
 
@@ -78,7 +87,7 @@ class WebCam():
             _, img = self.get_rgb_image()
 
         canvas = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
-        w = int(img.shape[0] * (CANVAS_WIDTH/CANVAS_HEIGHT))
+        w = int(img.shape[0] * (self.opt.CANVAS_WIDTH/self.opt.CANVAS_HEIGHT))
         return canvas[:, :w]
 
     def calibrate_canvas(self, use_cache=False):
@@ -86,11 +95,11 @@ class WebCam():
         h = img.shape[0]
         # original image shape is too wide of an aspect ratio compared to paper
         # w = int(h * LETTER_WH_RATIO)
-        w = int(h * (CANVAS_WIDTH/CANVAS_HEIGHT))
+        w = int(h * (self.opt.CANVAS_WIDTH/self.opt.CANVAS_HEIGHT))
         assert(w <= img.shape[1])
 
-        if use_cache and os.path.exists('cached_H_canvas.pkl'):
-            self.H_canvas = pickle.load(open("cached_H_canvas.pkl",'rb'))
+        if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, 'cached_H_canvas.pkl')):
+            self.H_canvas = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_H_canvas.pkl"),'rb'))
             img1_warp = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
             # plt.imshow(img1_warp[:, :w])
             # plt.title('Hopefully this looks like just the canvas')
@@ -127,7 +136,7 @@ class WebCam():
         # plt.title('Hopefully this looks like just the canvas')
         # plt.show()
         
-        with open('cached_H_canvas.pkl','wb') as f:
+        with open(os.path.join(self.opt.cache_dir, 'cached_H_canvas.pkl'),'wb') as f:
             pickle.dump(self.H_canvas, f)
 
     def init_color_calib(self):
@@ -135,7 +144,7 @@ class WebCam():
         self.color_tmat, self.greyval = color_calib.find_calib_params(path, self.debug)
         self.has_color_info = True
         
-        with open('cached_color_calibration.pkl','wb') as f:
+        with open(os.path.join(self.opt.cache_dir, 'cached_color_calibration.pkl'),'wb') as f:
             params = {"color_tmat":self.color_tmat, "greyval":self.greyval}
             pickle.dump(params, f)
 
@@ -182,15 +191,13 @@ class WebCam():
         dst = dst[y:y+h, x:x+w]
         return dst
 
-def increase_brightness(img, value=30):
-    # https://stackoverflow.com/questions/32609098/how-to-fast-change-image-brightness-with-python-opencv
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    h, s, v = cv2.split(hsv)
-
-    lim = 255 - value
-    v[v > lim] = 255
-    v[v <= lim] += value
-
-    final_hsv = cv2.merge((h, s, v))
-    img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
-    return img
+class SimulatedWebCam():
+    def __init__(self, opt):
+        self.opt = opt
+        w_h_ratio = float(opt.CANVAS_WIDTH) / opt.CANVAS_HEIGHT
+        h = 2048
+        self.canvas = np.ones((h,int(h * w_h_ratio),3), dtype=np.float32) * 255.
+    def get_canvas(self):
+        return self.canvas
+    def calibrate_canvas(self, use_cache=False):
+        pass

@@ -1,6 +1,13 @@
 # Capture image from DSLR camaera using gphoto2 Python interface
 # Author: Jason Xu
 
+##########################################################
+#################### Copyright 2022 ######################
+##################### by Jason Xu ########################
+### The Robotics Institute, Carnegie Mellon University ###
+################ All rights reserved. ####################
+##########################################################
+
 # adapted from code at https://github.com/jim-easterbrook/python-gphoto2/blob/master/examples/capture-image.py
 
 import os
