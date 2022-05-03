@@ -1,5 +1,12 @@
 #! /usr/bin/env python3
 
+##########################################################
+#################### Copyright 2022 ######################
+################ by Peter Schaldenbrand ##################
+### The Robotics Institute, Carnegie Mellon University ###
+################ All rights reserved. ####################
+##########################################################
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,6 +20,7 @@ from io import BytesIO
 
 from painter import *
 from strokes import *
+from paint_utils import show_img, increase_brightness
 from simulated_painting_environment import apply_stroke
 
 
@@ -20,46 +28,18 @@ from simulated_painting_environment import apply_stroke
 Some Helper Functions
 """
 
-def show_img(img):
-    # Display at actual size: https://stackoverflow.com/questions/60144693/show-image-in-its-original-resolution-in-jupyter-notebook
-    # Acquire default dots per inch value of matplotlib
-    dpi = matplotlib.rcParams['figure.dpi']
-    # Determine the figures size in inches to fit your image
-    height, width = img.shape[0], img.shape[1]
-    figsize = width / float(dpi), height / float(dpi)
-
-    plt.figure(figsize=figsize)
-    if len(img.shape) == 2:
-        plt.imshow(img, cmap='gray')
-    else:
-        plt.imshow(img)
-    plt.xticks([]), plt.yticks([])
-    plt.tight_layout()
-    plt.show()
 
 # def pil_loader_internet(url):
 #     response = requests.get(url)
 #     img = PIL.Image.open(BytesIO(response.content))
 #     return img.convert('RGB')
 
-def increase_brightness(img, value=30):
-    # https://stackoverflow.com/questions/32609098/how-to-fast-change-image-brightness-with-python-opencv
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    h, s, v = cv2.split(hsv)
-
-    lim = 255 - value
-    v[v > lim] = 255
-    v[v <= lim] += value
-
-    final_hsv = cv2.merge((h, s, v))
-    img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
-    return img
 
 
 def process_stroke_library(raw_strk_lib):
     """
     The input is a raw photo of the canvas after creating the stroke library
-
+    cut out the brush strokes, process them and return them as an array
     """
     raw_strk_lib = increase_brightness(raw_strk_lib)
     raw_strk_lib = cv2.cvtColor(raw_strk_lib,cv2.COLOR_BGR2GRAY)

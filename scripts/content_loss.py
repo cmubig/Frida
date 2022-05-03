@@ -1,3 +1,11 @@
+
+##########################################################
+#################### Copyright 2022 ######################
+################ by Peter Schaldenbrand ##################
+### The Robotics Institute, Carnegie Mellon University ###
+################ All rights reserved. ####################
+##########################################################
+
 import torch
 from torchvision import models
 import numpy as np
