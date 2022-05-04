@@ -9,7 +9,6 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import dslr_gphoto as dslr
 import pickle
 import os 
 
@@ -22,6 +21,7 @@ import glob
 
 class WebCam():
     def __init__(self, opt, debug=False):
+        import dslr_gphoto as dslr
         self.camera = dslr.camera_init()
         self.debug = debug
         self.H_canvas = None
