@@ -14,7 +14,6 @@ import numpy as np
 from tqdm import tqdm
 import scipy.special
 import pickle
-import rospy
 
 from paint_utils import *
 from robot import *
@@ -49,6 +48,9 @@ class Painter():
         '''
         self.opt = opt # Options object
 
+        if not opt.simulate:
+            import rospy
+
         self.robot = None
         if robot == "sawyer":
             self.robot = Sawyer(debug=True)
@@ -66,7 +68,7 @@ class Painter():
 
         # Set how high the table is wrt the brush
         if use_cache:
-            params = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_params.pkl"),'rb'))
+            params = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_params.pkl"),'r'))
             self.Z_CANVAS = params['Z_CANVAS']
             self.Z_MAX_CANVAS = params['Z_MAX_CANVAS']
         else:
