@@ -16,6 +16,24 @@ import time
 import os
 import pickle
 
+import colour
+
+def rgb2lab(image_rgb):
+    image_rgb = image_rgb.astype(np.float32)
+    if image_rgb.max() > 2:
+        image_rgb = image_rgb / 255.
+
+    # Also Consider
+    # image_lab = colour.XYZ_to_Lab(colour.sRGB_to_XYZ(image_rgb))
+
+    image_lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2Lab)
+    return image_lab
+
+def compare_images(img1, img2):
+    ''' Pixel wise comparison '''
+    # Input images are Lab
+    delta_E = colour.delta_E(img1, img2)
+    return delta_E
 
 def canvas_to_global_coordinates(x,y,z, opt):
     ''' Canvas coordinates are proportions from the bottom left of canvas 

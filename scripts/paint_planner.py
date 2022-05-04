@@ -110,9 +110,10 @@ def paint_planner(painter, target, colors,
     og_target = target.copy()
     real_canvases = [canvas_after]
     sim_canvases = [canvas_after]
+
     for it in tqdm(range(2000)):
         canvas_before = canvas_after
-        
+
         if it % strokes_per_color == 0:
             # color_ind = int(np.floor(it / 30. )%args.n_colors)
             # Pick which color to work with next based on how much it can help
@@ -121,11 +122,11 @@ def paint_planner(painter, target, colors,
             color_ind = color_that_can_help_the_most(target, canvas_before, colors)
             color = colors[color_ind]
 
-        x, y, stroke_ind, rotation, sim_canvas, loss, diff, stroke_bool_map \
-            = painter.next_stroke(canvas_before, target, color, 
-                )
 
-        full_sim_canvas, _, _ = apply_stroke(full_sim_canvas.copy(), painter.strokes[stroke_ind], stroke_ind, 
+        x, y, stroke_ind, rotation, sim_canvas, loss, diff, stroke_bool_map \
+            = painter.next_stroke(canvas_before.copy(), target, color, x_y_attempts=2)
+
+        full_sim_canvas, _, _ = apply_stroke(full_sim_canvas, painter.strokes[stroke_ind], stroke_ind,
             colors[color_ind], int(x*target.shape[1]), int((1-y)*target.shape[0]), rotation)
 
         new_paint_color = color_ind != curr_color
@@ -140,9 +141,10 @@ def paint_planner(painter, target, colors,
         x,y,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
         all_strokes[stroke_ind]().paint(painter, x, y, rotation * (2*3.14/360))
+
         if it % camera_capture_interval == 0:
             painter.to_neutral()
-            canvas_after = painter.camera.get_canvas()
+            canvas_after = painter.camera.get_canvas() if not painter.opt.simulate else full_sim_canvas
             real_canvases.append(canvas_after)
             sim_canvases.append(full_sim_canvas)
 
@@ -155,23 +157,25 @@ def paint_planner(painter, target, colors,
 
         consecutive_paints += 1
 
-        painter.writer.add_scalar('loss/sim_stroke', loss, global_it)
-        painter.writer.add_scalar('loss/actual_stroke', np.mean(np.abs(canvas_before - canvas_after)), global_it)
         painter.writer.add_scalar('loss/loss', np.mean(np.abs(target - canvas_after)), global_it)
         painter.writer.add_scalar('loss/sim_loss', np.mean(np.abs(target - full_sim_canvas)), global_it)
-        painter.writer.add_scalar('loss/sim_actual_diff', np.mean(np.abs(cv2.resize(canvas_after, (sim_canvas.shape[1], sim_canvas.shape[0])) - sim_canvas*255.)), global_it)
+        if not painter.opt.simulate:
+            painter.writer.add_scalar('loss/sim_stroke', loss, global_it)
+            painter.writer.add_scalar('loss/actual_stroke', np.mean(np.abs(canvas_before - canvas_after)), global_it)
+            painter.writer.add_scalar('loss/sim_actual_diff', np.mean(np.abs(cv2.resize(canvas_after, (sim_canvas.shape[1], sim_canvas.shape[0])) - sim_canvas*255.)), global_it)
 
-        if it % 2 == 0:
-            painter.writer.add_image('images/propsed_stroke', sim_canvas, global_it)
-            painter.writer.add_image('images/actual_stroke', canvas_after, global_it)
+        if it % 5 == 0:
+            if not painter.opt.simulate:
+                painter.writer.add_image('images/canvas', canvas_after, global_it)
+                painter.writer.add_image('images/propsed_stroke', sim_canvas, global_it)
+                all_colors = save_colors(colors)
+                # show_img(all_colors/255., title="Mix these colors, then exit this popup to start painting")
+                painter.writer.add_image('paint_colors/are', all_colors/255., global_it)
             painter.writer.add_image('images/sim_canvas', full_sim_canvas/255., global_it)
             # painter.writer.add_image('images/diff', diff/255., global_it)
             # painter.writer.add_image('images/sim_actual_diff', 
             #     np.mean(np.abs(cv2.resize(canvas_after, (sim_canvas.shape[1], sim_canvas.shape[0])) - sim_canvas*255.), axis=2), global_it)
 
-            all_colors = save_colors(colors)
-            # show_img(all_colors/255., title="Mix these colors, then exit this popup to start painting")
-            painter.writer.add_image('paint_colors/are', all_colors/255., global_it)
         global_it += 1
 
         # if it % 20 == 0:
@@ -191,7 +195,7 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
     Given the current canvas and target image, pick the next brush stroke
     """
     # It's faster if the images are lower resolution
-    fact = 4.#8.#8.
+    fact = 8.#8.#8.
     curr_canvas = cv2.resize(curr_canvas.copy(), (int(target.shape[1]/fact), int(target.shape[0]/fact)))
 
     target = cv2.resize(target.copy(), (int(target.shape[1]/fact), int(target.shape[0]/fact)))
@@ -242,6 +246,9 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
     
     loss_og = np.abs(target - curr_canvas)
 
+    target_lab = rgb2lab(target)
+    loss_og = compare_images(target_lab, rgb2lab(curr_canvas))
+
     for x_y_attempt in range(x_y_attempts): # Try a few random x/y's
         #x, y = np.random.randint(target.shape[1]), np.random.randint(target.shape[0])
 
@@ -257,10 +264,9 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
             x, y = real_coords[0]/real_coords[2]/fact, real_coords[1]/real_coords[2]/fact
             x, y = int(x), int(y)
 
-        
         for stroke_ind in range(len(strokes)):
             stroke = strokes[stroke_ind]
-            for rot in range(0, 360, 15):
+            for rot in range(0, 360, 45):
 
                 candidate_canvas, stroke_bool_map, bbox = \
                     apply_stroke(curr_canvas.copy(), stroke, stroke_ind, color, x, y, rot)
@@ -268,7 +274,9 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
                 # loss = np.mean(np.mean(np.abs(target - candidate_canvas), axis=2) * color_help)
 
                 comp_inds = stroke_bool_map > 0.5
-                loss = np.mean(np.abs(target[comp_inds] - candidate_canvas[comp_inds]) * color_help[comp_inds][:,None] \
+                # loss = np.mean(np.abs(target[comp_inds] - candidate_canvas[comp_inds]) * color_help[comp_inds][:,None] \
+                #     - loss_og[comp_inds])
+                loss = np.mean(compare_images(target_lab[comp_inds], rgb2lab(candidate_canvas)[comp_inds]) * color_help[comp_inds]\
                     - loss_og[comp_inds])
 
                 if loss < best_loss:
