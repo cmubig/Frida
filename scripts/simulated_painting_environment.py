@@ -18,6 +18,7 @@ from paint_utils import show_img
 # Save some processed strokes to save time
 # {stroke_ind+'_'+rotation+'_'+stroke_size: stroke nd.array}}
 processed_stroke_cache = {}
+processed_s_expanded_cache = {}
 
 def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     '''
@@ -31,11 +32,12 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     # how to get to the start of the brush stroke from the top left of the cut out region
     down = 0.5
     right = 0.2
-    
+
     stroke_cache_key = str(stroke_ind)+'_'+str(theta)+'_'+str(stroke.shape[0])
 
     if stroke_cache_key in processed_stroke_cache:
         stroke = processed_stroke_cache[stroke_cache_key].copy()
+        s_expanded = processed_s_expanded_cache[stroke_cache_key].copy()
     else:
         # Padding for rotation. Ensure start of brush stroke is centered in square image
         h, w = stroke.shape
@@ -50,17 +52,18 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
 
         processed_stroke_cache[stroke_cache_key] = stroke.copy()
 
-    
-    s_expanded = np.tile(stroke[:,:, np.newaxis], (1,1,3))
+        s_expanded = np.tile(stroke[:,:, np.newaxis], (1,1,3))
+        processed_s_expanded_cache[stroke_cache_key] = s_expanded.copy()
+
     s_color = s_expanded * color[None, None, :]
     stroke_dim = stroke.shape
-    
+
     h, w = stroke.shape # new height and width (with padding. should be equal)
-    
+
     # Get indices of the canvas to apply the stroke to
     y_s, y_e = max(y - int(.5 * h), 0), min(y - int(.5 * h) + stroke_dim[0], canvas.shape[0])
     x_s, x_e = max(x - int(.5 * w), 0), min(x - int(.5 * w) + stroke_dim[1], canvas.shape[1])
-    
+
     # Get the indices of the stroke to apply to the canvas (incase stroke falls off side of canvas)
     sy_s = max(0, -1 * (y - int(.5 * h)))
     sy_e = y_e - y_s - min(0, (y - int(.5 * h)))
@@ -81,6 +84,5 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     # plt.colorbar()
     # plt.show()
     bbox = y_s, y_e, x_s, x_e
-    return canvas.astype(np.float32), stroke_bool_map, bbox
-
+    return canvas, stroke_bool_map, bbox
 
