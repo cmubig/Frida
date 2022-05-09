@@ -66,40 +66,13 @@ def paint_finely(painter, target, colors):
             # loss_fcn = lambda c,t : np.mean(edge_loss(c, t))*5 + np.mean(np.abs(c - t))
         )
 
-def extract_paint_color(canvas_before, canvas_after, stroke_bool_map):
-    ''' Given a picture of the canvas before and after 
-    a brush stroke, extract the rgb color '''
-
-    # Get a boolean map of pixels that changed significantly from the two photos
-    # stroke_bool_map = cv2.resize(stroke_bool_map, (canvas_before.shape[1], canvas_before.shape[0]))
-    # stroke_bool_map = stroke_bool_map > 0.3
-    
-
-    # Median filter target image so that it's not detailed
-    og_shape = canvas_before.shape
-    canvas_before_ = cv2.resize(canvas_before, (256,256)) # For scipy memory error
-    canvas_after_ = cv2.resize(canvas_after, (256,256)) # For scipy memory error
-
-    diff = np.max(np.abs(canvas_after_.astype(np.float32) - canvas_before_.astype(np.float32)), axis=2)
-    diff = diff / 255.#diff.max()
-
-    # smooth the diff
-    diff = median_filter(diff, size=(5,5))
-    diff = cv2.resize(diff,  (og_shape[1], og_shape[0]))
-    
-    stroke_bool_map = diff > .3
-    if stroke_bool_map.astype(np.float32).sum() < 10: # at least 10 pixels
-        return None
-
-    color = [np.median(canvas_after[:,:,ch][stroke_bool_map]) for ch in range(3)]
-    return np.array(color)
 
 global_it = 0
 def paint_planner(painter, target, colors, 
         how_often_to_get_paint,
         strokes_per_color,
         camera_capture_interval,
-        weight=None, loss_fcn=None):
+        loss_fcn=None):
     camera_capture_interval = 3################
 
     curr_color = None
@@ -114,6 +87,7 @@ def paint_planner(painter, target, colors,
     for it in tqdm(range(2000)):
         canvas_before = canvas_after
 
+        # Decide if and what color paint should be used next
         if it % strokes_per_color == 0:
             # color_ind = int(np.floor(it / 30. )%args.n_colors)
             # Pick which color to work with next based on how much it can help
@@ -122,24 +96,27 @@ def paint_planner(painter, target, colors,
             color_ind = color_that_can_help_the_most(target, canvas_before, colors)
             color = colors[color_ind]
 
-
+        # Plan the next brush stroke
         x, y, stroke_ind, rotation, sim_canvas, loss, diff, stroke_bool_map \
-            = painter.next_stroke(canvas_before.copy(), target, color, x_y_attempts=2)
+            = painter.next_stroke(canvas_before.copy(), target, color, x_y_attempts=5)
 
+        # Make the brush stroke on a simulated canvas
         full_sim_canvas, _, _ = apply_stroke(full_sim_canvas, painter.strokes[stroke_ind], stroke_ind,
             colors[color_ind], int(x*target.shape[1]), int((1-y)*target.shape[0]), rotation)
 
+        # Clean paint brush and/or get more paint
         new_paint_color = color_ind != curr_color
         if new_paint_color:
             painter.clean_paint_brush()
             curr_color = color_ind
-
         if consecutive_paints >= how_often_to_get_paint or new_paint_color:
             painter.get_paint(color_ind)
             consecutive_paints = 0
 
+        # Convert the canvas proportion coordinates to meters from robot
         x,y,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
+        # Paint the brush stroke
         all_strokes[stroke_ind]().paint(painter, x, y, rotation * (2*3.14/360))
 
         if it % camera_capture_interval == 0:
@@ -155,7 +132,6 @@ def paint_planner(painter, target, colors,
                 colors[color_ind] = colors[color_ind] * (1-color_momentum) \
                                   + new_paint_color * color_momentum
 
-        consecutive_paints += 1
 
         painter.writer.add_scalar('loss/loss', np.mean(np.abs(target - canvas_after)), global_it)
         painter.writer.add_scalar('loss/sim_loss', np.mean(np.abs(target - full_sim_canvas)), global_it)
@@ -172,11 +148,20 @@ def paint_planner(painter, target, colors,
                 # show_img(all_colors/255., title="Mix these colors, then exit this popup to start painting")
                 painter.writer.add_image('paint_colors/are', all_colors/255., global_it)
             painter.writer.add_image('images/sim_canvas', full_sim_canvas/255., global_it)
-            # painter.writer.add_image('images/diff', diff/255., global_it)
+
+            diff = diff.astype(np.float32) / diff.max() *255. # Normalize for the image
+            diff = cv2.cvtColor(diff, cv2.COLOR_GRAY2RGB)
+            diff[:30,:50,:] = color[None, None, :] # Put the paint color in the corner
+            painter.writer.add_image('images/diff', diff/255., global_it)
             # painter.writer.add_image('images/sim_actual_diff', 
             #     np.mean(np.abs(cv2.resize(canvas_after, (sim_canvas.shape[1], sim_canvas.shape[0])) - sim_canvas*255.), axis=2), global_it)
-
+        if it == 0:
+            target_edges = sobel(np.mean(cv2.resize(target, (int(target.shape[1]/8), int(target.shape[0]/8))), axis=2))
+            target_edges -= target_edges.min()
+            target_edges /= target_edges.max()
+            painter.writer.add_image('target/target_edges', target_edges*255., global_it)
         global_it += 1
+        consecutive_paints += 1
 
         # if it % 20 == 0:
         #     target = discretize_image(og_target, colors)
@@ -187,13 +172,16 @@ def paint_planner(painter, target, colors,
             to_video(real_canvases, fn='real_canvases.mp4')
             to_video(sim_canvases, fn='sim_canvases.mp4')
 
-def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts, 
+
+# from scipy.signal import medfilt
+
+def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
         H_coord=None, # Transform the x,y coord so the robot can actually hit the coordinate
-        weight=None,
         loss_fcn=lambda c,t: np.mean(np.abs(c - t), axis=2)):
     """
     Given the current canvas and target image, pick the next brush stroke
     """
+
     # It's faster if the images are lower resolution
     fact = 8.#8.#8.
     curr_canvas = cv2.resize(curr_canvas.copy(), (int(target.shape[1]/fact), int(target.shape[0]/fact)))
@@ -205,56 +193,49 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
         strokes_resized.append(resized_stroke)
     strokes = strokes_resized
 
-    if weight is not None:
-        weight = cv2.resize(weight.copy(), (target.shape[1], target.shape[0]))
+    opt_params = { # Find the optimal parameters
+        'x':None,
+        'y':None,
+        'rot':None,
+        'stroke':None,
+        'canvas':None,
+        'loss':9999999,
+        'stroke_ind':None,
+        'stroke_bool_map':None,
+    }
 
+    target_lab = rgb2lab(target)
 
-    best_x, best_y, best_rot, best_stroke, best_canvas, best_loss \
-        = None, None, None, None, None, 9999999
-    best_stroke_ind = None
-    best_stroke_bool_map = None
+    target_edges = sobel(np.mean(target, axis=2))
+    target_edges -= target_edges.min()
+    target_edges /= target_edges.sum()
 
-    # diff = np.mean(np.abs(curr_canvas - target), axis=2) \
-    #         + (255. - np.mean(np.abs(color[None,None,:] - target), axis=2))
-    diff = (255. - np.mean(np.abs(color[None,None,:] - target), axis=2)) # best in practice
-    # diff = np.mean(np.abs(curr_canvas - target), axis=2) 
+    # Regions of the canvas that the paint color matches well are high
+    color_diff = compare_images(target_lab, rgb2lab(np.ones(target.shape) * color[None,None,:]))
+    color_diff = color_diff.max() - color_diff # Small diff means the paint works well there
 
-    if weight is not None:
-        diff = diff * weight
-    
-    # Ignore edges
+    loss_og = compare_images(target_lab, rgb2lab(curr_canvas))
+
+    # Diff is a combination of canvas areas that are highly different from target
+    # and where the paint color could really help the canvas
+    diff = (loss_og / loss_og.sum()) * (color_diff / color_diff.sum())
+
+    # Ignore edges for now
     diff[0:int(diff.shape[0]*0.05),:] = 0.
     diff[int(diff.shape[0] - diff.shape[0]*0.05):,:] = 0.
     diff[:,0:int(diff.shape[1]*0.05)] = 0.
     diff[:,int(diff.shape[1] - diff.shape[1]*0.05):] = 0.
-    
+
     # Only look at indices where there is a big difference in canvas/target
-    # good_y_inds, good_x_inds = np.where(diff > (np.quantile(diff, 0.9)-1e-3)) # 1e-3 to avoid where quantile is max value
-    #diff = (diff > (np.quantile(diff, 0.9)-1e-3)).astype(np.float32)
-    diff[diff < (np.quantile(diff,0.9)-1e-3)] = 0
-    diff = diff/diff.sum() # turn to probability distribution
+    diff[diff < (np.quantile(diff,0.9))] = 0
+    # diff = medfilt(diff,kernel_size=5)
+    # # turn to probability distribution
+    diff = diff/diff.sum()
 
-    # plt.imshow(diff)
-    # plt.colorbar()
-    # plt.show()
-    target = target.astype(np.float32)
-    # from skimage.filters import gaussian
-    # blur_target = gaussian(target)
-    color_help = np.mean(np.abs(color[None,None,:] - target), axis=2)
-    color_help /= color_help.max()
-    color_help = 1 - color_help
-    
-    loss_og = np.abs(target - curr_canvas)
-
-    target_lab = rgb2lab(target)
-    loss_og = compare_images(target_lab, rgb2lab(curr_canvas))
+    color_help = color_diff
 
     for x_y_attempt in range(x_y_attempts): # Try a few random x/y's
-        #x, y = np.random.randint(target.shape[1]), np.random.randint(target.shape[0])
-
-        # ind = np.random.randint(len(good_x_inds))
-        #x, y = good_x_inds[ind], good_y_inds[ind]  
-        
+        # Randomly choose x,y locations to start the stroke weighted by the difference in canvas/target wrt color
         y, x = np.unravel_index(np.random.choice(len(diff.flatten()), p=diff.flatten()), diff.shape)
 
         if H_coord is not None:
@@ -271,29 +252,60 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
                 candidate_canvas, stroke_bool_map, bbox = \
                     apply_stroke(curr_canvas.copy(), stroke, stroke_ind, color, x, y, rot)
 
-                # loss = np.mean(np.mean(np.abs(target - candidate_canvas), axis=2) * color_help)
-
-                comp_inds = stroke_bool_map > 0.5
+                comp_inds = stroke_bool_map > 0.2 # only need to look where the stroke was made
                 # loss = np.mean(np.abs(target[comp_inds] - candidate_canvas[comp_inds]) * color_help[comp_inds][:,None] \
                 #     - loss_og[comp_inds])
-                loss = np.mean(compare_images(target_lab[comp_inds], rgb2lab(candidate_canvas)[comp_inds]) * color_help[comp_inds]\
-                    - loss_og[comp_inds])
+                # loss = np.mean(compare_images(target_lab[comp_inds], rgb2lab(candidate_canvas)[comp_inds]) * color_help[comp_inds]\
+                #     - loss_og[comp_inds])
 
-                if loss < best_loss:
-                    best_loss = loss
-                    best_x, best_y, best_rot, best_stroke, best_canvas \
-                        = x, y, rot, stroke, candidate_canvas
-                    best_stroke_ind = stroke_ind
-                    best_stroke_bool_map = stroke_bool_map
+                # Loss is the amount of difference lost
+                loss = -1. * np.sum(diff[comp_inds])
 
-                    # plt.imshow(loss_fcn(target, candidate_canvas.astype(np.float32)))
-                    # plt.colorbar()
-                    # plt.show()
-                    # plt.imshow(np.mean(np.abs(target - candidate_canvas.astype(np.float32)), axis=2), cmap='gray')
-                    # plt.colorbar()
-                    # plt.show()
+                # Penalize crossing edges
+                # loss += np.mean(target_edges[comp_inds])
 
-    return 1.*best_x/curr_canvas.shape[1], 1 - 1.*best_y/curr_canvas.shape[0],\
-            best_stroke_ind, best_rot, best_canvas/255., \
-            np.mean(np.abs(best_canvas - target)), \
-            diff, best_stroke_bool_map
+                if loss < opt_params['loss']:
+                    opt_params['x'], opt_params['y'] = x, y
+                    opt_params['rot'] = rot
+                    opt_params['stroke'] = stroke
+                    opt_params['canvas'] = candidate_canvas
+                    opt_params['loss'] = loss
+                    opt_params['stroke_ind'] = stroke_ind
+                    opt_params['stroke_bool_map'] = stroke_bool_map
+
+    return 1.*opt_params['x']/curr_canvas.shape[1], 1 - 1.*opt_params['y']/curr_canvas.shape[0],\
+            opt_params['stroke_ind'], opt_params['rot'], opt_params['canvas']/255., \
+            np.mean(np.abs(opt_params['canvas'] - target)), \
+            diff, opt_params['stroke_bool_map']
+
+# from multiprocessing.pool import ThreadPool
+
+
+#     pool = ThreadPool(20)
+#     results = []
+#                 results.append(pool.apply_async(apply_stroke,
+#                     args=(curr_canvas.copy(), stroke, stroke_ind, color, x, y, rot)))
+#                 params.append((stroke_ind, color, x, y, rot, stroke))
+
+
+#     pool.close()
+#     pool.join()
+#     #print(results[0])
+#     results = [r.get() for r in results]
+
+#     #for r in results:
+#     for i in range(len(results)):
+#         candidate_canvas, stroke_bool_map, bbox = results[i]
+#         p = params[i]
+#         comp_inds = stroke_bool_map > 0.5
+#         # loss = np.mean(np.abs(target[comp_inds] - candidate_canvas[comp_inds]) * color_help[comp_inds][:,None] \
+#         #     - loss_og[comp_inds])
+#         loss = np.mean(compare_images(target_lab[comp_inds], rgb2lab(candidate_canvas)[comp_inds]) * color_help[comp_inds]\
+#             - loss_og[comp_inds])
+
+#         if loss < best_loss:
+#             best_loss = loss
+#             best_x, best_y, best_rot, best_stroke, best_canvas \
+#                 = p[2], p[3], p[4], p[5], candidate_canvas
+#             best_stroke_ind = p[0]
+#             best_stroke_bool_map = stroke_bool_map

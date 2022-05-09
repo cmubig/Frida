@@ -69,8 +69,8 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     sy_e = y_e - y_s - min(0, (y - int(.5 * h)))
     sx_s = max(0, -1 * (x - int(.5 * w)))
     sx_e = x_e - x_s - min(0, (x - int(.5 * w)))
-#     print(y_s, y_e, sy_s, sy_e)
-#     print(x_s, x_e, sx_s, sx_e)
+    # print(y_s, y_e, sy_s, sy_e)
+    # print(x_s, x_e, sx_s, sx_e)
     # Apply the stroke to the canvas
     canvas[y_s:y_e,x_s:x_e,:] \
         = canvas[y_s:y_e,x_s:x_e,:] * (1 - s_expanded[sy_s:sy_e,sx_s:sx_e]) + s_color[sy_s:sy_e,sx_s:sx_e]
@@ -85,4 +85,3 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     # plt.show()
     bbox = y_s, y_e, x_s, x_e
     return canvas, stroke_bool_map, bbox
-

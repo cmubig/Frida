@@ -1,1 +1,4 @@
 *.pyc
+*.out.tfevents.*
+*.mp4
+*.gif
