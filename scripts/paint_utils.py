@@ -12,6 +12,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import PIL.Image
+from scipy.ndimage import median_filter
 import time
 import os
 import pickle
@@ -123,6 +124,34 @@ def save_colors(allowed_colors):
 
     return big_img
 
+
+def extract_paint_color(canvas_before, canvas_after, stroke_bool_map):
+    ''' Given a picture of the canvas before and after
+    a brush stroke, extract the rgb color '''
+
+    # Get a boolean map of pixels that changed significantly from the two photos
+    # stroke_bool_map = cv2.resize(stroke_bool_map, (canvas_before.shape[1], canvas_before.shape[0]))
+    # stroke_bool_map = stroke_bool_map > 0.3
+
+
+    # Median filter target image so that it's not detailed
+    og_shape = canvas_before.shape
+    canvas_before_ = cv2.resize(canvas_before, (256,256)) # For scipy memory error
+    canvas_after_ = cv2.resize(canvas_after, (256,256)) # For scipy memory error
+
+    diff = np.max(np.abs(canvas_after_.astype(np.float32) - canvas_before_.astype(np.float32)), axis=2)
+    diff = diff / 255.#diff.max()
+
+    # smooth the diff
+    diff = median_filter(diff, size=(5,5))
+    diff = cv2.resize(diff,  (og_shape[1], og_shape[0]))
+
+    stroke_bool_map = diff > .3
+    if stroke_bool_map.astype(np.float32).sum() < 10: # at least 10 pixels
+        return None
+
+    color = [np.median(canvas_after[:,:,ch][stroke_bool_map]) for ch in range(3)]
+    return np.array(color)
 
 def load_instructions(fn):
     '''
