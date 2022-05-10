@@ -36,9 +36,14 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     stroke_cache_key = str(stroke_ind)+'_'+str(theta)+'_'+str(stroke.shape[0])
 
     if stroke_cache_key in processed_stroke_cache:
-        stroke = processed_stroke_cache[stroke_cache_key].copy()
+        stroke = processed_stroke_cache[stroke_cache_key]#.copy()
         s_expanded = processed_s_expanded_cache[stroke_cache_key].copy()
     else:
+        # TODO: Crop the stroke. The smaller it is the faster this will be
+        # print(stroke.shape)
+        # show_img(stroke)
+
+
         # Padding for rotation. Ensure start of brush stroke is centered in square image
         h, w = stroke.shape
         padX = int((1 - right - right)*w), 0
@@ -71,14 +76,15 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     sx_e = x_e - x_s - min(0, (x - int(.5 * w)))
     # print(y_s, y_e, sy_s, sy_e)
     # print(x_s, x_e, sx_s, sx_e)
+
     # Apply the stroke to the canvas
     canvas[y_s:y_e,x_s:x_e,:] \
         = canvas[y_s:y_e,x_s:x_e,:] * (1 - s_expanded[sy_s:sy_e,sx_s:sx_e]) + s_color[sy_s:sy_e,sx_s:sx_e]
 
     # plt.imshow(s_expanded)
     # plt.show()
-    stroke_bool_map = np.zeros((canvas.shape[0], canvas.shape[1]))
-    stroke_bool_map[y_s:y_e,x_s:x_e] = s_expanded[sy_s:sy_e,sx_s:sx_e,0]
+    stroke_bool_map = np.zeros((canvas.shape[0], canvas.shape[1]), dtype=np.bool)
+    stroke_bool_map[y_s:y_e,x_s:x_e] = s_expanded[sy_s:sy_e,sx_s:sx_e,0] > 0.2
 
     # plt.imshow(stroke_bool_map)
     # plt.colorbar()

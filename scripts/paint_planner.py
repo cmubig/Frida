@@ -167,13 +167,13 @@ def paint_planner(painter, target, colors,
         #     target = discretize_image(og_target, colors)
         #     painter.writer.add_image('target/discrete', target/255., global_it) 
 
-        if it % 50 == 0:
-            # to_gif(all_canvases)
-            to_video(real_canvases, fn='real_canvases.mp4')
-            to_video(sim_canvases, fn='sim_canvases.mp4')
+        # if it % 200 == 0:
+        #     # to_gif(all_canvases)
+        #     to_video(real_canvases, fn='real_canvases.mp4')
+        #     to_video(sim_canvases, fn='sim_canvases.mp4')
 
 
-# from scipy.signal import medfilt
+from scipy.signal import medfilt
 
 def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
         H_coord=None, # Transform the x,y coord so the robot can actually hit the coordinate
@@ -181,9 +181,8 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
     """
     Given the current canvas and target image, pick the next brush stroke
     """
-
     # It's faster if the images are lower resolution
-    fact = 8.#8.#8.
+    fact = target.shape[1] / 256.0 #12.#8.#8.
     curr_canvas = cv2.resize(curr_canvas.copy(), (int(target.shape[1]/fact), int(target.shape[0]/fact)))
 
     target = cv2.resize(target.copy(), (int(target.shape[1]/fact), int(target.shape[0]/fact)))
@@ -227,12 +226,14 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
     diff[:,int(diff.shape[1] - diff.shape[1]*0.05):] = 0.
 
     # Only look at indices where there is a big difference in canvas/target
-    diff[diff < (np.quantile(diff,0.9))] = 0
-    # diff = medfilt(diff,kernel_size=5)
-    # # turn to probability distribution
+    diff = medfilt(diff,kernel_size=5)
+    if (diff >= np.quantile(diff,0.9)).sum() > 0:
+        diff[diff < (np.quantile(diff,0.9))] = 0
+    # Turn to probability distribution
     diff = diff/diff.sum()
 
     color_help = color_diff
+
 
     for x_y_attempt in range(x_y_attempts): # Try a few random x/y's
         # Randomly choose x,y locations to start the stroke weighted by the difference in canvas/target wrt color
@@ -247,12 +248,14 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
 
         for stroke_ind in range(len(strokes)):
             stroke = strokes[stroke_ind]
-            for rot in range(0, 360, 45):
+            for rot in range(0, 360, 15):
 
                 candidate_canvas, stroke_bool_map, bbox = \
                     apply_stroke(curr_canvas.copy(), stroke, stroke_ind, color, x, y, rot)
 
                 comp_inds = stroke_bool_map > 0.2 # only need to look where the stroke was made
+                if comp_inds.sum() == 0:
+                    print('No brush stroke region. Resolution probably too small.')
                 # loss = np.mean(np.abs(target[comp_inds] - candidate_canvas[comp_inds]) * color_help[comp_inds][:,None] \
                 #     - loss_og[comp_inds])
                 # loss = np.mean(compare_images(target_lab[comp_inds], rgb2lab(candidate_canvas)[comp_inds]) * color_help[comp_inds]\
@@ -263,6 +266,12 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
 
                 # Penalize crossing edges
                 # loss += np.mean(target_edges[comp_inds])
+
+                # Penalize making mistakes (painting in areas it shouldn't)
+                mistakes = compare_images(target_lab[comp_inds], \
+                    rgb2lab(candidate_canvas[comp_inds][np.newaxis])[0])
+                mistake_weight = .5
+                loss += (mistakes.sum() / comp_inds.sum()) / 255. * mistake_weight
 
                 if loss < opt_params['loss']:
                     opt_params['x'], opt_params['y'] = x, y
@@ -275,7 +284,7 @@ def pick_next_stroke(curr_canvas, target, strokes, color, x_y_attempts,
 
     return 1.*opt_params['x']/curr_canvas.shape[1], 1 - 1.*opt_params['y']/curr_canvas.shape[0],\
             opt_params['stroke_ind'], opt_params['rot'], opt_params['canvas']/255., \
-            np.mean(np.abs(opt_params['canvas'] - target)), \
+            compare_images(target_lab, rgb2lab(opt_params['canvas'])), \
             diff, opt_params['stroke_bool_map']
 
 # from multiprocessing.pool import ThreadPool
