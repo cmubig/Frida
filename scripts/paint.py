@@ -62,16 +62,14 @@ if __name__ == '__main__':
     # target = discretize_image(target, colors)
     # writer.add_image('target/discrete', target/255., 0)
 
-    # Ensure that x,y on the canvas photograph is x,y for the robot interacting with the canvas
-    painter.coordinate_calibration(use_cache=opt.use_cache)
-
     # Use simulated painting as target
     # target = paint_in_simulation(target_not_discrete, canvas, painter, colors)
     # writer.add_image('target/simulated', target, 0)
     # show_img(target/255., title="Simulated painting. Close this popup to start painting this.")
     
 
-    # show_img(all_colors/255., title="Mix these colors, then exit this popup to start painting")
+    if not opt.simulate: 
+        show_img(all_colors/255., title="Mix these colors, then exit this popup to start painting")
 
     # paint_coarsely(painter, target, colors)
     paint_finely(painter, target_not_discrete, colors)

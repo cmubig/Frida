@@ -75,11 +75,12 @@ def find_calib_params(img_path, disp_results=False):
 
     refr = ref.reshape(24, 3)
 
-    if (disp_results):
-        print(refr)
-        print(checkr)
-        plt.imshow(out)
-        plt.show()
+    # if (disp_results):
+    #     print(refr)
+    #     print(checkr)
+    #     plt.imshow(out)
+    #     plt.show()
+    original = out.copy()
 
     # set up least squares equation to solve for transform matrix
     A = np.zeros((24 * 3, 12))
@@ -110,7 +111,11 @@ def find_calib_params(img_path, disp_results=False):
 
         out, _ = macduff.find_macbeth('correct.jpg')
         out = cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
-        plt.imshow(out)
+        fix, ax = plt.subplots(1,2)
+        ax[0].imshow(original)
+        ax[1].imshow(np.transpose(out, (1,0,2))[:,::-1,:])
+        plt.title('Color Callibration results')
+        for a in ax: a.set_xticks([]), a.set_yticks([])
         plt.show()
 
     return t_mat, greyval
