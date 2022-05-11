@@ -19,6 +19,49 @@ from paint_utils import show_img
 # {stroke_ind+'_'+rotation+'_'+stroke_size: stroke nd.array}}
 processed_stroke_cache = {}
 processed_s_expanded_cache = {}
+down_cache = {}
+right_cache = {}
+
+
+def crop_stroke(stroke, down, right):
+    # Remove black space from stroke map
+    stroke_bool = stroke > 0.3
+    
+    # show_img(stroke_bool)
+    all_black_cols = np.max(stroke_bool, axis=0) > 0.3
+
+    last_filled_col = len(all_black_cols) - np.argmax(all_black_cols[::-1])
+    first_filled_col = np.argmax(all_black_cols)
+
+
+    all_black_rows = np.max(stroke_bool, axis=1) > 0.3
+
+    last_filled_row = len(all_black_rows) - np.argmax(all_black_rows[::-1])
+    first_filled_row = np.argmax(all_black_rows)
+    
+    h,w = stroke.shape
+
+    # padding so it's not perfectly cropped
+    pw = max(5,int(0.1 * (last_filled_col-first_filled_col)))
+    ph = max(5,int(0.1 * (last_filled_row-first_filled_row)))
+    last_filled_col = min(w, last_filled_col + pw)
+    last_filled_row = min(h, last_filled_row + ph)
+    first_filled_col = max(0, first_filled_col - pw)
+    first_filled_row = max(0, first_filled_row - ph)
+
+
+    a = down*h - first_filled_row
+    b = (1-down)*h - (h-last_filled_row)
+    new_down = a / (a+b)
+    # print(a, b, new_down, down, h)
+    a = right*w - first_filled_col
+    b = (1-right)*w - (w-last_filled_col)
+    new_right = a / (a + b)
+
+    t = 0
+    return stroke[max(0,first_filled_row-t):last_filled_row+t, \
+                  max(0,first_filled_col-t):last_filled_col+t], \
+            new_down, new_right
 
 def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     '''
@@ -38,18 +81,50 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     if stroke_cache_key in processed_stroke_cache:
         stroke = processed_stroke_cache[stroke_cache_key]#.copy()
         s_expanded = processed_s_expanded_cache[stroke_cache_key].copy()
+        right = right_cache[stroke_ind]
+        down = down_cache[stroke_ind]
     else:
-        # TODO: Crop the stroke. The smaller it is the faster this will be
-        # print(stroke.shape)
+        # Crop the stroke. The smaller it is the faster this will be
         # show_img(stroke)
+        # import matplotlib.pyplot as plt 
+        # plt.imshow(stroke)
+        # plt.scatter(right*stroke.shape[1], (down)*stroke.shape[0])
+        # plt.show()
+
+        # a, b, c = crop_stroke(stroke, down, right)
+        # plt.imshow(a)
+        # plt.scatter(c*a.shape[1], (b)*a.shape[0])
+        # plt.show()
+        stroke, down, right = crop_stroke(stroke.copy(), down, right)
+        
+        down_cache[stroke_ind] = down 
+        right_cache[stroke_ind] = right
 
 
         # Padding for rotation. Ensure start of brush stroke is centered in square image
         h, w = stroke.shape
-        padX = int((1 - right - right)*w), 0
-        padY = int((1 - right)*w - (1 - down)*h), int((1 - right)*w - (1 - down)*h)
+
+        # PadX to center the start of stroke
+        padX = max(0, w*(1-2*right)), max(0, w*(2*right-1))
+        # PadY to center the start of the stroke
+        padY = max(0, h*(1-2*down)), max(0, h*(2*down - 1))
+        # print(padX, padY)
+        # Pad to become square
+        newW, newH = padX[0] + padX[1] + w, padY[0] + padY[1] + h 
+        # print(newW, newH)
+        if newH > newW:
+            xtra_x = (newH - newW)/2 
+            padX = padX[0] + xtra_x, padX[1] + xtra_x
+        elif newH < newW:
+            xtra_y = (newW - newH)/2 
+            padY = padY[0] + xtra_y, padY[1] + xtra_y
+        padX = int(padX[0]), int(padX[1])
+        padY = int(padY[0]), int(padY[1])
+
+        # print(padX, padY, right, down, h, w, 'should only happen in beginning')
         imgP = np.pad(stroke, [padY, padX], 'constant')
         # show_img(imgP)
+        # print(imgP.shape)
 
         # Rotate theta degrees
         stroke = ndimage.rotate(imgP, theta, reshape=False)
@@ -81,13 +156,8 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
     canvas[y_s:y_e,x_s:x_e,:] \
         = canvas[y_s:y_e,x_s:x_e,:] * (1 - s_expanded[sy_s:sy_e,sx_s:sx_e]) + s_color[sy_s:sy_e,sx_s:sx_e]
 
-    # plt.imshow(s_expanded)
-    # plt.show()
     stroke_bool_map = np.zeros((canvas.shape[0], canvas.shape[1]), dtype=np.bool)
     stroke_bool_map[y_s:y_e,x_s:x_e] = s_expanded[sy_s:sy_e,sx_s:sx_e,0] > 0.2
 
-    # plt.imshow(stroke_bool_map)
-    # plt.colorbar()
-    # plt.show()
     bbox = y_s, y_e, x_s, x_e
     return canvas, stroke_bool_map, bbox

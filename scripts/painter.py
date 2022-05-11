@@ -22,6 +22,9 @@ from paint_planner import pick_next_stroke
 from strokes import all_strokes
 from dslr import WebCam, SimulatedWebCam
 
+try: import rospy
+except: pass
+
 q = np.array([0.704020578925, 0.710172716916,0.00244101361829,0.00194372088834])
 # q = np.array([0.1,0.2,0.3])
 # q = np.array([.9,.155,.127,.05])
@@ -63,6 +66,7 @@ class Painter():
 
         self.curr_position = None
         self.seed_position = None
+        self.H_coord = None # Translate coordinates based on faulty camera location
 
         # self.to_neutral()
 
@@ -74,15 +78,16 @@ class Painter():
         else:
             print('Brush should be at bottom left of canvas.')
             print('Use keys "w" and "s" to set the brush to just barely touch the canvas.')
-            p = canvas_to_global_coordinates(0, 0, self.opt.INIT_TABLE_Z, self.opt)
+            p = canvas_to_global_coordinates(0.5, 0.5, self.opt.INIT_TABLE_Z, self.opt)
             self.Z_CANVAS = self.set_height(p[0], p[1], self.opt.INIT_TABLE_Z)[2]
 
             print('Moving brush tip to the top right of canvas.')
-            p = canvas_to_global_coordinates(1, 1, self.opt.INIT_TABLE_Z, self.opt)
+            p = canvas_to_global_coordinates(0.5, 0.5, self.opt.INIT_TABLE_Z, self.opt)
             self.hover_above(p[0], p[1], self.Z_CANVAS, method='direct')
 
             print('Move the brush to the lowest point it should go.')
             self.Z_MAX_CANVAS = self.set_height(p[0], p[1], self.Z_CANVAS)[2]
+            self.hover_above(p[0], p[1], self.Z_CANVAS, method='direct')
 
             params = {'Z_CANVAS':self.Z_CANVAS, 'Z_MAX_CANVAS':self.Z_MAX_CANVAS}
             with open(os.path.join(self.opt.cache_dir, 'cached_params.pkl'),'wb') as f:
@@ -99,7 +104,7 @@ class Painter():
 
         # Setup Camera
         try:
-            self.camera = WebCam()
+            self.camera = WebCam(opt)
         except:
             print('Could not set up DSLR. Make sure it on and USB is connected. Using simulation.')
             self.camera = SimulatedWebCam(opt)
@@ -107,6 +112,9 @@ class Painter():
         if self.camera is not None:
             self.camera.debug = True
             self.camera.calibrate_canvas(use_cache=use_cache)
+
+        # Ensure that x,y on the canvas photograph is x,y for the robot interacting with the canvas
+        self.coordinate_calibration(use_cache=opt.use_cache)
 
         # Get brush strokes from stroke library
         if not os.path.exists(os.path.join(self.opt.cache_dir, 'strokes.pkl')) or not use_cache:
@@ -117,7 +125,7 @@ class Painter():
 
             self.paint_stroke_library()
             self.to_neutral()
-            self.strokes = process_stroke_library(self.camera.get_canvas())
+            self.strokes = process_stroke_library(self.camera.get_canvas(), self.opt)
             with open(os.path.join(self.opt.cache_dir, 'strokes.pkl'),'wb') as f:
                 pickle.dump(self.strokes, f)
         else:
@@ -298,6 +306,7 @@ class Painter():
         User preses escape to end, then this returns the x, y, z of the end effector
         '''
         import intera_external_devices
+        import rospy
 
         curr_z = z
         curr_x = x
@@ -334,74 +343,6 @@ class Painter():
                     
                     self.move_to(curr_x, curr_y,curr_z, method='direct')
 
-    # def set_table_height(self, move_amount=0.0015):
-    #     '''
-    #     Let the user use the arrow keys to lower the paint brush to find 
-    #     how tall the table is (z)
-    #     '''
-    #     import intera_external_devices
-    #     done = False
-
-    #     global INIT_TABLE_Z, TABLE_Z
-    #     curr_z = INIT_TABLE_Z
-    #     p = canvas_to_global_coordinates(.5, .5, curr_z, self.opt)
-    #     self.hover_above(p[0],p[1],curr_z)
-    #     self.move_to(p[0],p[1],curr_z, method='direct')
-    #     x, y = .5, .5
-
-    #     print("Controlling height of brush.")
-    #     print("Use w/s for up/down to set the brush to touching the table")
-    #     print("Esc to quit.")
-    #     global q
-    #     while not done and not rospy.is_shutdown():
-    #         c = intera_external_devices.getch()
-    #         if c:
-    #             #print('c', c, str(c))
-    #             #catch Esc or ctrl-c
-    #             if c in ['\x1b', '\x03']:
-    #                 #done = True
-    #                 print('DONE')
-    #                 TABLE_Z = curr_z
-    #                 return
-    #             else:
-    #                 if c=='w':
-    #                     # print(curr_z)
-    #                     curr_z += move_amount
-    #                     # print(curr_z)
-    #                     # print("up")
-    #                 elif c=='s':
-    #                     # print(curr_z)
-    #                     curr_z -= move_amount
-    #                     # print("down")
-    #                 elif c=='d':
-    #                     x += move_amount
-    #                 elif c=='a':
-    #                     x -= move_amount
-    #                 elif c=='r':
-    #                     y += move_amount
-    #                 elif c=='f':
-    #                     y -= move_amount
-    #                 elif c=='u':
-    #                     q[0] += move_amount*2
-    #                 elif c=='i':
-    #                     q[1] += move_amount*2
-    #                 elif c=='o':
-    #                     q[2] += move_amount*2
-    #                 elif c=='p':
-    #                     q[3] += move_amount*2
-    #                 elif c=='j':
-    #                     q[0] -= move_amount*2
-    #                 elif c=='k':
-    #                     q[1] -= move_amount*2
-    #                 elif c=='l':
-    #                     q[2] -= move_amount*2
-    #                 elif c==';':
-    #                     q[3] -= move_amount*2
-    #                 else:
-    #                     print('Use arrow keys up and down. Esc when done.')
-                    
-    #                 p = canvas_to_global_coordinates(x, y, curr_z, self.opt)
-    #                 self.move_to(p[0],p[1],curr_z, method='direct')
 
     def coordinate_calibration(self, debug=True, use_cache=False):
         import matplotlib.pyplot as plt
@@ -430,9 +371,7 @@ class Painter():
 
         # Points for computing the homography
         t = 0.06 # How far away from corners to paint
-        g = .2
-        homography_points = [[t,t],[1-t,t],[t,1-t],[1-t,1-t],
-                        [g,g],[1-g,g],[g,1-g],[1-g,1-g], [.3,.5], [.5,.3], [.8,.5]]
+        homography_points = [[t,t],[1-t,t],[t,1-t],[1-t,1-t]]
 
 
         self.get_paint(0)
@@ -447,17 +386,14 @@ class Painter():
         # Picture of the new strokes
         self.to_neutral()
         canvas = self.camera.get_canvas()
-        sim_canvas = canvas.copy()
 
         sim_coords = []
         real_coords = []
+        sim_coords_global = []
+        real_coords_global = []
         for canvas_coord in homography_points:
             x_prop, y_prop = canvas_coord 
             x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix)
-
-            # Simulation
-            sim_canvas, _, _ = apply_stroke(sim_canvas.copy(), self.strokes[stroke_ind], stroke_ind, 
-                np.array([0,0,0]), x_pix, y_pix, 0)
 
             # Look in the region of the stroke and find the center of the stroke
             w = int(.06 * canvas_height_pix)
@@ -475,112 +411,43 @@ class Painter():
             real_coords.append(np.array([x_pix_real, y_pix_real]))
             sim_coords.append(np.array([x_pix, y_pix]))
 
+            # Coord in meters from robot
+            x_sim_glob,y_sim_glob,_ = canvas_to_global_coordinates(x_prop,y_prop,None, self.opt) 
+            sim_coords_global.append(np.array([x_sim_glob, y_sim_glob]))
+            x_real_glob,y_real_glob,_ = canvas_to_global_coordinates(1.*x_pix_real/canvas_width_pix,\
+                    1-(1.*y_pix_real/canvas_height_pix),None, self.opt) 
+            real_coords_global.append(np.array([x_real_glob, y_real_glob]))
+
         real_coords, sim_coords = np.array(real_coords), np.array(sim_coords)
+        real_coords_global, sim_coords_global = np.array(real_coords_global), np.array(sim_coords_global)
         
-        H, _ = cv2.findHomography(real_coords, sim_coords)
-        canvas_warp = cv2.warpPerspective(canvas.copy(), H, (canvas.shape[1], canvas.shape[0]))
+        # H, _ = cv2.findHomography(real_coords, sim_coords)      
+        H, _ = cv2.findHomography(real_coords_global, sim_coords_global)  
+        # canvas_warp = cv2.warpPerspective(canvas.copy(), H, (canvas.shape[1], canvas.shape[0]))
 
-        if debug:
-            fix, ax = plt.subplots(1,3)
-            ax[0].imshow(canvas)
-            ax[0].scatter(real_coords[:,0], real_coords[:,1], c='r')
-            ax[0].scatter(sim_coords[:,0], sim_coords[:,1], c='g')
-            ax[0].set_title('non-transformed photo')
-            # ax[].show()
-            ax[1].imshow(canvas_warp)
-            ax[1].scatter(real_coords[:,0], real_coords[:,1], c='r')
-            ax[1].scatter(sim_coords[:,0], sim_coords[:,1], c='g')
-            ax[1].set_title('warped photo')
-            # ax[].show()
-            ax[2].imshow(sim_canvas/255.)
-            ax[2].scatter(real_coords[:,0], real_coords[:,1], c='r')
-            ax[2].scatter(sim_coords[:,0], sim_coords[:,1], c='g')
-            ax[2].set_title('Simulation')
-            plt.show()
-        if debug:
-            plt.imshow(canvas)
-            plt.scatter(real_coords[:,0], real_coords[:,1], c='r')
-            plt.scatter(sim_coords[:,0], sim_coords[:,1], c='g')
-            sim_coords = np.array([int(.5*canvas_width_pix),int(.5*canvas_height_pix),1.])
-            real_coords = H.dot(sim_coords)
-            real_coords /= real_coords[2]
-            plt.scatter(real_coords[0], real_coords[1], c='r')
-            plt.scatter(sim_coords[0], sim_coords[1], c='g')
-            plt.show()
+        # if debug:
+        #     fix, ax = plt.subplots(1,2)
+        #     ax[0].imshow(canvas)
+        #     ax[0].scatter(real_coords[:,0], real_coords[:,1], c='r')
+        #     ax[0].scatter(sim_coords[:,0], sim_coords[:,1], c='g')
+        #     ax[0].set_title('non-transformed photo')
 
-        # Test the homography
-        if debug:
-            t = 0.25 # How far away from corners to paint
-            test_homog_coords = [[t,t],[1-t,t],[t,1-t],[1-t,1-t],[.5,.6],[.7,.2],[.2,.5],[0.5,.2]]
+        #     ax[1].imshow(canvas_warp)
+        #     ax[1].scatter(real_coords[:,0], real_coords[:,1], c='r')
+        #     ax[1].scatter(sim_coords[:,0], sim_coords[:,1], c='g')
+        #     ax[1].set_title('warped photo')
+        #     plt.show()
+        # if debug:
+        #     plt.imshow(canvas)
+        #     plt.scatter(real_coords[:,0], real_coords[:,1], c='r')
+        #     plt.scatter(sim_coords[:,0], sim_coords[:,1], c='g')
+        #     sim_coords = np.array([int(.5*canvas_width_pix),int(.5*canvas_height_pix),1.])
+        #     real_coords = H.dot(sim_coords)
+        #     real_coords /= real_coords[2]
+        #     plt.scatter(real_coords[0], real_coords[1], c='r')
+        #     plt.scatter(sim_coords[0], sim_coords[1], c='g')
+        #     plt.show()
 
-            self.get_paint(0)
-            for canvas_coord in test_homog_coords:
-                x_prop, y_prop = canvas_coord 
-                sim_coords = np.array([int(x_prop*canvas_width_pix),int((1-y_prop)*canvas_height_pix),1.])
-                real_coords = H.dot(sim_coords)
-                real_coords /= real_coords[2]
-
-                x_glob,y_glob,_ = canvas_to_global_coordinates(1.*real_coords[0]/canvas_width_pix,1.-1.*real_coords[1]/canvas_height_pix,None, self.opt)
-
-                # Paint the point
-                all_strokes[stroke_ind]().paint(self, x_glob, y_glob, 0)
-
-            # Picture of the new strokes
-            self.to_neutral()
-            canvas = self.camera.get_canvas()
-            sim_canvas = canvas.copy()
-
-            sim_coords = []
-            real_coords = []
-            for canvas_coord in test_homog_coords:
-                x_prop, y_prop = canvas_coord 
-                x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix)
-                homog_coords = H.dot(np.array([x_pix, y_pix, 1.]))
-                homog_coords /= homog_coords[2]
-
-                # Simulation
-                sim_canvas, _, _ = apply_stroke(sim_canvas.copy(), self.strokes[stroke_ind], stroke_ind, 
-                    np.array([0,0,0]), int(homog_coords[0]), int(homog_coords[1]), 0)
-
-                # Look in the region of the stroke and find the center of the stroke
-                w = int(.08 * canvas_height_pix)
-                window = canvas[y_pix-w:y_pix+w, x_pix-w:x_pix+w,:]
-                window = window.mean(axis=2)
-                window /= 255.
-                window = 1 - window
-                # plt.imshow(window, cmap='gray')
-                # plt.show()
-                window = window > 0.5
-                dark_y, dark_x = window.nonzero()
-                x_pix_real = int(np.mean(dark_x)) + x_pix-w
-                y_pix_real = int(np.mean(dark_y)) + y_pix-w
-
-                real_coords.append(np.array([x_pix_real, y_pix_real]))
-                sim_coords.append(np.array([x_pix, y_pix]))
-
-            real_coords, sim_coords = np.array(real_coords), np.array(sim_coords)
-
-            fix, ax = plt.subplots(1,2)
-            ax[0].imshow(canvas)
-            ax[0].scatter(real_coords[:,0], real_coords[:,1], c='r')
-            ax[0].scatter(sim_coords[:,0], sim_coords[:,1], c='g')
-            for j in range(4):
-                homog_coords = np.array([int(sim_coords[j,0]),int(sim_coords[j,1]),1.])
-                homog_coords = H.dot(homog_coords)
-                homog_coords /= homog_coords[2]
-                ax[0].scatter(homog_coords[0], homog_coords[1], c='b')
-            ax[0].set_title('')
-            ax[1].imshow(sim_canvas/255.)
-            ax[1].scatter(real_coords[:,0], real_coords[:,1], c='r')
-            ax[1].scatter(sim_coords[:,0], sim_coords[:,1], c='g')
-            for j in range(4):
-                homog_coords = np.array([int(sim_coords[j,0]),int(sim_coords[j,1]),1.])
-                homog_coords = H.dot(homog_coords)
-                homog_coords /= homog_coords[2]
-                ax[1].scatter(homog_coords[0], homog_coords[1], c='b')
-            ax[1].set_title('Simulation')
-            plt.show()
-        
         self.H_coord = H
         # Cache it
         with open(os.path.join(self.opt.cache_dir, 'cached_H_coord.pkl'),'wb') as f:
@@ -592,8 +459,10 @@ class Painter():
         stroke_ind = 0
         
         rotation = 0
-        for i in range(cells_x):
-            for j in range(cells_y):
+        forbidden = ((0,0), (0,self.opt.cells_x-1), (self.opt.cells_y-1,0), (self.opt.cells_y-1, self.opt.cells_x-1))
+        for i in range(self.opt.cells_x):
+            for j in range(self.opt.cells_y):
+                if (j,i) in forbidden: continue
                 if stroke_ind >= len(strokes): 
                     # stroke_ind=0
                     break
@@ -603,8 +472,8 @@ class Painter():
                     self.get_paint(0)
 
                 # Get the position of the start of the stroke
-                x = self.opt.CANVAS_POSITION[0] - 0.5*self.opt.CANVAS_WIDTH + i * cell_dim_x + over
-                y = self.opt.CANVAS_POSITION[1] + self.opt.CANVAS_HEIGHT - j*cell_dim_y - down
+                x = self.opt.CANVAS_POSITION[0] - 0.5*self.opt.CANVAS_WIDTH + i * self.opt.cell_dim_x + self.opt.over
+                y = self.opt.CANVAS_POSITION[1] + self.opt.CANVAS_HEIGHT - j*self.opt.cell_dim_y - self.opt.down
                 
                 stroke = strokes[stroke_ind]()
                 #print(stroke)

@@ -34,6 +34,14 @@ class Stroke(object):
         pass
     def paint(self, painter, x_start, y_start, rotation, step_size=.005):
         # x_start, y_start in global coordinates. rotation in radians
+
+        # Need to translate x,y a bit to be accurate according to camera
+        if painter.H_coord is not None:
+            # Translate the coordinates so they're similar. see coordinate_calibration
+            sim_coords = np.array([x_start, y_start, 1.])
+            real_coords = painter.H_coord.dot(sim_coords)
+            x_start, y_start = real_coords[0]/real_coords[2], real_coords[1]/real_coords[2]
+
         z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
 
         path = self.get_rotated_trajectory(rotation)
@@ -156,15 +164,15 @@ class StrokeH(Stroke):
             [.02,0,1.],
             [.03,0,0.8]
         ]
-class StrokeI(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.5],
-            [.005,0,.8],
-            [.01,0,1.],
-            [.015,0,0.8]
-        ]
+# class StrokeI(Stroke):
+#     def __init__(self):
+#         super(Stroke, self).__init__()
+#         self.trajectory = [
+#             [0,0,0.5],
+#             [.005,0,.8],
+#             [.01,0,1.],
+#             [.015,0,0.8]
+#         ]
 
 all_strokes = sorted(Stroke.__subclasses__(), key=lambda x : x.__class__.__name__)
 

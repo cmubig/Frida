@@ -15,7 +15,7 @@ class Robot:
     '''
     def __init__(self, debug, node_name="painting"):
         self.debug_bool = debug
-
+        import rospy
         rospy.init_node(node_name)
 
     def debug(self, msg):
@@ -54,14 +54,6 @@ class Sawyer(Robot, object):
         super(Sawyer, self).__init__(debug)
         import rospy
 
-        from geometry_msgs.msg import (
-            PoseStamped,
-            Pose,
-            Point,
-            Quaternion,
-        )
-        from std_msgs.msg import Header
-        from sensor_msgs.msg import JointState
 
         from intera_core_msgs.srv import (
             SolvePositionIK,
@@ -81,6 +73,8 @@ class Sawyer(Robot, object):
         rospy.wait_for_service(self.ns, 5.0)
 
     def good_morning_robot(self):
+        import intera_interface
+        import rospy
         self.debug("Getting robot state... ")
         rs = intera_interface.RobotEnable(False)
         init_state = rs.state().enabled
@@ -102,6 +96,7 @@ class Sawyer(Robot, object):
         return rs
 
     def good_night_robot(self):
+        import rospy
         """ Tuck it in, read it a story """
         rospy.signal_shutdown("Example finished.")
         self.debug("Done")
@@ -250,6 +245,21 @@ class Sawyer(Robot, object):
         return:
             dict{'right_j0',float} - dictionary of joint to joint angle
         """
+        import rospy
+        from intera_core_msgs.srv import (
+            SolvePositionIK,
+            SolvePositionIKRequest,
+            SolvePositionFK,
+            SolvePositionFKRequest,
+        )
+        from geometry_msgs.msg import (
+            PoseStamped,
+            Pose,
+            Point,
+            Quaternion,
+        )
+        from std_msgs.msg import Header
+        from sensor_msgs.msg import JointState
         ikreq = SolvePositionIKRequest()
         hdr = Header(stamp=rospy.Time.now(), frame_id='base')
         pose = PoseStamped(
@@ -361,6 +371,7 @@ class Sawyer(Robot, object):
 
 
     def display_image(self, file_path):
+        import intera_interface
         head_display = intera_interface.HeadDisplay()
         # display_image params:
         # 1. file Path to image file to send. Multiple files are separated by a space, eg.: a.png b.png

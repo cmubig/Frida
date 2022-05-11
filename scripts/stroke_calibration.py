@@ -36,7 +36,7 @@ Some Helper Functions
 
 
 
-def process_stroke_library(raw_strk_lib):
+def process_stroke_library(raw_strk_lib, opt):
     """
     The input is a raw photo of the canvas after creating the stroke library
     cut out the brush strokes, process them and return them as an array
@@ -52,19 +52,27 @@ def process_stroke_library(raw_strk_lib):
 
     # Cut out and process the strokes from the stroke library picture
     i = 0
+    stroke_ind = 0
     np.random.seed(0)
-    # for x_start in range(0,CANVAS_WIDTH, cell_dim_x):
-    #     for y_start in range(0, CANVAS_HEIGHT, cell_dim_y):
-    for x_start in np.linspace(0,CANVAS_WIDTH, num=cells_x+1)[:-1]:
-        for y_start in np.linspace(0, CANVAS_HEIGHT, num=cells_y+1)[:-1]:
-            i += 1
-            if i > len(all_strokes): break
+    # for x_start in range(0,opt.CANVAS_WIDTH, opt.cell_dim_x):
+    #     for y_start in range(0, opt.CANVAS_HEIGHT, opt.cell_dim_y):
+    forbidden = ((0,0), (0,opt.cells_x-1), (opt.cells_y-1,0), (opt.cells_y-1, opt.cells_x-1))
+
+    for x_start in np.linspace(0,opt.CANVAS_WIDTH, num=opt.cells_x+1)[:-1]:
+        for y_start in np.linspace(0, opt.CANVAS_HEIGHT, num=opt.cells_y+1)[:-1]:
+            print(i%opt.cells_y,int(np.floor(i/(opt.cells_x+1))), forbidden)
+            if (i%opt.cells_y,int(np.floor(i/(opt.cells_x+1)))) in forbidden: 
+                i+=1
+                continue
+            i+=1
+            stroke_ind += 1
+            if stroke_ind > len(all_strokes): break
                 
             # Bounding box indices of the stroke in the picture of stroke library
-            x_start_pix = int(math.floor((x_start/CANVAS_WIDTH)*raw_strk_lib.shape[1]))
-            x_end_pix = int(math.floor(((x_start + cell_dim_x)/CANVAS_WIDTH)*raw_strk_lib.shape[1]))
-            y_start_pix = int(math.floor((y_start/CANVAS_HEIGHT)*raw_strk_lib.shape[0]))
-            y_end_pix = int(math.floor(((y_start + cell_dim_y)/CANVAS_HEIGHT)*raw_strk_lib.shape[0]))
+            x_start_pix = int(math.floor((x_start/opt.CANVAS_WIDTH)*raw_strk_lib.shape[1]))
+            x_end_pix = int(math.floor(((x_start + opt.cell_dim_x)/opt.CANVAS_WIDTH)*raw_strk_lib.shape[1]))
+            y_start_pix = int(math.floor((y_start/opt.CANVAS_HEIGHT)*raw_strk_lib.shape[0]))
+            y_end_pix = int(math.floor(((y_start + opt.cell_dim_y)/opt.CANVAS_HEIGHT)*raw_strk_lib.shape[0]))
             
             # print(x_start_pix, x_end_pix)
             # Get just the single stroke

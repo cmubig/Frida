@@ -17,11 +17,15 @@ from harris import find_corners
 from intrinsic_calib import computeIntrinsic
 import glob
 
+try:
+    import dslr_gphoto as dslr
+except:
+    pass
+
 # https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/opencv_viewer_example.py
 
 class WebCam():
     def __init__(self, opt, debug=False):
-        import dslr_gphoto as dslr
         self.camera = dslr.camera_init()
         self.debug = debug
         self.H_canvas = None
@@ -59,7 +63,8 @@ class WebCam():
                     try:
                         self.init_color_calib()
                         completed_color_calib = True
-                    except:
+                    except Exception as e:
+                        print(e)
                         try: input('could not calibrate. Move color checker and try again (press enter when ready)')
                         except SyntaxError: pass 
                 try:    
