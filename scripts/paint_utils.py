@@ -174,7 +174,7 @@ def get_colors(img, n_colors=6):
     return colors
 
 
-def discretize_image(img, allowed_colors):
+def discretize_image_old(img, allowed_colors):
     """
     Only use allowed_colors in the given image. Use euclidean distance for speed.
     args:
@@ -207,6 +207,35 @@ def discretize_image(img, allowed_colors):
 
     return img_disc
 
+def discretize_image(img, allowed_colors):
+    """
+    Only use allowed_colors in the given image. Use euclidean distance for speed.
+    args:
+        img (np.array[width, height, 3]) : target image 
+        allowed_colors (List((R,G,B),...) : List of RGB tuples
+    return:
+        np.array[width, height, 3] : target image using only the allowed colors
+    """
+    n_pix = img.shape[0]*img.shape[1]
+    n_colors = len(allowed_colors)
+
+    print(np.reshape(img, (n_pix, 3)).shape)
+    img_flat = np.reshape(rgb2lab(img), (n_pix, 3))
+
+    diff = np.zeros((n_colors, n_pix), dtype=np.float32)
+
+    i = 0
+    for c in allowed_colors:
+        c_mat = np.tile(c[np.newaxis].T, (1, n_pix)).T
+        diff[i,:] = compare_images(rgb2lab(c_mat[np.newaxis])[0], img_flat)
+        i += 1
+
+    argmin = np.argmin(diff, axis=0)
+
+    img_disc = np.array(allowed_colors)[argmin]
+    img_disc = np.reshape(img_disc, (img.shape[0],img.shape[1], 3))
+
+    return img_disc
 
 def get_mixed_paint_colors(table_photo, n_colors, use_cache=False, cache_dir=None):
     plt.imshow(table_photo)

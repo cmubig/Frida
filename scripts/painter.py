@@ -81,9 +81,9 @@ class Painter():
             p = canvas_to_global_coordinates(0.5, 0.5, self.opt.INIT_TABLE_Z, self.opt)
             self.Z_CANVAS = self.set_height(p[0], p[1], self.opt.INIT_TABLE_Z)[2]
 
-            print('Moving brush tip to the top right of canvas.')
-            p = canvas_to_global_coordinates(0.5, 0.5, self.opt.INIT_TABLE_Z, self.opt)
-            self.hover_above(p[0], p[1], self.Z_CANVAS, method='direct')
+            # print('Moving brush tip to the top right of canvas.')
+            # p = canvas_to_global_coordinates(0.5, 0.5, self.opt.INIT_TABLE_Z, self.opt)
+            # self.hover_above(p[0], p[1], self.Z_CANVAS, method='direct')
 
             print('Move the brush to the lowest point it should go.')
             self.Z_MAX_CANVAS = self.set_height(p[0], p[1], self.Z_CANVAS)[2]
@@ -97,7 +97,7 @@ class Painter():
         self.Z_RANGE = np.abs(self.Z_MAX_CANVAS - self.Z_CANVAS)
 
         self.WATER_POSITION = (-.4,.6,self.Z_CANVAS)
-        self.RAG_POSTITION = (-.4,.3,self.Z_CANVAS)
+        self.RAG_POSTITION = (-.4,.45,self.Z_CANVAS)
 
         self.PALLETTE_POSITION = (-.3,.5,self.Z_CANVAS- 0.5*self.Z_RANGE)
         self.PAINT_DIFFERENCE = 0.03976

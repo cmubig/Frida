@@ -15,7 +15,7 @@ class Options(object):
         self.initialized = False
         self.opt = {}
 
-        self.INIT_TABLE_Z = 0.
+        self.INIT_TABLE_Z = 0.1
 
         # Dimensions of canvas in meters
         # CANVAS_WIDTH  = 0.3047 # 12"
