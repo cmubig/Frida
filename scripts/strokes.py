@@ -50,7 +50,6 @@ class Stroke(object):
         p0 = path[0,0], path[0,1], path[0,2]
         p3 = None
 
-
         for i in range(1, len(path)-1, 3):
             p1 = path[i+0,0], path[i+0,1], path[i+0,2]
             p2 = path[i+1,0], path[i+1,1], path[i+1,2]
@@ -69,11 +68,12 @@ class Stroke(object):
                       + 3*(1-t)*t**2*p2[1] \
                       + t**3*p3[1]
                 if t < 0.333:
-                    z = ((1 - t/.333) * p0[2] + (t/.333)*p1[2]) / 2
+                    z = (1 - t/.333) * p0[2] + (t/.333)*p1[2]
                 elif t < 0.666:
-                    z = ((1 - (t-.333)/.333) * p1[2] + ((t-.333)/.333)*p2[2]) / 2
+                    z = (1 - (t-.333)/.333) * p1[2] + ((t-.333)/.333)*p2[2]
                 else:
-                    z = ((1 - (t-.666)/.333) * p2[2] + ((t-.666)/.333)*p3[2]) / 2
+                    z = (1 - (t-.666)/.333) * p2[2] + ((t-.666)/.333)*p3[2]
+
                 z = painter.Z_CANVAS - z * z_range
                 painter.move_to(x_start+x, y_start+y, z, method='direct', speed=0.03)
             p0 = p3
@@ -96,46 +96,46 @@ class StrokeA(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
         self.trajectory = [
-            [-0.002,0,0.4], # [x,y,z]
-            [-0.001,0,.7],
-            [.000,0,.7],
-            [.002,0,0.4]
+            [-0.002,0,0.1], # [x,y,z]
+            [-0.001,0,.2],
+            [.000,0,.2],
+            [.002,0,0.1]
         ]
 class StrokeB(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
         self.trajectory = [
-            [0,0,0.3],
-            [.003,0,.3],
-            [.006,0,.3],
-            [.01,0,0.3]
+            [0,0,0.1],
+            [.005,0,.3],
+            [.01,0,.3],
+            [.02,0,0.1]
         ]
 class StrokeC(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
         self.trajectory = [
             [0,0,0.3],
-            [.008,0,.5],
-            [.016,0,.5],
+            [.008,.01,.5],
+            [.016,0.01,.5],
             [.025,0,.5]
         ]
 class StrokeD(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
         self.trajectory = [
-            [0,0,0.6],
+            [0,0,0.5],
             [.01,-0.02,.6],
-            [.02,-0.02,.3],
-            [.03,0,0.1]
+            [.02,-0.02,.5],
+            [.04,0,0.3]
         ]
 class StrokeE(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
         self.trajectory = [
-            [0,0,0.6],
+            [0,0,0.4],
             [.01,0.02,.6],
-            [.02,0.02,.3],
-            [.03,0,0.1]
+            [.02,0.02,.5],
+            [.04,0,0.3]
         ]
 class StrokeF(Stroke):
     def __init__(self):
@@ -150,19 +150,19 @@ class StrokeG(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
         self.trajectory = [
-            [0,0,0.5],
-            [.02,0,.8],
-            [.03,0,.9],
-            [.04,0,0.7]
+            [0,0,0.7],
+            [.02,0,1.],
+            [.03,0,1.],
+            [.05,0,1.]
         ]
 class StrokeH(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
         self.trajectory = [
-            [0,0,0.5],
-            [.01,0,.8],
+            [0,0,0.7],
+            [.01,0,1.],
             [.02,0,1.],
-            [.03,0,0.8]
+            [.03,0,0.2]
         ]
 # class StrokeI(Stroke):
 #     def __init__(self):

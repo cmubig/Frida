@@ -58,9 +58,13 @@ if __name__ == '__main__':
     # writer.add_image('paint_colors/actual', all_colors/255., 0)
 
     # Change target image to only use actual paint colors
-    target_not_discrete = target.copy()
-    # target = discretize_image(target, colors)
-    # writer.add_image('target/discrete', target/255., 0)
+    # target_discrete = discretize_image(target, colors)
+    # writer.add_image('target/discrete', target_discrete/255., 0)
+    target_discrete = discretize_image_old(target, colors)
+    # from scipy.signal import medfilt
+    # target_discrete = medfilt(cv2.resize(target_discrete, (256,256)), kernel_size=5)
+    # target_discrete = cv2.resize(target_discrete, (canvas.shape[1], canvas.shape[0]))
+    writer.add_image('target/discrete_l2', target_discrete/255., 0)
 
     # Use simulated painting as target
     # target = paint_in_simulation(target_not_discrete, canvas, painter, colors)
@@ -72,7 +76,7 @@ if __name__ == '__main__':
         show_img(all_colors/255., title="Mix these colors, then exit this popup to start painting")
 
     # paint_coarsely(painter, target, colors)
-    paint_finely(painter, target_not_discrete, colors)
+    paint_finely(painter, target_discrete, colors)
 
     painter.to_neutral()
 

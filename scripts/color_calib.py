@@ -75,11 +75,6 @@ def find_calib_params(img_path, disp_results=False):
 
     refr = ref.reshape(24, 3)
 
-    # if (disp_results):
-    #     print(refr)
-    #     print(checkr)
-    #     plt.imshow(out)
-    #     plt.show()
     original = out.copy()
 
     # set up least squares equation to solve for transform matrix

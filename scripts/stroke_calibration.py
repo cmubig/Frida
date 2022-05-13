@@ -60,7 +60,6 @@ def process_stroke_library(raw_strk_lib, opt):
 
     for x_start in np.linspace(0,opt.CANVAS_WIDTH, num=opt.cells_x+1)[:-1]:
         for y_start in np.linspace(0, opt.CANVAS_HEIGHT, num=opt.cells_y+1)[:-1]:
-            print(i%opt.cells_y,int(np.floor(i/(opt.cells_x+1))), forbidden)
             if (i%opt.cells_y,int(np.floor(i/(opt.cells_x+1)))) in forbidden: 
                 i+=1
                 continue
