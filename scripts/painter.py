@@ -103,10 +103,9 @@ class Painter():
         self.PAINT_DIFFERENCE = 0.03976
 
         # Setup Camera
-        try:
+        if not self.opt.simulate:
             self.camera = WebCam(opt)
-        except:
-            print('Could not set up DSLR. Make sure it on and USB is connected. Using simulation.')
+        else:
             self.camera = SimulatedWebCam(opt)
 
         if self.camera is not None:
