@@ -219,7 +219,7 @@ def discretize_image(img, allowed_colors):
     n_pix = img.shape[0]*img.shape[1]
     n_colors = len(allowed_colors)
 
-    print(np.reshape(img, (n_pix, 3)).shape)
+    # print(np.reshape(img, (n_pix, 3)).shape)
     img_flat = np.reshape(rgb2lab(img), (n_pix, 3))
 
     diff = np.zeros((n_colors, n_pix), dtype=np.float32)

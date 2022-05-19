@@ -131,9 +131,9 @@ class Painter():
             self.strokes = pickle.load(open(os.path.join(self.opt.cache_dir, "strokes.pkl"),'rb'))
 
 
-    def next_stroke(self, canvas, target, colors, x_y_attempts=5):
+    def next_stroke(self, canvas, target, colors, all_colors, x_y_attempts=5):
         ''' Predict the next brush stroke '''
-        return pick_next_stroke(canvas, target, self.strokes, colors, 
+        return pick_next_stroke(canvas, target, self.strokes, colors, all_colors,
                     H_coord=self.H_coord,
                     x_y_attempts=x_y_attempts)
 
