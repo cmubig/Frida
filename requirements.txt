@@ -15,7 +15,6 @@ roslibpy
 gphoto2
 requests
 future
-lpips
 sklearn
 imageio==2.6.1
 mock
