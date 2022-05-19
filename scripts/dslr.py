@@ -81,7 +81,7 @@ class WebCam():
         # has to be done for some reason
         return cv2.cvtColor(color_calib.color_calib(img, self.color_tmat, self.greyval), cv2.COLOR_BGR2RGB)
 
-    def get_canvas(self, use_cache=False):
+    def get_canvas(self, use_cache=False, max_height=1024):
         if self.H_canvas is None:
             self.calibrate_canvas(use_cache)
         
@@ -93,7 +93,11 @@ class WebCam():
 
         canvas = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
         w = int(img.shape[0] * (self.opt.CANVAS_WIDTH/self.opt.CANVAS_HEIGHT))
-        return canvas[:, :w]
+        canvas = canvas[:, :w]
+        if max_height is not None and canvas.shape[0] > max_height:
+            fact = 1.0 * img.shape[0] / max_size
+            canvas = cv2.resize(canvas, (int(canvas.shape[1]/fact), int(canvas.shape[0]/fact)))
+        return canvas
 
     def calibrate_canvas(self, use_cache=False):
         img = self.get_color_correct_image(use_cache=use_cache)
@@ -200,7 +204,7 @@ class SimulatedWebCam():
     def __init__(self, opt):
         self.opt = opt
         w_h_ratio = float(opt.CANVAS_WIDTH) / opt.CANVAS_HEIGHT
-        h = 2048
+        h = 1024
         self.canvas = np.ones((h,int(h * w_h_ratio),3), dtype=np.float32) * 255.
     def get_canvas(self):
         return self.canvas
