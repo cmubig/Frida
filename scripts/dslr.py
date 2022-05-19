@@ -62,7 +62,9 @@ class WebCam():
                 while not completed_color_calib:
                     try:
                         self.init_color_calib()
-                        completed_color_calib = True
+                        retake = raw_input("Retake? y/[n]")
+                        if not(retake[:1] == 'y' or retake[:1] == 'Y'):
+                            completed_color_calib = True
                     except Exception as e:
                         print(e)
                         try: input('could not calibrate. Move color checker and try again (press enter when ready)')
@@ -95,7 +97,7 @@ class WebCam():
         w = int(img.shape[0] * (self.opt.CANVAS_WIDTH/self.opt.CANVAS_HEIGHT))
         canvas = canvas[:, :w]
         if max_height is not None and canvas.shape[0] > max_height:
-            fact = 1.0 * img.shape[0] / max_size
+            fact = 1.0 * img.shape[0] / max_height
             canvas = cv2.resize(canvas, (int(canvas.shape[1]/fact), int(canvas.shape[0]/fact)))
         return canvas
 
