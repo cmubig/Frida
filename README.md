@@ -2,11 +2,19 @@
 
 
 ```
+git clone https://github.com/pschaldenbrand/SawyerPainter.git
 cd SawyerPainter/scripts/
+
+# Might need to run the following line, especially if you get a pickle error
+dos2unix cache/*
+
+# Run the simulation
 python paint.py --use_cache --simulate --cache_dir cache --target frida.jpg
 
-# In another terminal
+# In another terminal, run this to view progress
 tensorboard --logdir SawyerPainter/scripts/painting
+
+# Open browser and navigate to http://localhost:6006/
 ```
 
 ## Options
