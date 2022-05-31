@@ -39,6 +39,7 @@ This code was written for Python 2.7, because that is compatible with the Sawyer
 Dependencies are tracked in `requirements.txt` and `requirements_windows.txt`.  Install with:
 ```
 pip install --r [requirements.txt|requirements_windows.txt]
+pip3 install --r requirements_python3.txt
 ```
 
 ### For use with the robot:

@@ -1,0 +1,7 @@
+torch==1.7.1
+torchgeometry
+torch-tools
+lpips
+ftfy
+regex
+git+https://github.com/openai/CLIP.git

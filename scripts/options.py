@@ -23,6 +23,10 @@ class Options(object):
         self.CANVAS_WIDTH  = 0.254 -0.005# 10"
         self.CANVAS_HEIGHT = 0.2032 -0.005# 8"
 
+
+        self.CANVAS_WIDTH_PIX  = None # set these after taking a picture
+        self.CANVAS_HEIGHT_PIX = None
+
         # X,Y of canvas wrt to robot center (global coordinates)
         self.CANVAS_POSITION = (0,.5) 
 
