@@ -47,6 +47,13 @@ def load_img(path, h=None, w=None):
     im = im.permute(2,0,1)
     return im.unsqueeze(0).float()
 
+def get_colors(img, n_colors=6):
+    from sklearn.cluster import KMeans
+    kmeans = KMeans(n_clusters=n_colors, random_state=0)
+    kmeans.fit(img.reshape((img.shape[0]*img.shape[1],3)))
+    colors = [kmeans.cluster_centers_[i] for i in range(len(kmeans.cluster_centers_))]
+    return colors
+
 def show_img(img, display_actual_size=True):
     if type(img) is torch.Tensor:
         img = img.detach().cpu().numpy()
@@ -291,7 +298,7 @@ def next_stroke(canvas, target, x_y_attempts=10):
             #     opt.step()
             single_stroke = brush_stroke(strokes_small)
             canvas_candidate = canvas * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke
-            loss = loss_fcn(canvas_candidate, target)
+            loss = loss_fcn(canvas_candidate, target, use_clip_loss=False)
             if loss < opt_params['loss']:
                 opt_params['canvas'] = canvas_candidate
                 opt_params['loss'] = loss
@@ -349,7 +356,7 @@ def relax(painting, target, batch_size=20):
                 canvas = canvas_before * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke
                 canvas = canvas * (1 - canvas_after[:,3:]) + canvas_after[:,3:] * canvas_after
 
-                loss = loss_fcn(canvas, target)
+                loss = loss_fcn(canvas, target, use_clip_loss=False)
 
                 loss.backward()
                 opt.step()
@@ -397,7 +404,7 @@ def purge_extraneous_brush_strokes(painting, target):
         loss_without_stroke = nn.L1Loss()(canvas_without_stroke[:,:3], target)
         loss_with_stroke = nn.L1Loss()(canvas_with_stroke[:,:3], target)
 
-        if loss_with_stroke < loss_without_stroke:
+        if loss_with_stroke + 0.001 < loss_without_stroke:
             # Keep the stroke
             canvas_before = canvas_before * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke
             relaxed_brush_strokes.append(brush_stroke)
@@ -407,22 +414,46 @@ def purge_extraneous_brush_strokes(painting, target):
     return new_painting
 
 
+def discretize_colors(painting, discrete_colors):
+    pass
+    # with torch.no_grad():
+    #     for brush_stroke in painting.brush_strokes:
+    #         brush_stroke.color_transform[:] = discretize_color(brush_stroke, discrete_colors)
+
+def discretize_color(brush_stroke, discrete_colors):
+    with torch.no_grad():
+        color = brush_stroke.color_transform.detach()
+        dist = torch.mean(torch.abs(discrete_colors - color[None,:])**2, dim=1)
+        argmin = torch.argmin(dist)
+        return discrete_colors[argmin]
 
 
-
+from clip_loss import clip_conv_loss
 
 loss_l1 = torch.nn.L1Loss()
-def loss_fcn(painting, target):
-    return loss_l1(painting[:,:3], target)
+def loss_fcn(painting, target, use_clip_loss=True):
+    loss = 0 
+    #return loss_l1(painting[:,:3], target)
+    diff = torch.abs(painting[:,:3] - target)
+    diff = diff**2
+    loss += diff.mean()
+
+    if use_clip_loss:
+        loss += clip_conv_loss(painting, target)
+    return loss
 
 
-def plan_all_strokes(opt, optim_iter=50, num_strokes=30, num_passes=3):
+def plan_all_strokes(opt, optim_iter=200, num_strokes=50, num_passes=2):
     global strokes_small, strokes_full
     strokes_small = load_brush_strokes(opt, scale_factor=5)
     strokes_full = load_brush_strokes(opt, scale_factor=1)
-    print(strokes_small[0].shape)
-
+    
     target = load_img(opt.target,h=strokes_small[0].shape[0], w=strokes_small[0].shape[1]).to(device)/255.
+
+    colors = get_colors(cv2.resize(cv2.imread(opt.target)[:,:,::-1], (256, 256)), n_colors=opt.n_colors)
+    colors = (torch.from_numpy(np.array(colors)) / 255.).to(device)
+    # print(strokes_small[0].shape)
+
 
     # Get the background of painting to be the current canvas
     current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg')).to(device)/255.
@@ -439,7 +470,9 @@ def plan_all_strokes(opt, optim_iter=50, num_strokes=30, num_passes=3):
         for j in tqdm(range(num_strokes)):
             new_stroke, canvas = next_stroke(canvas.detach(), target)
             painting.brush_strokes.append(new_stroke)
-
+            log_progress(painting)
+        
+        discretize_colors(painting, colors)
 
         # Optimize all brush strokes
         print('Optimizing all {} brush strokes'.format(str(len(painting.brush_strokes))))
@@ -451,31 +484,52 @@ def plan_all_strokes(opt, optim_iter=50, num_strokes=30, num_passes=3):
             loss += loss_fcn(p, target)
             loss.backward()
             optim.step()
+            log_progress(painting)
 
-        # Relax strokes: optimize each individually
-        print('Relaxing brush strokes')
-        painting = relax(painting, target)
-        with torch.no_grad():
-            # show_img(painting(strokes=strokes_full))
-            print(nn.L1Loss()(painting(strokes=strokes_small)[:,:3], target))
+        discretize_colors(painting, colors)
 
-        # Remove unnecessary brush strokes
-        print("Removing unnecessary brush strokes")
-        n_strokes_before = len(painting.brush_strokes)
-        painting = purge_extraneous_brush_strokes(painting, target)
-        print('Removed {} brush strokes. {} total now.'.format(str(len(painting.brush_strokes) - n_strokes_before), str(len(painting.brush_strokes))))
+        # # Relax strokes: optimize each individually
+        # print('Relaxing brush strokes')
+        # painting = relax(painting, target)
         # with torch.no_grad():
-        #     show_img(painting(strokes=strokes_full))
+        #     # show_img(painting(strokes=strokes_full))
         #     print(nn.L1Loss()(painting(strokes=strokes_small)[:,:3], target))
 
-        opt.writer.add_scalar('loss/plan_all_strokes', loss_fcn(painting(strokes=strokes_small), target).item(), i)
+        # discretize_colors(painting, colors)
 
-        opt.writer.add_image('images/plan_all_strokes', painting(strokes=strokes_small).detach().cpu().numpy()[0].transpose(1,2,0), i)
+        # # Remove unnecessary brush strokes
+        # print("Removing unnecessary brush strokes")
+        # n_strokes_before = len(painting.brush_strokes)
+        # painting = purge_extraneous_brush_strokes(painting, target)
+        # print('Removed {} brush strokes. {} total now.'.format(str(len(painting.brush_strokes) - n_strokes_before), str(len(painting.brush_strokes))))
+        # # with torch.no_grad():
+        # #     show_img(painting(strokes=strokes_full))
+        # #     print(nn.L1Loss()(painting(strokes=strokes_small)[:,:3], target))
+
+        discretize_colors(painting, colors)
+
+        opt.writer.add_scalar('loss/plan_all_strokes', loss_fcn(painting(strokes=strokes_small), target).item(), opt.global_it + i)
+
+        log_painting(painting, opt.global_it + i)
     # show_img(painting(strokes=strokes_full))
     return painting
 
 from options import Options
 from tensorboard import TensorBoard
+writer = None
+local_it = 0 
+
+def log_progress(painting):
+    global local_it
+    local_it +=1
+    if local_it %5==0:
+        with torch.no_grad():
+            np_painting = painting(strokes=strokes_small).detach().cpu().numpy()[0].transpose(1,2,0)
+            opt.writer.add_image('images/planasdfasdf', np.clip(np_painting, a_min=0, a_max=1), local_it)
+
+def log_painting(painting, step, name='images/plan_all_strokes'):
+    np_painting = painting(strokes=strokes_small).detach().cpu().numpy()[0].transpose(1,2,0)
+    opt.writer.add_image(name, np.clip(np_painting, a_min=0, a_max=1), step)
 
 if __name__ == '__main__':
     opt = Options()

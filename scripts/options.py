@@ -58,6 +58,8 @@ class Options(object):
             default='/tmp', help='Where to store cached files.')
         parser.add_argument("--tensorboard_dir", type=str,
             default='./log', help='Where to write tensorboard log to.')
+        parser.add_argument("--global_it", type=int,
+            default=0, help='Picking up where it left off.')
 
         # parser.add_argument('--type', default='cubic_bezier', type=str, help='Type of instructions: [cubic_bezier | bezier]')
         # parser.add_argument('--continue_ind', default=0, type=int, help='Instruction to start from. Default 0.')

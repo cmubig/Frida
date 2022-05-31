@@ -15,7 +15,7 @@ import collections
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
-
+import clip
 
 
 class CLIPVisualEncoder(nn.Module):
@@ -203,3 +203,46 @@ class CLIPConvLoss(torch.nn.Module):
         x4 = self.layer4(x3)
         y = self.att_pool2d(x4)
         return y, [x, x1, x2, x3, x4]
+
+
+def get_image_augmentation(use_normalized_clip):
+    augment_trans = transforms.Compose([
+        transforms.RandomPerspective(fill=1, p=1, distortion_scale=0.5),
+        transforms.RandomResizedCrop(224, scale=(0.7,0.9)),
+    ])
+
+    if use_normalized_clip:
+        augment_trans = transforms.Compose([
+        transforms.RandomPerspective(fill=1, p=1, distortion_scale=0.5),
+        transforms.RandomResizedCrop(224, scale=(0.7,0.9)),
+        transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
+    ])
+    return augment_trans
+
+augment_trans = get_image_augmentation(False)
+num_augs = 4
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+def clip_loss(img0, img1):
+    img0_batch = torch.cat([augment_trans(img0) for n in range(num_augs)])
+    img1_batch = torch.cat([augment_trans(img1) for n in range(num_augs)])
+    img0_features = clip_model.encode_image(img0_batch)
+    img1_features = clip_model.encode_image(img1_batch)
+
+    loss = 0
+    for n in range(num_augs):
+        loss -= torch.cosine_similarity(img0_features[n:n+1], img1_features[n:n+1], dim=1)[0] / num_augs
+    return loss
+class Dict2Class(object):
+    def __init__(self, my_dict):
+        for key in my_dict:
+            setattr(self, key, my_dict[key])
+a = {'clip_model_name':'ViT-B/32','clip_conv_loss_type':'Cos','device':device,'num_aug_clip':num_augs,'augemntations':['affine'],
+     'clip_fc_loss_weight':0.1,'clip_conv_layer_weights':[0,0,1.0,1.0,0]}
+clip_conv_loss_model = CLIPConvLoss(Dict2Class(a))
+
+def clip_conv_loss(painting, target):
+    loss = 0
+    clip_loss = clip_conv_loss_model(painting[:,:3], target)
+    for key in clip_loss.keys():
+        loss += clip_loss[key]
+    return loss
