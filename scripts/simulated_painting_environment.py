@@ -130,10 +130,10 @@ def apply_stroke(canvas, stroke, stroke_ind, color, x, y, theta=0):
         stroke = ndimage.rotate(imgP, theta, reshape=False)
         # show_img(stroke)
 
-        processed_stroke_cache[stroke_cache_key] = stroke.copy()
+        # processed_stroke_cache[stroke_cache_key] = stroke.copy()
 
         s_expanded = np.tile(stroke[:,:, np.newaxis], (1,1,3))
-        processed_s_expanded_cache[stroke_cache_key] = s_expanded.copy()
+        # processed_s_expanded_cache[stroke_cache_key] = s_expanded.copy()
 
     s_color = s_expanded * color[None, None, :]
     stroke_dim = stroke.shape

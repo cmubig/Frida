@@ -71,7 +71,7 @@ class Painter():
         # self.to_neutral()
 
         # Set how high the table is wrt the brush
-        if use_cache:
+        if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, "cached_params.pkl")):
             params = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_params.pkl"),'r'))
             self.Z_CANVAS = params['Z_CANVAS']
             self.Z_MAX_CANVAS = params['Z_MAX_CANVAS']

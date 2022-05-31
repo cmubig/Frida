@@ -239,9 +239,11 @@ def discretize_image(img, allowed_colors):
 
 def nearest_color(color, discrete_colors):
     ''' Get the most similar color to a given color (np.array([3])) '''
-    dist = np.mean(np.abs(discrete_colors - color[None,:]), axis=1)
-    argmin = np.argmin(dist)
-    return argmin, discrete_colors[argmin]
+    #dist = np.mean(np.abs(discrete_colors - color[None,:])**2, axis=1)
+    #argmin = np.argmin(dist)
+    diffs = [compare_images(rgb2lab(c[np.newaxis, np.newaxis]), rgb2lab(color[np.newaxis, np.newaxis])) for c in discrete_colors]
+    color_ind = np.argmin(np.array(diffs))
+    return color_ind, discrete_colors[color_ind]
 
 def get_mixed_paint_colors(table_photo, n_colors, use_cache=False, cache_dir=None):
     plt.imshow(table_photo)

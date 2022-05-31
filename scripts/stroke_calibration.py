@@ -95,7 +95,7 @@ def process_stroke_library(raw_strk_lib, opt):
             # Convert to 0-1 where 1 is the stroke
             stroke = stroke/255.
             stroke = 1 - stroke # background 0, paint 1-ish
-            stroke = stroke**.5 # Make big values bigger. Makes paint more opaque
+            # stroke = stroke**.5 # Make big values bigger. Makes paint more opaque
             stroke /= stroke.max() # Max should be 1.0
             # show_img(stroke)
             
