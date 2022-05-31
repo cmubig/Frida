@@ -112,6 +112,9 @@ class Painter():
             self.camera.debug = True
             self.camera.calibrate_canvas(use_cache=use_cache)
 
+        img = self.camera.get_canvas()
+        self.opt.CANVAS_WIDTH_PIX, self.opt.CANVAS_HEIGHT_PIX = img.shape[1], img.shape[0]
+
         # Ensure that x,y on the canvas photograph is x,y for the robot interacting with the canvas
         self.coordinate_calibration(use_cache=opt.use_cache)
 
@@ -130,6 +133,10 @@ class Painter():
         else:
             self.strokes = pickle.load(open(os.path.join(self.opt.cache_dir, "strokes.pkl"),'rb'))
 
+
+        # export the processed strokes for the python3 code
+        from export_strokes import export_strokes
+        export_strokes(self.opt)
 
     def next_stroke(self, canvas, target, colors, all_colors, x_y_attempts=5):
         ''' Predict the next brush stroke '''

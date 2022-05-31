@@ -10,13 +10,99 @@ import numpy as np
 import cv2
 import math
 import copy
+import sys
+import subprocess
 from tqdm import tqdm
 from scipy.ndimage import median_filter
+from PIL import Image
 
 from simulated_painting_environment import apply_stroke
 from painter import canvas_to_global_coordinates
 from strokes import all_strokes
 from paint_utils import *
+
+def parse_csv_line(line, painter):
+    toks = line.split(',')
+    if len(toks) != 7:
+        return None
+    x = int(float(toks[0])*painter.opt.CANVAS_WIDTH_PIX)
+    y = int(float(toks[1])*painter.opt.CANVAS_HEIGHT_PIX)
+    r = float(toks[2])*(360/(2*3.14))
+    stroke_ind = int(toks[3])
+    color = np.array([float(toks[4]), float(toks[5]), float(toks[6])])*255.
+    return x, y, r, stroke_ind, color
+
+global_it = 0
+def paint_planner_new(painter, target, colors, how_often_to_get_paint=4):
+    global global_it
+    canvas_after = painter.camera.get_canvas()
+    full_sim_canvas = canvas_after.copy()
+    real_canvases = [canvas_after]
+    sim_canvases = [canvas_after]
+    consecutive_paints = 0
+    target_lab = rgb2lab(target)
+    curr_color = -1
+
+    for it in tqdm(range(20)):
+        canvas_before = canvas_after#painter.camera.get_canvas()
+
+        # Save strokes for planning python file
+        im = Image.fromarray(canvas_before.astype(np.uint8))
+        im.save(os.path.join(painter.opt.cache_dir, 'current_canvas.jpg'))
+
+        # Plan the new strokes
+        exit_code = subprocess.call(['python3', 'plan_all_strokes.py']+sys.argv[1:])
+        #print('exit code', exit_code)
+
+        # Run Planned Strokes
+        with open(os.path.join(painter.opt.cache_dir, "next_brush_strokes.csv"), 'r') as fp:
+            for line in fp.readlines():
+                canvas_before = canvas_after
+                x, y, r, stroke_ind, color = parse_csv_line(line, painter)
+
+                color_ind, color_discrete = nearest_color(color, colors)
+
+                # Make the brush stroke on a simulated canvas
+                full_sim_canvas, _, _ = apply_stroke(full_sim_canvas, painter.strokes[stroke_ind], stroke_ind,
+                    colors[color_ind], x, y, r)
+
+                # Clean paint brush and/or get more paint
+                new_paint_color = color_ind != curr_color
+                if new_paint_color:
+                    painter.clean_paint_brush()
+                    curr_color = color_ind
+                if consecutive_paints >= how_often_to_get_paint or new_paint_color:
+                    painter.get_paint(color_ind)
+                    consecutive_paints = 0
+
+                # Convert the canvas proportion coordinates to meters from robot
+                x,y,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
+
+                # Paint the brush stroke
+                all_strokes[stroke_ind]().paint(painter, x, y, r * (2*3.14/360))
+
+
+                canvas_after = painter.camera.get_canvas() if not painter.opt.simulate else full_sim_canvas
+                if global_it%1==0: # loggin be sloggin
+                    painter.writer.add_scalar('loss/loss',
+                        np.mean(compare_images(cv2.resize(target_lab, (256,256)), rgb2lab(cv2.resize(canvas_after, (256,256))))), global_it)
+                    if not painter.opt.simulate:
+                        painter.writer.add_scalar('loss/sim_loss',
+                            np.mean(compare_images(cv2.resize(target_lab, (256,256)), rgb2lab(cv2.resize(full_sim_canvas, (256,256))))), global_it)
+
+                        painter.writer.add_image('images/canvas', canvas_after/255., global_it)
+                        all_colors = save_colors(colors)
+                        painter.writer.add_image('paint_colors/are', all_colors/255., global_it)
+                    painter.writer.add_image('images/sim_canvas', full_sim_canvas/255., global_it)
+
+                global_it += 1
+                consecutive_paints += 1
+
+
+        if it % 100 == 0:
+            # to_gif(all_canvases)
+            to_video(real_canvases, fn='real_canvases.mp4')
+            to_video(sim_canvases, fn='sim_canvases.mp4')
 
 
 def color_that_can_help_the_most(target, canvas, colors):

@@ -15,7 +15,7 @@ def process_img_for_logging(img, max_size=256.):
 class TensorBoard(object):
     def __init__(self, model_dir):
         self.summary_writer = SummaryWriter(model_dir)
-    def add_image(self, tag, img, step, max_size=256.):
+    def add_image(self, tag, img, step=None, max_size=256.):
         ''' Expects channels last rgb image '''
         img = np.array(img)
         if max_size is not None:
@@ -29,7 +29,7 @@ class TensorBoard(object):
         img = np.transpose(img, (2, 0, 1))
         self.summary_writer.add_image(tag, img, step)
 
-    def add_scalar(self, tag, value, step):
+    def add_scalar(self, tag, value, step=None):
         self.summary_writer.add_scalar(tag, value, step)
 
     def add_text(self, tag, text, step):
