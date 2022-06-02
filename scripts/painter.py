@@ -376,7 +376,7 @@ class Painter():
         canvas_width_pix, canvas_height_pix = canvas.shape[1], canvas.shape[0]
 
         # Points for computing the homography
-        t = 0.06 # How far away from corners to paint
+        t = 0.1 # How far away from corners to paint
         homography_points = [[t,t],[1-t,t],[t,1-t],[1-t,1-t]]
 
 
@@ -402,7 +402,7 @@ class Painter():
             x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix)
 
             # Look in the region of the stroke and find the center of the stroke
-            w = int(.06 * canvas_height_pix)
+            w = int(.1 * canvas_height_pix)
             window = canvas[y_pix-w:y_pix+w, x_pix-w:x_pix+w,:]
             window = window.mean(axis=2)
             window /= 255.

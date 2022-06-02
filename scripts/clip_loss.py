@@ -220,7 +220,7 @@ def get_image_augmentation(use_normalized_clip):
     return augment_trans
 
 augment_trans = get_image_augmentation(False)
-num_augs = 4
+num_augs = 10
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 def clip_loss(img0, img1):
     img0_batch = torch.cat([augment_trans(img0) for n in range(num_augs)])
