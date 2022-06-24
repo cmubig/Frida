@@ -123,7 +123,6 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=4)
         save_for_python3_file(painter, colors, target, full_sim_canvas)
 
         # Plan the new strokes with SawyerPainter/scripts/plan_all_strokes.py
-        
         exit_code = subprocess.call(['python3', '/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/plan_all_strokes.py']+sys.argv[1:]+['--global_it', str(global_it)])
         if exit_code != 0:
             print('exit code', exit_code)
@@ -133,7 +132,6 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=4)
         # Run Planned Strokes
         with open(os.path.join(painter.opt.cache_dir, "next_brush_strokes.csv"), 'r') as fp:
             instructions = [parse_csv_line(line, painter, colors) for line in fp.readlines()] 
-            
 
             #max_instructions = 40
             for instruction in tqdm(instructions[:]):

@@ -213,7 +213,6 @@ def create_canvas_cache(painting):
             future_canvas_cache[i] = mid_point_canvas
     return future_canvas_cache
 
-
 def purge_extraneous_brush_strokes(painting, target):
     relaxed_brush_strokes = []
 
@@ -293,9 +292,9 @@ def purge_buried_brush_strokes(painting):
     return new_painting
 
 
-def plan_all_strokes_text(opt, optim_iter=1000, num_strokes=700, num_augs=80, num_passes=1):
+def plan_all_strokes(opt, optim_iter=100, num_strokes=120, num_passes=3):
     global strokes_small, strokes_full, target
-    strokes_small = load_brush_strokes(opt, scale_factor=7)
+    strokes_small = load_brush_strokes(opt, scale_factor=5)
     strokes_full = load_brush_strokes(opt, scale_factor=1)
 
     with torch.no_grad():
@@ -380,7 +379,6 @@ def plan_all_strokes_text(opt, optim_iter=1000, num_strokes=700, num_augs=80, nu
             loss = clip_text_loss(p, text_features, num_augs)
             sl = compute_style_loss(p[:,:3], target) * .5
             loss += sl
-            
             loss.backward()
             # for bs in painting.brush_strokes:
             #     bs.color_transform.grad.data *= 0. # Don't change the color because CLIP sucks at color
@@ -389,7 +387,6 @@ def plan_all_strokes_text(opt, optim_iter=1000, num_strokes=700, num_augs=80, nu
             if j % 30 == 0: and j > (100):
                 discretize_colors(painting, colors)
             log_progress(painting)
-
 
     discretize_colors(painting, colors)
     log_progress(painting)
@@ -541,6 +538,7 @@ def plan_all_strokes_grid(opt, optim_iter=150, num_strokes_x=25, num_strokes_y=2
 
             
     return painting
+
 
 
 if __name__ == '__main__':
