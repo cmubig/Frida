@@ -14,12 +14,12 @@ import numpy as np
 from tqdm import tqdm
 import scipy.special
 import pickle
+import gzip
 
 from paint_utils import *
 from robot import *
 from painting_materials import *
-from paint_planner import pick_next_stroke
-from strokes import all_strokes
+from strokes import all_strokes, get_base_strokes
 from dslr import WebCam, SimulatedWebCam
 
 try: import rospy
@@ -93,7 +93,31 @@ class Painter():
             with open(os.path.join(self.opt.cache_dir, 'cached_params.pkl'),'wb') as f:
                 pickle.dump(params, f)
             self.to_neutral()
-        
+
+        # self._move(-.5,.5,self.Z_CANVAS,  speed=0.1)
+        # try:
+        #     input('Need to create stroke library. Press enter to start.')
+        # except SyntaxError:
+        #     pass
+        # self._move(.5,.5,self.Z_CANVAS,  speed=0.1)
+        # try:
+        #     input('Need to create stroke library. Press enter to start.')
+        # except SyntaxError:
+        #     pass
+
+        # self.to_neutral()
+        # self._move(0,.35,self.Z_CANVAS,  speed=0.1)
+        # try:
+        #     input('Need to create stroke library. Press enter to start.')
+        # except SyntaxError:
+        #     pass
+        # self.to_neutral()
+        # self._move(0,.8,self.Z_CANVAS,  speed=0.1)
+        # try:
+        #     input('Need to create stroke library. Press enter to start.')
+        # except SyntaxError:
+        #     pass
+
         self.Z_RANGE = np.abs(self.Z_MAX_CANVAS - self.Z_CANVAS)
 
         self.WATER_POSITION = (-.4,.6,self.Z_CANVAS)
@@ -128,28 +152,22 @@ class Painter():
             self.paint_stroke_library()
             self.to_neutral()
             self.strokes = process_stroke_library(self.camera.get_canvas(), self.opt)
-            with open(os.path.join(self.opt.cache_dir, 'strokes.pkl'),'wb') as f:
+            with gzip.open(os.path.join(self.opt.cache_dir, 'strokes.pkl'),'wb') as f:
                 pickle.dump(self.strokes, f)
         else:
-            self.strokes = pickle.load(open(os.path.join(self.opt.cache_dir, "strokes.pkl"),'rb'))
+            self.strokes = pickle.load(gzip.open(os.path.join(self.opt.cache_dir, "strokes.pkl"),'rb'))
 
 
         # export the processed strokes for the python3 code
         from export_strokes import export_strokes
         export_strokes(self.opt)
 
-    def next_stroke(self, canvas, target, colors, all_colors, x_y_attempts=5):
-        ''' Predict the next brush stroke '''
-        return pick_next_stroke(canvas, target, self.strokes, colors, all_colors,
-                    H_coord=self.H_coord,
-                    x_y_attempts=x_y_attempts)
-
 
     def to_neutral(self):
         # Initial spot
         self._move(0.2,0.5,self.opt.INIT_TABLE_Z+0.05, timeout=20, method="direct", speed=0.4)
 
-    def _move(self, x, y, z, timeout=20, method='linear', step_size=.2, speed=0.1):
+    def _move(self, x, y, z, timeout=20, method='direct', step_size=.02, speed=0.1):
         if self.opt.simulate: return
         '''
         Move to given x, y, z in global coordinates
@@ -186,12 +204,12 @@ class Painter():
 
         self.curr_position = [x, y, z]
 
-    def hover_above(self, x,y,z, method='linear'):
+    def hover_above(self, x,y,z, method='direct'):
         self._move(x,y,z+self.opt.HOVER_FACTOR, method=method, speed=0.4)
         # rate = rospy.Rate(100)
         # rate.sleep()
 
-    def move_to(self, x,y,z, method='linear', speed=0.05):
+    def move_to(self, x,y,z, method='direct', speed=0.05):
         self._move(x,y,z, method=method, speed=speed)
 
     def dip_brush_in_water(self):
@@ -208,8 +226,8 @@ class Painter():
         self.hover_above(self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2])
         self.move_to(self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2], speed=0.2)
         for i in range(5):
-            noise = np.clip(np.random.randn(2)*0.02, a_min=-.03, a_max=0.03)
-            self.move_to(self.RAG_POSTITION[0]+noise[0],self.RAG_POSTITION[1]+noise[1],self.RAG_POSTITION[2], method='direct')
+            noise = np.clip(np.random.randn(2)*0.04, a_min=-.04, a_max=0.04)
+            self.move_to(self.RAG_POSTITION[0]+noise[0],self.RAG_POSTITION[1]+noise[1],self.RAG_POSTITION[2], method='linear')
         self.hover_above(self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2])
 
     def clean_paint_brush(self):
@@ -376,7 +394,7 @@ class Painter():
         canvas_width_pix, canvas_height_pix = canvas.shape[1], canvas.shape[0]
 
         # Points for computing the homography
-        t = 0.06 # How far away from corners to paint
+        t = 0.1 # How far away from corners to paint
         homography_points = [[t,t],[1-t,t],[t,1-t],[1-t,1-t]]
 
 
@@ -402,7 +420,7 @@ class Painter():
             x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix)
 
             # Look in the region of the stroke and find the center of the stroke
-            w = int(.06 * canvas_height_pix)
+            w = int(.1 * canvas_height_pix)
             window = canvas[y_pix-w:y_pix+w, x_pix-w:x_pix+w,:]
             window = window.mean(axis=2)
             window /= 255.
@@ -473,7 +491,7 @@ class Painter():
                     # stroke_ind=0
                     break
                     # rotation += 3.14*.25
-                if stroke_ind % 4 == 0:
+                if stroke_ind % 3 == 0:
                     self.clean_paint_brush()
                     self.get_paint(0)
 
@@ -486,3 +504,97 @@ class Painter():
                 stroke.paint(self, x, y, rotation)
 
                 stroke_ind += 1
+
+    def paint_continuous_stroke_library(self):
+        import math
+        from export_strokes import center_stroke
+        strokes = all_strokes
+        stroke_ind = 0
+
+        blank_canvas = self.camera.get_canvas()
+        prev_canvas = blank_canvas.copy()
+        
+        rotation = 0
+        y_diff = 0.02
+
+        x_pix, y_pix = blank_canvas.shape[1], blank_canvas.shape[0]
+
+        strokes = get_base_strokes()
+
+        w = self.opt.CANVAS_WIDTH
+        x_rels = [0, .1*w, 0.3*w, 0.5*w, 0.7*w, w]
+        for i in range(len(x_rels)-1):
+            x_rel_meters = x_rels[i]
+            x_rel_end_meters = x_rels[i+1]
+
+            j = 0
+            for y_rel_meters in np.arange(0, self.opt.CANVAS_HEIGHT - y_diff, y_diff):
+                # if stroke_ind >= len(strokes): 
+                #     # stroke_ind=0
+                #     break
+                #     # rotation += 3.14*.25
+                if stroke_ind % 4 == 0:
+                    # self.clean_paint_brush()
+                    self.get_paint(0)
+
+                # Get the position of the start of the stroke
+                x = self.opt.CANVAS_POSITION[0] - 0.5*self.opt.CANVAS_WIDTH + x_rel_meters + .2*(x_rel_end_meters-x_rel_meters)
+                y = self.opt.CANVAS_POSITION[1] + self.opt.CANVAS_HEIGHT - y_rel_meters - .5*y_diff
+                
+                stroke = strokes[stroke_ind]#()
+                #print(stroke)
+
+                stroke.paint(self, x, y, rotation)
+
+                stroke_ind += 1
+
+                # self.to_neutral()
+                canvas = self.camera.get_canvas()
+
+                changed_inds = np.abs(canvas - prev_canvas) > 5
+                changed_inds = changed_inds.astype(np.float32)
+                canvas = blank_canvas*(1-changed_inds) + canvas * changed_inds
+
+                # Bounding box indices of the stroke in the picture of stroke library
+                x_start_pix = int(math.floor((x_rel_meters/self.opt.CANVAS_WIDTH)*x_pix))
+                x_end_pix = int(math.floor(((x_rel_end_meters)/self.opt.CANVAS_WIDTH)*x_pix))
+                y_start_pix = int(math.floor((y_rel_meters/self.opt.CANVAS_HEIGHT)*y_pix))
+                y_end_pix = int(math.floor(((y_rel_meters + y_diff)/self.opt.CANVAS_HEIGHT)*y_pix))
+
+                # Get just the single stroke
+                single_strk_img = canvas[y_start_pix:y_end_pix,x_start_pix:x_end_pix]
+                
+                # Make the background purely white
+                stroke = single_strk_img.copy()
+                stroke[stroke > 170] = 255
+
+                # Convert to 0-1 where 1 is the stroke
+                stroke = stroke/255.
+                stroke = 1 - stroke # background 0, paint 1-ish
+                # stroke = stroke**.5 # Make big values bigger. Makes paint more opaque
+                stroke /= stroke.max() # Max should be 1.0
+
+                stroke = stroke[:,:,0]
+
+                print(stroke.shape)
+                stroke = center_stroke(stroke)
+                # show_img(stroke)
+
+                t = (stroke*255.).astype(np.uint8)
+
+                # Make the stroke centered on a full size canvas
+                padX = int((self.opt.CANVAS_WIDTH_PIX  - t.shape[1])/2)
+                padY = int((self.opt.CANVAS_HEIGHT_PIX - t.shape[0])/2)
+
+                # In case of odd numbers
+                xtra_x, xtra_y = self.opt.CANVAS_WIDTH_PIX - (padX*2+t.shape[1]), self.opt.CANVAS_HEIGHT_PIX - (padY*2+t.shape[0])
+                #print(t.shape, padX, padY, xtra_x, xtra_y)
+                full_size = np.pad(t, [(padY,padY+xtra_y), (padX,padX+xtra_x)], 'constant')
+                t = np.zeros((full_size.shape[0], full_size.shape[1], 4), dtype=np.uint8)
+                t[:,:,3] = full_size.astype(np.uint8)
+                t[:,:,2] = 200 # Some color for fun
+                t[:,:,1] = 120
+                # show_img(t)
+
+                j+=1
+                prev_canvas = canvas

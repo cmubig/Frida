@@ -37,7 +37,7 @@ class Options(object):
 
 
         # Number of cells to paint in x and y directions
-        self.cells_x, self.cells_y = 3, 4
+        self.cells_x, self.cells_y = 4, 4
 
         # Dimensions of the cells in Meters
         #cell_dim = (0.0254, 0.0508) #h/w in meters. 1"x2"
@@ -49,11 +49,13 @@ class Options(object):
 
     def initialize(self, parser):
         parser.add_argument('--use_cache', action='store_true')
+        parser.add_argument('--use_cached_colors', action='store_true')
         parser.add_argument('--n_colors', default=6, type=int, help='Number of colors of paint to use')
         parser.add_argument("--file", type=str,
             default='/home/peterschaldenbrand/Downloads/david_lynch.csv',
             help='Path CSV instructions.')
-        parser.add_argument('--target', type=str, default='/home/frida/Downloads/cutoutjon.jpg')
+        parser.add_argument('--target', type=str, default=None)
+        parser.add_argument('--prompt', type=str, default=None)
         parser.add_argument("--cache_dir", type=str,
             default='/tmp', help='Where to store cached files.')
         parser.add_argument("--tensorboard_dir", type=str,
