@@ -292,7 +292,7 @@ def purge_buried_brush_strokes(painting):
     return new_painting
 
 
-def plan_all_strokes(opt, optim_iter=100, num_strokes=120, num_passes=3):
+def plan_all_strokes_text(opt, optim_iter=1000, num_strokes=700, num_augs=80, num_passes=1):
     global strokes_small, strokes_full, target
     strokes_small = load_brush_strokes(opt, scale_factor=5)
     strokes_full = load_brush_strokes(opt, scale_factor=1)
@@ -384,7 +384,7 @@ def plan_all_strokes(opt, optim_iter=100, num_strokes=120, num_passes=3):
             #     bs.color_transform.grad.data *= 0. # Don't change the color because CLIP sucks at color
             optim.step()
 
-            if j % 30 == 0: and j > (100):
+            if j % 30 == 0 and j > (100):
                 discretize_colors(painting, colors)
             log_progress(painting)
 
