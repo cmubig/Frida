@@ -3,6 +3,7 @@ from torch import nn
 import torchgeometry
 import torchvision.transforms as T
 import warnings
+import numpy as np
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 
@@ -65,7 +66,7 @@ class BrushStroke(nn.Module):
         return x
 
 class Painting(nn.Module):
-    def __init__(self, n_strokes, background_img=None, brush_strokes=None):
+    def __init__(self, n_strokes, background_img=None, brush_strokes=None, unique_strokes=None):
         # h, w are canvas height and width in pixels
         super(Painting, self).__init__()
         self.n_strokes = n_strokes
@@ -78,13 +79,13 @@ class Painting(nn.Module):
             self.background_img = torch.cat((self.background_img, t), dim=1)
 
         if brush_strokes is None:
-            self.brush_strokes = nn.ModuleList([BrushStroke(np.random.randint(len(strokes_full))) for _ in range(n_strokes)])
+            self.brush_strokes = nn.ModuleList([BrushStroke(np.random.randint(unique_strokes)) for _ in range(n_strokes)])
         else:
             self.brush_strokes = nn.ModuleList(brush_strokes)
 
 
 
-    def forward(self, strokes):
+    def forward(self, strokes, use_alpha=True):
         if self.background_img is None:
             canvas = torch.ones((1,4,strokes[0].shape[0],strokes[0].shape[1])).to(device)
         else:
@@ -92,9 +93,17 @@ class Painting(nn.Module):
 
         canvas[:,3] = 1 # alpha channel
 
+        mostly_opaque = False#True
+
         for brush_stroke in self.brush_strokes:
             single_stroke = brush_stroke(strokes=strokes)
-            canvas = canvas * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke
+
+            if mostly_opaque: single_stroke[:,3][single_stroke[:,3] > 0.5] = 1.
+            
+            if use_alpha:
+                canvas = canvas * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke
+            else:
+                canvas = canvas[:,:3] * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke[:,:3]
         return canvas
 
     def to_csv(self):

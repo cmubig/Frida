@@ -18,6 +18,8 @@ from torchvision import models, transforms
 import clip
 
 
+
+
 class CLIPVisualEncoder(nn.Module):
     def __init__(self, clip_model):
         super().__init__()
@@ -220,7 +222,7 @@ def get_image_augmentation(use_normalized_clip):
     return augment_trans
 
 augment_trans = get_image_augmentation(False)
-num_augs = 4
+num_augs = 10
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 def clip_loss(img0, img1):
     img0_batch = torch.cat([augment_trans(img0) for n in range(num_augs)])
@@ -236,8 +238,11 @@ class Dict2Class(object):
     def __init__(self, my_dict):
         for key in my_dict:
             setattr(self, key, my_dict[key])
+
+# clip_conv_layer_weights = [1.0, 1.0, 1.0, 1.0, 0]
+clip_conv_layer_weights = [0, 0, 0, 0, 1.0]
 a = {'clip_model_name':'ViT-B/32','clip_conv_loss_type':'Cos','device':device,'num_aug_clip':num_augs,'augemntations':['affine'],
-     'clip_fc_loss_weight':0.1,'clip_conv_layer_weights':[0,0,1.0,1.0,0]}
+     'clip_fc_loss_weight':0.0,'clip_conv_layer_weights':clip_conv_layer_weights}
 clip_conv_loss_model = CLIPConvLoss(Dict2Class(a))
 
 def clip_conv_loss(painting, target):
@@ -245,4 +250,29 @@ def clip_conv_loss(painting, target):
     clip_loss = clip_conv_loss_model(painting[:,:3], target)
     for key in clip_loss.keys():
         loss += clip_loss[key]
+    return loss
+
+
+
+import torchvision.transforms as transforms
+
+augment_trans_text = transforms.Compose([
+    # transforms.GaussianBlur((21,21)),
+    transforms.RandomPerspective(fill=1, p=1, distortion_scale=0.5),
+    transforms.RandomResizedCrop(224, scale=(0.7,0.9)),
+    transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
+])
+
+import clip
+clip_model, preprocess = clip.load('ViT-B/32', device, jit=False)
+
+def clip_text_loss(p, text_features, num_augs):
+    loss = 0
+    img_augs = []
+    for n in range(num_augs):
+        img_augs.append(augment_trans_text(p[:,:3]))
+    im_batch = torch.cat(img_augs)
+    image_features = clip_model.encode_image(im_batch)
+    for n in range(num_augs):
+        loss -= torch.cosine_similarity(text_features, image_features[n:n+1], dim=1)
     return loss

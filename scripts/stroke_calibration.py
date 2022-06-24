@@ -60,7 +60,9 @@ def process_stroke_library(raw_strk_lib, opt):
 
     for x_start in np.linspace(0,opt.CANVAS_WIDTH, num=opt.cells_x+1)[:-1]:
         for y_start in np.linspace(0, opt.CANVAS_HEIGHT, num=opt.cells_y+1)[:-1]:
-            if (i%opt.cells_y,int(np.floor(i/(opt.cells_x+1)))) in forbidden: 
+            if (i%opt.cells_y,int(np.floor(i/(opt.cells_y)))) in forbidden: 
+                # print(i, opt.cells_y, opt.cells_x)
+                # print('forbidden', i%opt.cells_y,int(np.floor(i/(opt.cells_x+1))))
                 i+=1
                 continue
             i+=1
@@ -84,7 +86,7 @@ def process_stroke_library(raw_strk_lib, opt):
             # show_img(stroke)
 
             # Edges should be white
-            ep = 0.1
+            ep = 0.05
             stroke[:int(ep*stroke.shape[0]),:] = 255
             stroke[int(stroke.shape[0] - ep*stroke.shape[0]):,:] = 255
             stroke[:,:int(ep*stroke.shape[1])] = 255
@@ -95,7 +97,7 @@ def process_stroke_library(raw_strk_lib, opt):
             # Convert to 0-1 where 1 is the stroke
             stroke = stroke/255.
             stroke = 1 - stroke # background 0, paint 1-ish
-            # stroke = stroke**.5 # Make big values bigger. Makes paint more opaque
+            stroke = stroke**.5 # Make big values bigger. Makes paint more opaque
             stroke /= stroke.max() # Max should be 1.0
             # show_img(stroke)
             

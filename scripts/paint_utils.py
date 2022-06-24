@@ -30,6 +30,10 @@ def rgb2lab(image_rgb):
     image_lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2Lab)
     return image_lab
 
+def lab2rgb(image_lab):
+    image_rgb = cv2.cvtColor(image_lab, cv2.COLOR_LAB2RGB)
+    return image_rgb
+
 def compare_images(img1, img2):
     ''' Pixel wise comparison '''
     # Input images are Lab
@@ -150,7 +154,20 @@ def extract_paint_color(canvas_before, canvas_after, stroke_bool_map):
     if stroke_bool_map.astype(np.float32).sum() < 10: # at least 10 pixels
         return None
 
+    # ca = canvas_after.copy()
+    # ca[stroke_bool_map] = 0
+    # show_img(ca)
+
     color = [np.median(canvas_after[:,:,ch][stroke_bool_map]) for ch in range(3)]
+
+
+    # ca = canvas_after.copy()
+    # print(color)
+    # # for i in range(3):
+    # #     ca[stroke_bool_map][i] = 0
+    # # show_img(ca)
+    # ca[stroke_bool_map] = np.array(color) 
+    # show_img(ca)
     return np.array(color)
 
 def load_instructions(fn):
@@ -168,11 +185,24 @@ def load_instructions(fn):
 
 def get_colors(img, n_colors=6):
     from sklearn.cluster import KMeans
+    # Cluster in LAB space
+    img = rgb2lab(img)
     kmeans = KMeans(n_clusters=n_colors, random_state=0)
     kmeans.fit(img.reshape((img.shape[0]*img.shape[1],3)))
     colors = [kmeans.cluster_centers_[i] for i in range(len(kmeans.cluster_centers_))]
-    return colors
 
+    labels = kmeans.labels_
+    labels = labels.reshape((img.shape[0], img.shape[1]))
+
+    # colors = sorted(colors, key=lambda l:np.mean(l), reverse=True) # Light to dark
+    colors = np.array(colors)
+
+    # Back to rgb
+    colors = lab2rgb(colors[None,:,:])[0]
+    return colors *255., labels
+
+def discretize_with_labels(colors, labels):
+    return colors[labels]
 
 def discretize_image_old(img, allowed_colors):
     """

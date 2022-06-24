@@ -11,8 +11,9 @@
 import math
 import copy
 import numpy as np
+import time
 
-from painter import *
+# from painter import *
 
 '''
 Trajectory is given by a cubic bezier curve.
@@ -30,7 +31,8 @@ class Stroke(object):
         All brush strokes must have a trajectory which defines the path of the stroke
         along with how hard to push the brush down.
     '''
-    def __init__(self):
+    def __init__(self, trajectory=None):
+        self.trajectory = trajectory
         pass
     def paint(self, painter, x_start, y_start, rotation, step_size=.005):
         # x_start, y_start in global coordinates. rotation in radians
@@ -76,8 +78,8 @@ class Stroke(object):
 
                 z = painter.Z_CANVAS - z * z_range
                 painter.move_to(x_start+x, y_start+y, z, method='direct', speed=0.03)
+                time.sleep(0.02)
             p0 = p3
-
         painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.02, speed=0.2)
         painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
 
@@ -106,10 +108,49 @@ class StrokeB(Stroke):
         super(Stroke, self).__init__()
         self.trajectory = [
             [0,0,0.1],
-            [.005,0,.3],
-            [.01,0,.3],
+            [.005,0,.1],
+            [.01,0,.1],
             [.02,0,0.1]
         ]
+
+class StrokeBA(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
+            [0,0,0.1],
+            [.005,0,.7],
+            [.01,0,.7],
+            [.02,0,0.1]
+        ]
+
+class StrokeBB(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
+            [0,0,0.1],
+            [.005,0.01,.3],
+            [.01,0.01,.3],
+            [.02,0,0.1]
+        ]
+class StrokeBC(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
+            [0,0,0.1],
+            [.01,0,.3],
+            [.02,0,.3],
+            [.03,0,0.1]
+        ]
+class StrokeBD(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
+            [0,0,0.7],
+            [.02,0.02,1.],
+            [.03,-.02,1.],
+            [.05,0,1.]
+        ]
+
 class StrokeC(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
@@ -164,17 +205,77 @@ class StrokeH(Stroke):
             [.02,0,1.],
             [.03,0,0.2]
         ]
-# class StrokeI(Stroke):
-#     def __init__(self):
-#         super(Stroke, self).__init__()
-#         self.trajectory = [
-#             [0,0,0.5],
-#             [.005,0,.8],
-#             [.01,0,1.],
-#             [.015,0,0.8]
-#         ]
 
 all_strokes = sorted(Stroke.__subclasses__(), key=lambda x : x.__class__.__name__)
 
+def get_base_strokes():
 
+    strokes = []
 
+    # Dabs
+    for z in np.linspace(0, 1, 3, endpoint=True):
+        strokes.append(Stroke(trajectory=[
+                [0,0,z],
+                [.001,0,z],
+                [.001,0,z],
+                [.002,0,z]
+            ]))
+
+    # Very Short Strokes
+    for z in np.linspace(0, 1, 3, endpoint=True):
+        strokes.append(Stroke(trajectory=[
+                [0,0,z],
+                [.003,0,z],
+                [.007,0,1-z],
+                [.01,0,1-z]
+            ]))
+    for z in np.linspace(0, 1, 3, endpoint=True):
+        strokes.append(Stroke(trajectory=[
+                [0,0,1-z],
+                [.003,0,1-z],
+                [.007,0,z],
+                [.01,0,z]
+            ]))
+
+    # Short-Medium Curved Strokes
+    for z in np.linspace(0.3, .8, 2, endpoint=True):
+        for y in np.linspace(-.02, 0.02, 4, endpoint=True):
+            strokes.append(Stroke(trajectory=[
+                    [0,0,z],
+                    [.01,y,z],
+                    [.015,y,z],
+                    [.025,0,z]
+                ]))
+            strokes.append(Stroke(trajectory=[
+                    [0,0,z],
+                    [.005,y,z],
+                    [.01,y,1-z],
+                    [.02,0,1-z]
+                ]))
+            strokes.append(Stroke(trajectory=[
+                    [0,0,z],
+                    [.02,y,z],
+                    [.03,y,1-z],
+                    [.04,0,1-z]
+                ]))
+
+    # Long Strokes
+    for z in np.linspace(0.3, .8, 2, endpoint=True):
+        for y0 in np.linspace(-.03, 0.03, 4, endpoint=True):
+            for y1 in np.linspace(-.03, 0.03, 4, endpoint=True):
+                if y0 == y1: continue
+
+                strokes.append(Stroke(trajectory=[
+                        [0,0,z],
+                        [.02,y0,z],
+                        [.04,y1,1-z],
+                        [.05,0,1-z]
+                    ]))
+                # strokes.append(Stroke(trajectory=[
+                #         [0,0,z],
+                #         [.02,y0,z],
+                #         [.04,y1,z],
+                #         [.06,0,z]
+                #     ]))
+    print(len(strokes))
+    return strokes

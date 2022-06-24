@@ -4,6 +4,7 @@ import cv2
 import matplotlib.pyplot as plt
 from scipy import ndimage
 import os
+import gzip
 
 from simulated_painting_environment import crop_stroke
 # strokes = pickle.load(open(("cache/strokes.pkl"),'rb'))
@@ -58,7 +59,7 @@ def center_stroke(stroke):
 
 
 def export_strokes(opt):
-    strokes = pickle.load(open((os.path.join(opt.cache_dir, "strokes.pkl")),'rb'))
+    strokes = pickle.load(gzip.open((os.path.join(opt.cache_dir, "strokes.pkl")),'rb'))
 
     strokes = [center_stroke(s) for s in strokes]
     strokes_processed = []
@@ -114,4 +115,4 @@ def export_strokes(opt):
 
 
     #np.save(open('strokes_numpy.npy', 'wb'), strokes_processed)
-    pickle.dump(strokes_processed, open(os.path.join(opt.cache_dir, 'strokes_centered.npy'), 'wb'))
+    pickle.dump(strokes_processed, gzip.open(os.path.join(opt.cache_dir, 'strokes_centered.npy'), 'wb'))
