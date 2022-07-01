@@ -20,15 +20,18 @@ class Options(object):
         # Dimensions of canvas in meters
         # CANVAS_WIDTH  = 0.3047 # 12"
         # CANVAS_HEIGHT = 0.2285 # 9"
-        self.CANVAS_WIDTH  = 0.254 -0.005# 10"
-        self.CANVAS_HEIGHT = 0.2032 -0.005# 8"
+        # self.CANVAS_WIDTH  = 0.254 -0.005# 10"
+        # self.CANVAS_HEIGHT = 0.2032 -0.005# 8"
+        self.CANVAS_WIDTH  = 0.3556 -0.005# 14"
+        self.CANVAS_HEIGHT = 0.2794 -0.005# 11"
 
 
         self.CANVAS_WIDTH_PIX  = None # set these after taking a picture
         self.CANVAS_HEIGHT_PIX = None
 
         # X,Y of canvas wrt to robot center (global coordinates)
-        self.CANVAS_POSITION = (0,.5) 
+        # self.CANVAS_POSITION = (0,.5) 
+        self.CANVAS_POSITION = (0, .5-.045)
 
         """ How many times in a row can you paint with the same color before needing more paint """
         self.GET_PAINT_FREQ = 3
@@ -37,7 +40,7 @@ class Options(object):
 
 
         # Number of cells to paint in x and y directions
-        self.cells_x, self.cells_y = 4, 4
+        self.cells_x, self.cells_y = 5, 5
 
         # Dimensions of the cells in Meters
         #cell_dim = (0.0254, 0.0508) #h/w in meters. 1"x2"
