@@ -182,10 +182,10 @@ class StrokeF(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
         self.trajectory = [
-            [0,0,0.5],
-            [.02,0,.3],
-            [.03,0,.3],
-            [.04,0,0.3]
+            [0,0,0.1],
+            [.006,0,.1],
+            [.013,0,.1],
+            [.02,0,0.1]
         ]
 class StrokeG(Stroke):
     def __init__(self):
@@ -200,12 +200,95 @@ class StrokeH(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
         self.trajectory = [
+            [0,0,0.1],
+            [.003,0,.2],
+            [.006,0,.2],
+            [.01,0,0.1]
+        ]
+class StrokeI(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
             [0,0,0.7],
-            [.01,0,1.],
-            [.02,0,1.],
-            [.03,0,0.2]
+            [.01,-0.01,1.],
+            [.03,.01,1.],
+            [.04,0,1.]
         ]
 
+class StrokeJ(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
+            [0,0,0.1],
+            [.005,0.01,.1],
+            [.01,0.01,.1],
+            [.02,0,0.1]
+        ]
+class StrokeK(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
+            [0,0,0.5],
+            [.01,-0.01,.6],
+            [.02,-0.01,.5],
+            [.03,0,0.3]
+        ]
+class StrokeL(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
+            [0,0,0.4],
+            [.01,0.01,.6],
+            [.02,0.01,.5],
+            [.03,0,0.3]
+        ]
+
+class StrokeM(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
+            [0,0,0.5],
+            [.006,-0.005,.3],
+            [.01,-0.005,.3],
+            [.02,0,0.3]
+        ]
+class StrokeN(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
+            [0,0,0.4],
+            [.006,0.005,.3],
+            [.012,0.005,.3],
+            [.02,0,0.3]
+        ]
+        
+class StrokeO(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
+            [0,0,0.2],
+            [.005,-0.01,.3],
+            [.01,0.01,.3],
+            [.015,0,0.1]
+        ]
+class StrokeP(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
+            [0,0,0.2],
+            [.005,0.01,.3],
+            [.01,-0.01,.3],
+            [.015,0,0.1]
+        ]
+class StrokeQ(Stroke):
+    def __init__(self):
+        super(Stroke, self).__init__()
+        self.trajectory = [
+            [0,0,0.1],
+            [.002,0.001,.2],
+            [.004,0.001,.2],
+            [.005,0,0.1]
+        ]
 all_strokes = sorted(Stroke.__subclasses__(), key=lambda x : x.__class__.__name__)
 
 def get_base_strokes():

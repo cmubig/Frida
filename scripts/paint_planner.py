@@ -101,7 +101,7 @@ def paint_color_calibration(painter):
     return colors
 
 global_it = 0
-def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=4):
+def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=6):
     global global_it
     painter.to_neutral()
     canvas_after = painter.camera.get_canvas()
@@ -109,14 +109,14 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=4)
     real_canvases = [canvas_after]
     sim_canvases = [canvas_after]
     consecutive_paints = 0
-    camera_capture_interval = 5
+    camera_capture_interval = 8
     curr_color = -1
 
     # colors = paint_color_calibration(painter)
 
     target = discretize_with_labels(colors, labels)
 
-    for it in tqdm(range(200)): # how many times to go visit planning file
+    for it in tqdm(range(1)): # how many times to go visit planning file
         canvas_before = canvas_after 
 
         # Save data that the python3 file needs
@@ -174,6 +174,9 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=4)
                 if global_it%camera_capture_interval == 0:
                     painter.to_neutral()
                     canvas_after = painter.camera.get_canvas() if not painter.opt.simulate else full_sim_canvas
+                    
+                    real_canvases.append(canvas_after)
+                    sim_canvases.append(full_sim_canvas.copy())
 
                     # # Update representation of paint color
                     # new_paint_color = extract_paint_color(canvas_before, canvas_after, None)
@@ -199,6 +202,8 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=4)
                 #     # to_gif(all_canvases)
                 #     to_video(real_canvases, fn='real_canvases.mp4')
                 #     to_video(sim_canvases, fn='sim_canvases.mp4')
+    to_video(real_canvases, fn='real_canvases.mp4')
+    to_video(sim_canvases, fn='sim_canvases.mp4')
 
 
 

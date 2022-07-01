@@ -257,7 +257,7 @@ def clip_conv_loss(painting, target):
 import torchvision.transforms as transforms
 
 augment_trans_text = transforms.Compose([
-    # transforms.GaussianBlur((21,21)),
+    transforms.GaussianBlur((21,21), sigma=(1.)),
     transforms.RandomPerspective(fill=1, p=1, distortion_scale=0.5),
     transforms.RandomResizedCrop(224, scale=(0.7,0.9)),
     transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
