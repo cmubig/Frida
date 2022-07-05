@@ -82,7 +82,7 @@ def process_stroke_library(raw_strk_lib, opt):
             
             # Make the background purely white
             stroke = single_strk_img.copy()
-            stroke[stroke > 170] = 255
+            stroke[stroke > 190] = 255
             # show_img(stroke)
 
             # Edges should be white
@@ -92,7 +92,7 @@ def process_stroke_library(raw_strk_lib, opt):
             stroke[:,:int(ep*stroke.shape[1])] = 255
             stroke[:,int(stroke.shape[1] - ep*stroke.shape[1]):] = 255
             
-            if stroke.min() > 100: continue # No paint
+            if stroke.min() > 150: continue # No paint
             
             # Convert to 0-1 where 1 is the stroke
             stroke = stroke/255.

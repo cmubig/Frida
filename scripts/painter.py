@@ -491,8 +491,9 @@ class Painter():
                     # stroke_ind=0
                     break
                     # rotation += 3.14*.25
-                if stroke_ind % 3 == 0:
+                if stroke_ind % 6 == 0:
                     self.clean_paint_brush()
+                if stroke_ind % 3 == 0:
                     self.get_paint(0)
 
                 # Get the position of the start of the stroke

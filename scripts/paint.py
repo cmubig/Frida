@@ -51,7 +51,11 @@ if __name__ == '__main__':
     #     np.save(f, labels)
 
     if not opt.simulate:
-        show_img(all_colors/255., title="Mix these colors, then exit this popup to start painting")
+        # show_img(all_colors/255., title="Mix these colors, then exit this popup to start painting")
+        try:
+            input('Make sure blank canvas is exposed. Press enter when you are ready for the paint planning to start. Use tensorboard to see which colors to paint.')
+        except SyntaxError:
+            pass
 
     # if opt.simulate:
     #     colors += np.random.randn(*colors.shape)*10
