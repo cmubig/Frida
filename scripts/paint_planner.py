@@ -101,7 +101,7 @@ def paint_color_calibration(painter):
     return colors
 
 global_it = 0
-def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=6):
+def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5):
     global global_it
     painter.to_neutral()
     canvas_after = painter.camera.get_canvas()
@@ -127,7 +127,7 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=6)
         if exit_code != 0:
             print('exit code', exit_code)
             return
-        show_img(target)
+        show_img(canvas_before/255., title="Ready to start painting. Ensure mixed paint is provided and then exit this to start painting.")
 
         # Run Planned Strokes
         with open(os.path.join(painter.opt.cache_dir, "next_brush_strokes.csv"), 'r') as fp:
@@ -156,6 +156,11 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=6)
                 # Clean paint brush and/or get more paint
                 new_paint_color = color_ind != curr_color
                 if new_paint_color:
+                    dark_to_light = np.mean(colors[curr_color]) < np.mean(colors[color_ind])
+                    if dark_to_light and curr_color != -1:
+                        painter.clean_paint_brush() # Really clean this thing
+                        painter.clean_paint_brush()
+                        show_img(target/255., title="About to start painting with a lighter color")
                     painter.clean_paint_brush()
                     painter.clean_paint_brush()
                     curr_color = color_ind

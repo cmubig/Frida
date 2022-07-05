@@ -418,10 +418,10 @@ def segment_strokes_by_size(strokes, n_segments):
     print(stroke_inds)
     return stroke_inds
 
-def plan_all_strokes_grid(opt, optim_iter=100, num_strokes_x=25, num_strokes_y=20, 
-            x_y_attempts=50, num_passes=3):
+def plan_all_strokes_grid(opt, optim_iter=100, num_strokes_x=25, num_strokes_y=22, 
+            x_y_attempts=100, num_passes=3):
     global strokes_small, strokes_full, target
-    strokes_small = load_brush_strokes(opt, scale_factor=5)
+    strokes_small = load_brush_strokes(opt, scale_factor=4)
     strokes_full = load_brush_strokes(opt, scale_factor=1)
 
     strokes_by_size = segment_strokes_by_size(strokes_small, num_passes)
@@ -559,7 +559,8 @@ def plan_all_strokes_grid(opt, optim_iter=100, num_strokes_x=25, num_strokes_y=2
             # log_progress(painting)
             if k % 20 == 0:
                 np_painting = canvas.detach().cpu().numpy()[0].transpose(1,2,0)
-                opt.writer.add_image('images/grid_add', np.clip(np_painting, a_min=0, a_max=1), k)
+                opt.writer.add_image('images/grid_add_layer{}'.format(i), 
+                    np.clip(np_painting, a_min=0, a_max=1), k)
             k += 1
         painting = Painting(0, background_img=layer_background, 
             brush_strokes=layer_brush_strokes).to(device)
