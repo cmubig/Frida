@@ -287,15 +287,18 @@ class Sawyer(Robot, object):
             # Optional Advanced IK parameters
             # rospy.loginfo("Running Advanced IK Service Client example.")
             # The joint seed is where the IK position solver starts its optimization
-            ikreq.seed_mode = ikreq.SEED_USER
-            seed = JointState()
-            seed.name = ['right_j0', 'right_j1', 'right_j2', 'right_j3',
-                         'right_j4', 'right_j5', 'right_j6']
-            seed.position = [seed_position['right_j0'], seed_position['right_j1'],
-                             seed_position['right_j2'], seed_position['right_j3'],
-                             seed_position['right_j4'], seed_position['right_j5'],
-                             seed_position['right_j6']]
-            ikreq.seed_angles.append(seed)
+            try:
+                ikreq.seed_mode = ikreq.SEED_USER
+                seed = JointState()
+                seed.name = ['right_j0', 'right_j1', 'right_j2', 'right_j3',
+                             'right_j4', 'right_j5', 'right_j6']
+                seed.position = [seed_position['right_j0'], seed_position['right_j1'],
+                                 seed_position['right_j2'], seed_position['right_j3'],
+                                 seed_position['right_j4'], seed_position['right_j5'],
+                                 seed_position['right_j6']]
+                ikreq.seed_angles.append(seed)
+            except Exception as e:
+                print(e)
 
             # # Once the primary IK task is solved, the solver will then try to bias the
             # # the joint angles toward the goal joint configuration. The null space is

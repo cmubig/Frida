@@ -52,6 +52,7 @@ class Options(object):
 
     def initialize(self, parser):
         parser.add_argument('--use_cache', action='store_true')
+        parser.add_argument('--diffvg', action='store_true')
         parser.add_argument('--use_cached_colors', action='store_true')
         parser.add_argument('--n_colors', default=6, type=int, help='Number of colors of paint to use')
         parser.add_argument("--file", type=str,
