@@ -241,7 +241,8 @@ class Dict2Class(object):
 
 # clip_conv_layer_weights = [1.0, 1.0, 1.0, 1.0, 0]
 clip_conv_layer_weights = [0, 0, 0, 0, 1.0]
-a = {'clip_model_name':'ViT-B/32','clip_conv_loss_type':'Cos','device':device,'num_aug_clip':num_augs,'augemntations':['affine'],
+a = {'clip_model_name':'ViT-B/32','clip_conv_loss_type':'Cos','device':device,
+    'num_aug_clip':num_augs,'augemntations':['affine'],
      'clip_fc_loss_weight':0.0,'clip_conv_layer_weights':clip_conv_layer_weights}
 clip_conv_loss_model = CLIPConvLoss(Dict2Class(a))
 

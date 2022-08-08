@@ -15,11 +15,12 @@ from tqdm import tqdm
 import scipy.special
 import pickle
 import gzip
+import subprocess
 
 from paint_utils import *
 from robot import *
 from painting_materials import *
-from strokes import all_strokes, get_base_strokes
+from strokes import all_strokes, get_base_strokes, get_random_stroke
 from dslr import WebCam, SimulatedWebCam
 
 try: import rospy
@@ -120,10 +121,10 @@ class Painter():
 
         self.Z_RANGE = np.abs(self.Z_MAX_CANVAS - self.Z_CANVAS)
 
-        self.WATER_POSITION = (-.4,.6,self.Z_CANVAS)
-        self.RAG_POSTITION = (-.4,.45,self.Z_CANVAS)
+        self.WATER_POSITION = (-.4,.58,self.Z_CANVAS)
+        self.RAG_POSTITION = (-.4,.41,self.Z_CANVAS)
 
-        self.PALLETTE_POSITION = (-.3,.5,self.Z_CANVAS- 0.5*self.Z_RANGE)
+        self.PALLETTE_POSITION = (-.3,.47,self.Z_CANVAS- 0.5*self.Z_RANGE)
         self.PAINT_DIFFERENCE = 0.03976
 
         # Setup Camera
@@ -143,20 +144,26 @@ class Painter():
         self.coordinate_calibration(use_cache=opt.use_cache)
 
         # Get brush strokes from stroke library
-        if not os.path.exists(os.path.join(self.opt.cache_dir, 'strokes.pkl')) or not use_cache:
-            try:
-                input('Need to create stroke library. Press enter to start.')
-            except SyntaxError:
-                pass
+        if self.opt.discrete:
+            if not os.path.exists(os.path.join(self.opt.cache_dir, 'strokes.pkl')) or not use_cache:
+                try:
+                    input('Need to create stroke library. Press enter to start.')
+                except SyntaxError:
+                    pass
 
-            self.paint_stroke_library()
-            self.to_neutral()
-            self.strokes = process_stroke_library(self.camera.get_canvas(), self.opt)
-            with gzip.open(os.path.join(self.opt.cache_dir, 'strokes.pkl'),'wb') as f:
-                pickle.dump(self.strokes, f)
+                self.paint_stroke_library()
+                self.to_neutral()
+                self.strokes = process_stroke_library(self.camera.get_canvas(), self.opt)
+                with gzip.open(os.path.join(self.opt.cache_dir, 'strokes.pkl'),'wb') as f:
+                    pickle.dump(self.strokes, f)
+            else:
+                self.strokes = pickle.load(gzip.open(os.path.join(self.opt.cache_dir, "strokes.pkl"),'rb'))
         else:
-            self.strokes = pickle.load(gzip.open(os.path.join(self.opt.cache_dir, "strokes.pkl"),'rb'))
-
+            if not os.path.exists(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy')) or not use_cache:
+                if not opt.simulate:
+                    self.paint_extended_stroke_library()
+            if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
+                self.create_continuous_stroke_model()
 
         # export the processed strokes for the python3 code
         from export_strokes import export_strokes
@@ -599,3 +606,123 @@ class Painter():
 
                 j+=1
                 prev_canvas = canvas
+
+    def paint_extended_stroke_library(self, num_papers=3):
+        from scipy.ndimage import median_filter
+        w = self.opt.CANVAS_WIDTH_PIX
+        h = self.opt.CANVAS_HEIGHT_PIX
+
+        def shift_image(X, dx, dy):
+            X = np.roll(X, dy, axis=0)
+            X = np.roll(X, dx, axis=1)
+            if dy>0:
+                X[:dy, :] = 255
+            elif dy<0:
+                X[dy:, :] = 255
+            if dx>0:
+                X[:, :dx] = 255
+            elif dx<0:
+                X[:, dx:] = 255
+            return X
+
+        self.to_neutral()
+        canvas_without_stroke = self.camera.get_canvas()
+        strokes_without_getting_new_paint = 999 
+        strokes_without_cleaning = 9999
+
+        stroke_trajectories = [] # Flatten so it's just twelve values x0,y0,z0,x1,y1,...
+        stroke_intensities = [] # list of 2D numpy arrays 0-1 where 1 is paint
+        for paper_it in range(num_papers):
+            for y_offset_pix in np.linspace(0.1, 0.9, 6)*h:
+                for x_offset_pix in np.linspace(0.1, 0.9, 5)*w:
+                    x, y = x_offset_pix / w, 1 - (y_offset_pix / h)
+                    x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
+                    x,y,_ = canvas_to_global_coordinates(x,y,None,self.opt)
+
+                    
+                    if strokes_without_cleaning >= 8:
+                        self.clean_paint_brush()
+                        self.get_paint(0)
+                        strokes_without_cleaning, strokes_without_getting_new_paint = 0, 0
+                    if strokes_without_getting_new_paint >= 4:
+                        self.get_paint(0)
+                        strokes_without_getting_new_paint = 0
+                    strokes_without_getting_new_paint += 1
+                    strokes_without_cleaning += 1
+
+                    random_stroke = get_random_stroke()
+                    random_stroke.paint(self, x, y, 0)
+
+                    self.to_neutral()
+                    canvas_with_stroke = self.camera.get_canvas()
+
+                    stroke = canvas_with_stroke.copy()
+                    # show_img(stroke)
+
+                    #diff = np.mean(np.abs(canvas_with_stroke - canvas_without_stroke), axis=2)
+                    og_shape = canvas_without_stroke.shape
+                    canvas_before_ = cv2.resize(canvas_without_stroke, (256,256)) # For scipy memory error
+                    canvas_after_ = cv2.resize(canvas_with_stroke, (256,256)) # For scipy memory error
+
+                    diff = np.max(np.abs(canvas_after_.astype(np.float32) - canvas_before_.astype(np.float32)), axis=2)
+                    # diff = diff / 255.#diff.max()
+
+                    # smooth the diff
+                    diff = median_filter(diff, size=(3,3))
+                    diff = cv2.resize(diff,  (og_shape[1], og_shape[0]))
+
+                    stroke[diff < 20, :] = 255.
+                    # show_img(stroke)
+
+                    # Translate canvas so that the current stroke is directly in the middle of the canvas
+                    stroke = shift_image(stroke.copy(), 
+                        dx=int(.5*w - x_offset_pix), 
+                        dy=int(.5*h - y_offset_pix))
+                    
+                    stroke[stroke > 190] = 255
+                    # show_img(stroke)
+                    stroke = stroke / 255.
+                    # show_img(stroke)
+                    stroke = 1 - stroke 
+                    # show_img(stroke)
+                    stroke = stroke.mean(axis=2)
+                    # show_img(stroke)
+                    stroke /= stroke.max()
+                    # show_img(stroke)
+
+                    stroke[:int(.3*h)] = 0 
+                    stroke[int(.6*h)] = 0
+                    stroke[:,:int(.4*w)] = 0 
+                    stroke[:,int(.8*w):] = 0
+
+
+                    # plt.scatter(int(w*.5), int(h*.5))
+                    # show_img(stroke)
+
+                    traj = np.array(random_stroke.trajectory).flatten()
+                    # print(traj, '\n', random_stroke.trajectory)
+                    stroke_intensities.append(stroke)
+                    stroke_trajectories.append(traj)
+
+                    canvas_without_stroke = canvas_with_stroke.copy()
+
+                    # Save data
+                    with open(os.path.join(self.opt.cache_dir, 'extended_stroke_library_trajectories.npy'), 'wb') as f:
+                        np.save(f, np.stack(stroke_trajectories, axis=0))
+                    with open(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy'), 'wb') as f:
+                        intensities = np.stack(np.stack(stroke_intensities, axis=0), axis=0)
+                        intensities = (intensities * 255).astype(np.uint8)
+                        np.save(f, intensities)
+
+            if paper_it != num_papers-1:
+                try:
+                    input('Place down new paper. Press enter to start.')
+                except SyntaxError:
+                    pass
+    def create_continuous_stroke_model(self):
+        # Call a script to take the stroke library and model it using a neural network
+        # It will save the model to a file to be used later
+        # must be run in python3
+        exit_code = subprocess.call(['python3', 
+            '/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/continuous_brush_model.py']\
+            +sys.argv[1:])

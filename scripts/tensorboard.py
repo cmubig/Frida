@@ -28,9 +28,13 @@ class TensorBoard(object):
             img = np.array(img)
         img = np.transpose(img, (2, 0, 1))
         self.summary_writer.add_image(tag, img, step)
+        self.summary_writer.flush()
 
     def add_scalar(self, tag, value, step=None):
         self.summary_writer.add_scalar(tag, value, step)
 
     def add_text(self, tag, text, step):
         self.summary_writer.add_text(tag, text, step)
+
+    def add_figure(self, tag, fig, step):
+        self.summary_writer.add_figure(tag, fig, step)

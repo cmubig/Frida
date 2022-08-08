@@ -34,7 +34,17 @@ def capture_image(camera, channels='rgb', debug=False):
     file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
     if (debug):
         print('Camera file path: {0}/{1}'.format(file_path.folder, file_path.name))
-    target = os.path.join('/tmp', file_path.name)
+    
+    # target = os.path.join('/tmp', file_path.name)
+    import time 
+    import glob
+    cap_dir = '/tmp/gphoto2_captures/'
+    if not os.path.exists(cap_dir): os.mkdir(cap_dir)
+    files_in_cap_dir = glob.glob(os.path.join(cap_dir, '*'))
+    for f in files_in_cap_dir:
+        os.remove(f)
+    target = os.path.join(cap_dir, str(time.time()) + '.jpg')
+
     if (debug):
         print('Copying image to', target)
     camera_file = camera.file_get(
