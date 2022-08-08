@@ -12,6 +12,7 @@ import math
 import copy
 import numpy as np
 import time
+from paint_utils import canvas_to_global_coordinates
 
 # from painter import *
 
@@ -24,6 +25,112 @@ X and Y are in meters from the origin point
 Z is a proportion where 1=max push down and 0 is barely touching the canvas
     this is Painter.Z_MAX_CANVAS and Painter.Z_CANVAS respectively.
 '''
+
+def paint_diffvg(painter, xs, ys, z, step_size=.005):
+    # xs and ys in canvas coordinates
+    p0 = canvas_to_global_coordinates(xs[0], ys[0], painter.Z_CANVAS, painter.opt)
+
+    z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
+    if z < 0 or z > 1:
+        print('z in dangerous range: ', z)
+    z = max(0, min(z, 1.)) # safety
+
+    z = 0.05 ###################################################
+
+    z = painter.Z_CANVAS - z * z_range
+
+    # path = self.get_rotated_trajectory(rotation)
+    painter.hover_above(p0[0], p0[1], painter.Z_CANVAS)
+    painter.move_to(p0[0], p0[1], painter.Z_CANVAS + 0.02, speed=0.2)
+    p3 = None
+
+    for i in range(1, len(xs)-1, 3):
+        p1 = canvas_to_global_coordinates(xs[i+0], ys[i+0], painter.Z_CANVAS, painter.opt)
+        p2 = canvas_to_global_coordinates(xs[i+1], ys[i+1], painter.Z_CANVAS, painter.opt)
+        p3 = canvas_to_global_coordinates(xs[i+2], ys[i+2], painter.Z_CANVAS, painter.opt)
+
+        stroke_length = ((p3[0]-p0[0])**2 + (p3[1] - p0[1])**2)**.5
+        n = max(2, int(stroke_length/step_size))
+        n=100 # TODO: something more than this? see previous line
+        for t in np.linspace(0,1,n):
+            x = (1-t)**3 * p0[0] \
+                  + 3*(1-t)**2*t*p1[0] \
+                  + 3*(1-t)*t**2*p2[0] \
+                  + t**3*p3[0]
+            y = (1-t)**3 * p0[1] \
+                  + 3*(1-t)**2*t*p1[1] \
+                  + 3*(1-t)*t**2*p2[1] \
+                  + t**3*p3[1]
+            
+            # Need to translate x,y a bit to be accurate according to camera
+            if painter.H_coord is not None:
+                # Translate the coordinates so they're similar. see coordinate_calibration
+                sim_coords = np.array([x, y, 1.])
+                real_coords = painter.H_coord.dot(sim_coords)
+                x, y = real_coords[0]/real_coords[2], real_coords[1]/real_coords[2]
+            painter.move_to(x, y, z, method='direct', speed=0.03)
+            time.sleep(0.02)
+        p0 = p3
+    painter.move_to(p3[0], p3[1], painter.Z_CANVAS + 0.02, speed=0.2)
+    painter.hover_above(p3[0], p3[1], painter.Z_CANVAS)
+
+
+def paint_diffvg_quadratic(painter, xs, ys, z, step_size=.005):
+    # xs and ys in canvas coordinates
+    p0 = canvas_to_global_coordinates(xs[0], ys[0], painter.Z_CANVAS, painter.opt)
+    print(xs, ys)
+
+    z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
+    if z < 0 or z > 1:
+        print('z in dangerous range: ', z)
+    z = max(0, min(z, 1.)) # safety
+
+    z = 0.05 ###################################################
+
+    z = painter.Z_CANVAS - z * z_range
+
+    # path = self.get_rotated_trajectory(rotation)
+    painter.hover_above(p0[0], p0[1], painter.Z_CANVAS)
+    painter.move_to(p0[0], p0[1], painter.Z_CANVAS + 0.02, speed=0.2)
+    p3 = None
+
+    import matplotlib.pyplot as plt
+    for i in range(1, len(xs)-1, 3):
+        p1 = canvas_to_global_coordinates(xs[i+0], ys[i+0], painter.Z_CANVAS, painter.opt)
+        p2 = canvas_to_global_coordinates(xs[i+1], ys[i+1], painter.Z_CANVAS, painter.opt)
+        # p3 = canvas_to_global_coordinates(xs[i+2], ys[i+2], painter.Z_CANVAS, painter.opt)
+
+        # stroke_length = ((p3[0]-p0[0])**2 + (p3[1] - p0[1])**2)**.5
+        stroke_length = ((p2[0]-p0[0])**2 + (p2[1] - p0[1])**2)**.5
+        n = max(2, int(stroke_length/step_size))
+        n=100 # TODO: something more than this? see previous line
+        for t in np.linspace(0,1,n):
+            # x = (1-t)**3 * p0[0] \
+            #       + 3*(1-t)**2*t*p1[0] \
+            #       + 3*(1-t)*t**2*p2[0] \
+            #       + t**3*p3[0]
+            # y = (1-t)**3 * p0[1] \
+            #       + 3*(1-t)**2*t*p1[1] \
+            #       + 3*(1-t)*t**2*p2[1] \
+            #       + t**3*p3[1]
+            x = (1-t)**2*p0[0] + 2*(1-t)*t*p1[0] + t**2*p2[0]
+            y = (1-t)**2*p0[1] + 2*(1-t)*t*p1[1] + t**2*p2[1]
+            
+            # Need to translate x,y a bit to be accurate according to camera
+            if painter.H_coord is not None:
+                # Translate the coordinates so they're similar. see coordinate_calibration
+                sim_coords = np.array([x, y, 1.])
+                real_coords = painter.H_coord.dot(sim_coords)
+                x, y = real_coords[0]/real_coords[2], real_coords[1]/real_coords[2]
+            plt.scatter(x,y)
+            painter.move_to(x, y, z, method='direct', speed=0.03)
+            time.sleep(0.02)
+        # p0 = p3
+    # plt.show()
+    # painter.move_to(p3[0], p3[1], painter.Z_CANVAS + 0.02, speed=0.2)
+    # painter.hover_above(p3[0], p3[1], painter.Z_CANVAS)
+    painter.move_to(p2[0], p2[1], painter.Z_CANVAS + 0.02, speed=0.2)
+    painter.hover_above(p2[0], p2[1], painter.Z_CANVAS)
 
 class Stroke(object):
     '''
@@ -362,3 +469,48 @@ def get_base_strokes():
                 #     ]))
     print(len(strokes))
     return strokes
+
+def simple_parameterization_to_real(stroke_length, bend, z):
+    xs = (np.arange(4)/3.) * stroke_length
+
+    stroke = Stroke(trajectory=[
+        [xs[0], 0, .2],
+        [xs[1], bend, z],
+        [xs[2], bend, z],
+        [xs[3], 0, .2],
+    ])
+    return stroke
+
+
+def get_random_stroke(max_length=0.05, min_length=0.01):
+    stroke_length = np.random.rand(1)[0]*(max_length-min_length) + min_length
+    
+    bend = np.random.rand(1)[0]*.04 - .02 
+    bend = min(bend, stroke_length) if bend > 0 else max(bend, -1*stroke_length)
+    
+    z = np.random.rand(1)[0]
+
+    return simple_parameterization_to_real(stroke_length, bend, z)
+
+# def get_random_stroke(max_length=0.05, min_length=0.015):
+#     stroke_length = np.random.rand(1)*(max_length-min_length) + min_length
+#     xs = (np.arange(4)/3.) * stroke_length
+
+#     y0 = 0
+#     y1_2 = np.random.rand(2)*.04 - .02 
+#     y1, y2 = y1_2[0], y1_2[1]
+#     y1 = min(y1, stroke_length) if y1 > 0 else max(y1, -1*stroke_length)
+#     y2 = min(y2, stroke_length) if y2 > 0 else max(y2, -1*stroke_length)
+#     y3 = 0 # end at zero cuz otherwise it's just a rotated stroke
+
+#     # zs = np.random.rand(4)
+#     z0, z3 = np.random.rand(1)[0], np.random.rand(1)[0]
+#     z1, z2 = z0 + ((z3-z0)/3), z3 - ((z3-z0)/3)
+
+#     stroke = Stroke(trajectory=[
+#         [xs[0], y0, z0],
+#         [xs[1], y1_2[0], z1],
+#         [xs[2], y1_2[1], z2],
+#         [xs[3], y3, z3],
+#     ])
+#     return stroke

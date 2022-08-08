@@ -31,7 +31,7 @@ class Options(object):
 
         # X,Y of canvas wrt to robot center (global coordinates)
         # self.CANVAS_POSITION = (0,.5) 
-        self.CANVAS_POSITION = (0, .5-.045)
+        self.CANVAS_POSITION = (0, .5-.09)
 
         """ How many times in a row can you paint with the same color before needing more paint """
         self.GET_PAINT_FREQ = 3
@@ -52,7 +52,11 @@ class Options(object):
 
     def initialize(self, parser):
         parser.add_argument('--use_cache', action='store_true')
+        parser.add_argument('--dont_plan', action='store_true', help='Use saved plan from last run')
+        parser.add_argument('--discrete', action='store_true')
         parser.add_argument('--diffvg', action='store_true')
+        parser.add_argument('--max_height', default=256, type=int, help='How much to downscale canvas for simulated environment')
+        parser.add_argument('--just_fine', action='store_true', help="Only plan for smallest strokes")
         parser.add_argument('--use_cached_colors', action='store_true')
         parser.add_argument('--n_colors', default=6, type=int, help='Number of colors of paint to use')
         parser.add_argument("--file", type=str,

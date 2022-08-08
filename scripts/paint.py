@@ -17,7 +17,7 @@ import datetime
 from paint_utils import *
 from painter import Painter
 from options import Options
-from paint_planner import paint_planner_new
+from paint_planner import paint_planner_new, paint_planner_diffvg
 
 from tensorboard import TensorBoard
 date_and_time = datetime.datetime.now()
@@ -32,6 +32,8 @@ if __name__ == '__main__':
     painter = Painter(opt, robot=None if opt.simulate else "sawyer", 
         use_cache=opt.use_cache, writer=writer)
 
+    
+
     if not opt.simulate: painter.robot.display_frida()
 
     # painter.paint_continuous_stroke_library()
@@ -44,7 +46,7 @@ if __name__ == '__main__':
     writer.add_image('target/real', target, 0)
 
 
-    colors, labels = get_colors(cv2.resize(target, (256, 256)), n_colors=opt.n_colors)
+    colors, labels = get_colors(cv2.resize(target, (128, 128)), n_colors=opt.n_colors)
     all_colors = save_colors(colors)
     writer.add_image('paint_colors/should_be', all_colors/255., 0)
     # with open(os.path.join(painter.opt.cache_dir, 'color_labels.npy'), 'wb') as f:
@@ -60,7 +62,10 @@ if __name__ == '__main__':
     # if opt.simulate:
     #     colors += np.random.randn(*colors.shape)*10
     colors = np.clip(colors, a_min=20, a_max=220)
-    paint_planner_new(painter, target, colors, labels)
+    if opt.diffvg:
+        paint_planner_diffvg(painter, target, colors, labels)
+    else:
+        paint_planner_new(painter, target, colors, labels)
 
 
     painter.to_neutral()
