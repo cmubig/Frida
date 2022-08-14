@@ -31,7 +31,7 @@ class Options(object):
 
         # X,Y of canvas wrt to robot center (global coordinates)
         # self.CANVAS_POSITION = (0,.5) 
-        self.CANVAS_POSITION = (0, .5-.09)
+        self.CANVAS_POSITION = (0, .5-.04)
 
         """ How many times in a row can you paint with the same color before needing more paint """
         self.GET_PAINT_FREQ = 3
@@ -70,6 +70,11 @@ class Options(object):
             default='./log', help='Where to write tensorboard log to.')
         parser.add_argument("--global_it", type=int,
             default=0, help='Picking up where it left off.')
+
+
+        parser.add_argument('--adaptive', action='store_true')
+        parser.add_argument('--generate_whole_plan', action='store_true')
+        parser.add_argument('--strokes_before_adapting', type=int, default=25)
 
         # parser.add_argument('--type', default='cubic_bezier', type=str, help='Type of instructions: [cubic_bezier | bezier]')
         # parser.add_argument('--continue_ind', default=0, type=int, help='Instruction to start from. Default 0.')
