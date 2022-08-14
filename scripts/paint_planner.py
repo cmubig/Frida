@@ -136,7 +136,7 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
 
     target = discretize_with_labels(colors, labels)
 
-    for it in tqdm(range(1)): # how many times to go visit planning file
+    for it in tqdm(range(100 if painter.opt.adaptive else 1)): # how many times to go visit planning file
         canvas_before = canvas_after 
 
         # Save data that the python3 file needs
@@ -144,7 +144,8 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
 
         # Plan the new strokes with SawyerPainter/scripts/plan_all_strokes.py
         if not painter.opt.dont_plan:
-            exit_code = subprocess.call(['python3', '/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/plan_all_strokes.py']+sys.argv[1:]+['--global_it', str(global_it)])
+            add_adapt = ['--generate_whole_plan'] if painter.opt.adaptive and it==0 else []
+            exit_code = subprocess.call(['python3', '/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/plan_all_strokes.py']+sys.argv[1:]+['--global_it', str(global_it)]+add_adapt)
             if exit_code != 0:
                 print('exit code', exit_code)
                 return
@@ -158,6 +159,8 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
             else:
                 instructions = [parse_csv_line_continuous(line, painter, colors) for line in fp.readlines()] 
             #max_instructions = 40
+            if painter.opt.adaptive:
+                instructions = instructions[:painter.opt.strokes_before_adapting]
             for instruction in tqdm(instructions[:]):
                 canvas_before = canvas_after
                 if painter.opt.discrete:
@@ -187,7 +190,8 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
                     if dark_to_light and curr_color != -1:
                         painter.clean_paint_brush() # Really clean this thing
                         painter.clean_paint_brush()
-                        show_img(target/255., title="About to start painting with a lighter color")
+                        if not painter.opt.simulate:
+                            show_img(target/255., title="About to start painting with a lighter color")
                     painter.clean_paint_brush()
                     painter.clean_paint_brush()
                     curr_color = color_ind
@@ -234,11 +238,15 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
                 global_it += 1
                 consecutive_paints += 1
 
+                # if painter.opt.adaptive and k >= len(instructions):
+                #     break # all done
 
                 # if global_it % 100 == 0:
                 #     # to_gif(all_canvases)
                 #     to_video(real_canvases, fn='real_canvases.mp4')
                 #     to_video(sim_canvases, fn='sim_canvases.mp4')
+    painter.clean_paint_brush()
+    painter.clean_paint_brush()
     to_video(real_canvases, fn='/home/frida/Videos/frida/real_canvases{}.mp4'.format(str(time.time())))
     to_video(sim_canvases, fn='/home/frida/Videos/frida/sim_canvases{}.mp4'.format(str(time.time())))
 

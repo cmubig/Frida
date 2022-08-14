@@ -4,14 +4,24 @@ import torchgeometry
 import torchvision.transforms as T
 import warnings
 import numpy as np
+import os
+
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
+from options import Options 
 from continuous_brush_model import StrokeParametersToImage, special_sigmoid
 
+opt = Options()
+opt.gather_options()
 
-strokes = np.load('/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/extended_stroke_library_intensities.npy') 
-
-h, w = strokes.shape[1], strokes.shape[2]
+# strokes = np.load('/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/extended_stroke_library_intensities.npy') 
+stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
+h, w = stroke_shape[0], stroke_shape[1]
+print('stroke_shape', stroke_shape)
+if h != opt.max_height:
+    w = int(opt.max_height/h*w)
+    h = opt.max_height
+print(h,w)
 h_og, w_og = h, w
 
 # Crop
@@ -22,9 +32,11 @@ pad_for_full = T.Pad((ws, hs, w_og-we, h_og-he))
 
 param2img = StrokeParametersToImage(int(.6*h - .4*h), int(0.75*w - 0.45*w))
 param2img.load_state_dict(torch.load(
-    '/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/param2img.pt'))
+    os.path.join(opt.cache_dir, 'param2img.pt')))
 param2img.eval()
 param2img.to(device)
+
+# def 
 
 cos = torch.cos
 sin = torch.sin
@@ -48,18 +60,43 @@ def rigid_body_transform(a, xt, yt, anchor_x, anchor_y):
 class RigidBodyTransformation(nn.Module):
     def __init__(self, a, xt, yt):
         super(RigidBodyTransformation, self).__init__()
-        weights = torch.zeros(3)
-        weights[0] = a
-        weights[1] = xt
-        weights[2] = yt
-        weights.requires_grad = True
-        self.weights = nn.Parameter(weights)
+        # weights = torch.zeros(3)
+        # weights[0] = a
+        # weights[1] = xt
+        # weights[2] = yt
+        # weights.requires_grad = True
+        # self.weights = nn.Parameter(weights)
+
+        # t = torch.ones(1)
+        # t[0] = xt
+        # t.requires_grad = True
+        # self.xt = nn.Parameter(t)
+
+        # t = torch.ones(1)
+        # t[0] = yt
+        # t.requires_grad = True
+        # self.yt = nn.Parameter(t)
+
+
+        # t = torch.ones(1)
+        # t[0] = a
+        # t.requires_grad = True
+        # self.a = nn.Parameter(t)
+
+        # self.xt.requires_grad = True
+        # self.yt.requires_grad = True
+        # self.a.requires_grad = True
+
+        self.xt = nn.Parameter(torch.ones(1)*xt)
+        self.yt = nn.Parameter(torch.ones(1)*yt)
+        self.a = nn.Parameter(torch.ones(1)*a)
 
     def forward(self, x):
         h, w = x.shape[2], x.shape[3]
         anchor_x, anchor_y = w/2, h/2
 
-        M = rigid_body_transform(self.weights[0], self.weights[1]*(w/2), self.weights[2]*(h/2), anchor_x, anchor_y)
+        # M = rigid_body_transform(self.weights[0], self.weights[1]*(w/2), self.weights[2]*(h/2), anchor_x, anchor_y)
+        M = rigid_body_transform(self.a[0], self.xt[0]*(w/2), self.yt[0]*(h/2), anchor_x, anchor_y)
         with warnings.catch_warnings(): # suppress annoing torchgeometry warning
             warnings.simplefilter("ignore")
             return torchgeometry.warp_perspective(x, M, dsize=(h,w))
@@ -71,7 +108,7 @@ class BrushStroke(nn.Module):
                 a=None, xt=None, yt=None):
         super(BrushStroke, self).__init__()
 
-        if color is None: color=torch.rand(3)
+        if color is None: color=torch.rand(3).to(device)
         if a is None: a=(torch.rand(1)*2-1)*3.14
         if xt is None: xt=(torch.rand(1)*2-1)
         if yt is None: yt=(torch.rand(1)*2-1)
@@ -87,7 +124,7 @@ class BrushStroke(nn.Module):
         #self.stroke_ind = stroke_ind
         self.stroke_length = stroke_length
         self.stroke_z = stroke_z
-        self.stroke_bend = stroke_bend 
+        self.stroke_bend = stroke_bend
 
         self.stroke_length.requires_grad = True
         self.stroke_z.requires_grad = True
@@ -159,7 +196,9 @@ class BrushStroke(nn.Module):
 
             stroke.stroke_z.data.clamp_(0.1,1.0)
 
-            stroke.transformation.weights[1:3].data.clamp_(-1.,1.)
+            # stroke.transformation.weights[1:3].data.clamp_(-1.,1.)
+            stroke.transformation.xt.data.clamp_(-1.,1.)
+            stroke.transformation.yt.data.clamp_(-1.,1.)
 
 class Painting(nn.Module):
     def __init__(self, n_strokes, background_img=None, brush_strokes=None, unique_strokes=None):
@@ -179,6 +218,32 @@ class Painting(nn.Module):
         else:
             self.brush_strokes = nn.ModuleList(brush_strokes)
 
+    def get_optimizers(self, multiplier=1.0):
+        xt = []
+        yt = []
+        a = []
+        length = []
+        z = []
+        bend = []
+        color = []
+        
+        for n, p in self.named_parameters():
+            if "xt" in n.split('.')[-1]: xt.append(p)
+            if "yt" in n.split('.')[-1]: yt.append(p)
+            if "a" in n.split('.')[-1]: a.append(p)
+            if "stroke_length" in n.split('.')[-1]: length.append(p)
+            if "stroke_z" in n.split('.')[-1]: z.append(p)
+            if "stroke_bend" in n.split('.')[-1]: bend.append(p)
+            if "color_transform" in n.split('.')[-1]: color.append(p)
+        
+        position_opt = torch.optim.RMSprop(xt + yt, lr=5e-3*multiplier)
+        rotation_opt = torch.optim.RMSprop(a, lr=1e-2*multiplier)
+        color_opt = torch.optim.RMSprop(color, lr=5e-3*multiplier)
+        bend_opt = torch.optim.RMSprop(bend, lr=3e-3*multiplier)
+        length_opt = torch.optim.RMSprop(length, lr=1e-2*multiplier)
+        thickness_opt = torch.optim.RMSprop(z, lr=1e-2*multiplier)
+
+        return position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt
 
 
     def forward(self, strokes, use_alpha=True):
@@ -207,9 +272,12 @@ class Painting(nn.Module):
         csv = ''
         for bs in self.brush_strokes:
             # Translation in proportions from top left
-            x = str((bs.transformation.weights[1].detach().cpu().item()+1)/2)
-            y = str((bs.transformation.weights[2].detach().cpu().item()+1)/2)
-            r = str(bs.transformation.weights[0].detach().cpu().item())
+            # x = str((bs.transformation.weights[1].detach().cpu().item()+1)/2)
+            # y = str((bs.transformation.weights[2].detach().cpu().item()+1)/2)
+            # r = str(bs.transformation.weights[0].detach().cpu().item())
+            x = str((bs.transformation.xt[0].detach().cpu().item()+1)/2)
+            y = str((bs.transformation.yt[0].detach().cpu().item()+1)/2)
+            r = str(bs.transformation.a[0].detach().cpu().item())
             # stroke_ind = str(bs.stroke_ind)
             length = str(bs.stroke_length.detach().cpu().item())
             thickness = str(bs.stroke_z.detach().cpu().item())

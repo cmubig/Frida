@@ -357,21 +357,26 @@ def get_style_stuff(style):
     #print('style', style.min(), style.max())
     # Extract style features from style image
     feat_style = None
+    # print('style', normalize(style).min().item(), normalize(style).max().item(),
+    #     normalize(style).mean().item(), normalize(style).std().item())
     for i in range(5):
         with torch.no_grad():
         # r is region of interest (mask)
-            feat_e = extractor.forward_samples_hypercolumn(style, samps=1000)
+            feat_e = extractor.forward_samples_hypercolumn(normalize(style), samps=1000)
             feat_style = feat_e if feat_style is None else torch.cat((feat_style, feat_e), dim=2)
     return extractor, feat_style
 
 extractor, feat_style = None, None
+normalize = transforms.Compose([#transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
 def compute_style_loss(canvas, target, use_cache=True):
     global extractor, feat_style
     if not use_cache or extractor is None:
         extractor, feat_style = get_style_stuff(target)
 
-    #print('canvas', canvas.min(), canvas.max())
-    feat_content = extractor(canvas)
+    # print('canvas', normalize(canvas).min().item(), normalize(canvas).max().item(), normalize(canvas).mean().item(), normalize(canvas).std().item())
+    feat_content = extractor(normalize(canvas))
     xx, xy = sample_indices(feat_content[0], feat_style) # 0 to sample over first layer extracted
     np.random.shuffle(xx)
     np.random.shuffle(xy)

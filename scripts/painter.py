@@ -52,6 +52,10 @@ class Painter():
         '''
         self.opt = opt # Options object
 
+        # Save the first neutral join positions. This will let us get back to 
+        # a clean state for neutral each time
+        self.og_neutral = None
+
         if not opt.simulate:
             import rospy
 
@@ -69,7 +73,9 @@ class Painter():
         self.seed_position = None
         self.H_coord = None # Translate coordinates based on faulty camera location
 
-        # self.to_neutral()
+        p = canvas_to_global_coordinates(0, 0.5, self.opt.INIT_TABLE_Z, self.opt)
+        self.move_to(p[0], p[1], self.opt.INIT_TABLE_Z, speed=0.2)
+        self.to_neutral()
 
         # Set how high the table is wrt the brush
         if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, "cached_params.pkl")):
@@ -95,37 +101,16 @@ class Painter():
                 pickle.dump(params, f)
             self.to_neutral()
 
-        # self._move(-.5,.5,self.Z_CANVAS,  speed=0.1)
-        # try:
-        #     input('Need to create stroke library. Press enter to start.')
-        # except SyntaxError:
-        #     pass
-        # self._move(.5,.5,self.Z_CANVAS,  speed=0.1)
-        # try:
-        #     input('Need to create stroke library. Press enter to start.')
-        # except SyntaxError:
-        #     pass
-
-        # self.to_neutral()
-        # self._move(0,.35,self.Z_CANVAS,  speed=0.1)
-        # try:
-        #     input('Need to create stroke library. Press enter to start.')
-        # except SyntaxError:
-        #     pass
-        # self.to_neutral()
-        # self._move(0,.8,self.Z_CANVAS,  speed=0.1)
-        # try:
-        #     input('Need to create stroke library. Press enter to start.')
-        # except SyntaxError:
-        #     pass
 
         self.Z_RANGE = np.abs(self.Z_MAX_CANVAS - self.Z_CANVAS)
 
         self.WATER_POSITION = (-.4,.58,self.Z_CANVAS)
-        self.RAG_POSTITION = (-.4,.41,self.Z_CANVAS)
+        self.RAG_POSTITION = (-.42,.41,self.Z_CANVAS)
 
         self.PALLETTE_POSITION = (-.3,.47,self.Z_CANVAS- 0.5*self.Z_RANGE)
         self.PAINT_DIFFERENCE = 0.03976
+
+        # self.calibrate_robot_tilt()
 
         # Setup Camera
         if not self.opt.simulate:
@@ -161,18 +146,26 @@ class Painter():
         else:
             if not os.path.exists(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy')) or not use_cache:
                 if not opt.simulate:
+                    try:
+                        input('Need to create stroke library. Press enter to start.')
+                    except SyntaxError:
+                        pass
                     self.paint_extended_stroke_library()
-            if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
-                self.create_continuous_stroke_model()
+            #if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
+            self.create_continuous_stroke_model()
 
         # export the processed strokes for the python3 code
         from export_strokes import export_strokes
         export_strokes(self.opt)
 
 
-    def to_neutral(self):
+    def to_neutral(self, speed=0.4):
         # Initial spot
-        self._move(0.2,0.5,self.opt.INIT_TABLE_Z+0.05, timeout=20, method="direct", speed=0.4)
+        if self.og_neutral is None:
+            self.og_neutral = self._move(0.2,0.5,self.opt.INIT_TABLE_Z+0.05, timeout=20, method="direct", speed=speed)
+        else:
+            self.robot.move_to_joint_positions(self.og_neutral, timeout=20, speed=speed)
+            self.seed_position = self.og_neutral
 
     def _move(self, x, y, z, timeout=20, method='direct', step_size=.02, speed=0.1):
         if self.opt.simulate: return
@@ -200,6 +193,7 @@ class Painter():
                     self.robot.move_to_joint_positions(pos, timeout=timeout, speed=speed)
                 except Exception as e:
                     print("error moving robot: ", e)
+                    self.seed_position = None
         elif method == 'curved':
             # TODO
             pass
@@ -207,9 +201,14 @@ class Painter():
             # Direct
             pos = self.robot.inverse_kinematics([x, y, z], q, seed_position=self.seed_position)
             self.seed_position = pos
-            self.robot.move_to_joint_positions(pos, timeout=timeout, speed=speed)
+            try:
+                self.robot.move_to_joint_positions(pos, timeout=timeout, speed=speed)
+            except Exception as e:
+                print("error moving robot: ", e)
+                self.seed_position = None
 
         self.curr_position = [x, y, z]
+        return pos
 
     def hover_above(self, x,y,z, method='direct'):
         self._move(x,y,z+self.opt.HOVER_FACTOR, method=method, speed=0.4)
@@ -239,6 +238,7 @@ class Painter():
 
     def clean_paint_brush(self):
         if self.opt.simulate: return
+        self.move_to(self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]+0.09, speed=0.3)
         self.dip_brush_in_water()
         self.rub_brush_on_rag()
 
@@ -374,6 +374,32 @@ class Painter():
                     
                     self.move_to(curr_x, curr_y,curr_z, method='direct')
 
+    def calibrate_robot_tilt(self):
+
+        while(True):
+            self._move(-.5,.5,self.Z_CANVAS,  speed=0.05)
+            try:
+                input('press enter to move to next position')
+            except SyntaxError:
+                pass
+            self._move(.5,.5,self.Z_CANVAS,  speed=0.05)
+            try:
+                input('press enter to move to next position')
+            except SyntaxError:
+                pass
+
+            self.to_neutral(speed=0.1)
+            self._move(0,.35,self.Z_CANVAS,  speed=0.05)
+            try:
+                input('press enter to move to next position')
+            except SyntaxError:
+                pass
+            self.to_neutral(speed=0.1)
+            self._move(0,.8,self.Z_CANVAS,  speed=0.05)
+            try:
+                input('press enter to move to next position')
+            except SyntaxError:
+                pass
 
     def coordinate_calibration(self, debug=True, use_cache=False):
         import matplotlib.pyplot as plt
@@ -607,7 +633,7 @@ class Painter():
                 j+=1
                 prev_canvas = canvas
 
-    def paint_extended_stroke_library(self, num_papers=3):
+    def paint_extended_stroke_library(self, num_papers=4):
         from scipy.ndimage import median_filter
         w = self.opt.CANVAS_WIDTH_PIX
         h = self.opt.CANVAS_HEIGHT_PIX
@@ -713,6 +739,8 @@ class Painter():
                         intensities = np.stack(np.stack(stroke_intensities, axis=0), axis=0)
                         intensities = (intensities * 255).astype(np.uint8)
                         np.save(f, intensities)
+                    with open(os.path.join(self.opt.cache_dir, 'stroke_size.npy'), 'wb') as f:
+                        np.save(f, np.array(stroke_intensities[0].shape))
 
             if paper_it != num_papers-1:
                 try:

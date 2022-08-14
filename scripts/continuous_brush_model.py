@@ -31,8 +31,11 @@ if not torch.cuda.is_available():
     print('Using CPU..... good luck')
 
 def special_sigmoid(x):
-    return 1/(1+torch.exp(-1.*((x*2-1)+0.5) / 0.05))
+    # return 1/(1+torch.exp(-1.*((x*2-1)+0.2) / 0.05))
     # return x
+
+    # x[x < 0.5] = 1/(1+torch.exp(-1.*((x[x < 0.5]*2-1)+0.2) / 0.05))
+    return x
 
 def get_n_params(model):
     pp = 0
@@ -108,7 +111,7 @@ def log_all_permutations(model, writer):
 
 
 def log_images(imgs, labels, label, writer, step=0):
-    fig, ax = plt.subplots(1, len(imgs), figsize=(2*len(imgs),1.5))
+    fig, ax = plt.subplots(1, len(imgs), figsize=(5*len(imgs),5))
 
     for i in range(len(imgs)):
         ax[i].imshow(imgs[i], cmap='gray')
@@ -200,8 +203,8 @@ if __name__ == '__main__':
     trajectories = trajectories[rand_ind]
 
     # Discrete. Makes the model push towards making bolder strokes
-    strokes[strokes >= 0.1] = 1.
-    strokes[strokes < 0.1] = 0.
+    # strokes[strokes >= 0.5] = 1.
+    # strokes[strokes < 0.5] = 0.
 
     h, w = strokes[0].shape[0], strokes[0].shape[1]
     h_og, w_og = h, w
@@ -252,16 +255,16 @@ if __name__ == '__main__':
         with torch.no_grad():
             trans.eval()
             pred_strokes_val = trans(val_trajectories)
-            if it % 50 == 0:
-                for val_ind in range(min(n_view,len(val_strokes))):
-                    log_images([process_img(val_strokes[val_ind]),
-                        process_img(pred_strokes_val[val_ind])], 
-                        ['real','sim'], 'images_stroke_modeling/val_{}_stroke'.format(val_ind), opt.writer, step=it)
-                pred_strokes_train = trans(train_trajectories)
-                for train_ind in range(min(n_view,len(train_strokes))):
-                    log_images([process_img(train_strokes[train_ind]),
-                        process_img(pred_strokes_train[train_ind])], 
-                        ['real','sim'], 'images_stroke_modeling/train_{}_stroke'.format(train_ind), opt.writer, step=it)
+            # if it % 50 == 0:
+            #     for val_ind in range(min(n_view,len(val_strokes))):
+            #         log_images([process_img(val_strokes[val_ind]),
+            #             process_img(pred_strokes_val[val_ind])], 
+            #             ['real','sim'], 'images_stroke_modeling/val_{}_stroke'.format(val_ind), opt.writer, step=it)
+            #     pred_strokes_train = trans(train_trajectories)
+            #     for train_ind in range(min(n_view,len(train_strokes))):
+            #         log_images([process_img(train_strokes[train_ind]),
+            #             process_img(pred_strokes_train[train_ind])], 
+            #             ['real','sim'], 'images_stroke_modeling/train_{}_stroke'.format(train_ind), opt.writer, step=it)
 
             loss = nn.MSELoss()(pred_strokes_val, val_strokes)
             writer.add_scalar('loss/val_loss_stroke_model', loss.item(), it)

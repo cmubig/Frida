@@ -93,6 +93,12 @@ class Sawyer(Robot, object):
         rospy.on_shutdown(clean_shutdown)
         self.debug("Excecuting... ")
 
+        # neutral_pose = rospy.get_param("named_poses/{0}/poses/neutral".format(self.name))
+        # angles = dict(list(zip(self.joint_names(), neutral_pose)))
+        # self.set_joint_position_speed(0.1)
+        # self.move_to_joint_positions(angles, timeout)
+        intera_interface.Limb(synchronous_pub=True).move_to_neutral(speed=.2)
+        
         return rs
 
     def good_night_robot(self):
@@ -245,6 +251,11 @@ class Sawyer(Robot, object):
         return:
             dict{'right_j0',float} - dictionary of joint to joint angle
         """
+
+        ###########################
+        # seed_position = None # Trying to fix bug where the robot gets stuck in weird positions
+        ######################
+
         import rospy
         from intera_core_msgs.srv import (
             SolvePositionIK,
@@ -359,18 +370,18 @@ class Sawyer(Robot, object):
             dict{'right_j0',float} - dictionary of joint to joint angle
         """
         # rate = rospy.Rate(100)
-        try:
-            # print('Positions:', position)
-            self.limb.set_joint_position_speed(speed=speed)
-            self.limb.move_to_joint_positions(position, timeout=timeout,
-                                         threshold=0.008726646)
-            self.limb.set_joint_position_speed(speed=.1)
-            # rate.sleep()
-        except Exception as e:
-            print('Exception while moving robot:\n', e)
-            import traceback
-            import sys
-            print(traceback.format_exc())
+        #try:
+        # print('Positions:', position)
+        self.limb.set_joint_position_speed(speed=speed)
+        self.limb.move_to_joint_positions(position, timeout=timeout,
+                                     threshold=0.008726646)
+        self.limb.set_joint_position_speed(speed=.1)
+        # rate.sleep()
+        # except Exception as e:
+        #     print('Exception while moving robot:\n', e)
+        #     import traceback
+        #     import sys
+        #     print(traceback.format_exc())
 
 
     def display_image(self, file_path):

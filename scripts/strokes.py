@@ -154,8 +154,9 @@ class Stroke(object):
         z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
 
         path = self.get_rotated_trajectory(rotation)
-        painter.hover_above(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS)
-        painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.02, speed=0.2)
+        # painter.hover_above(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS)
+        painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.04, speed=0.4)
+        painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.01, speed=0.1)
         p0 = path[0,0], path[0,1], path[0,2]
         p3 = None
 
@@ -187,8 +188,9 @@ class Stroke(object):
                 painter.move_to(x_start+x, y_start+y, z, method='direct', speed=0.03)
                 time.sleep(0.02)
             p0 = p3
-        painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.02, speed=0.2)
-        painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
+        painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.01, speed=0.2)
+        painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.04, speed=0.3)
+        # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
 
     def get_rotated_trajectory(self, rotation):
         # Rotation in radians
