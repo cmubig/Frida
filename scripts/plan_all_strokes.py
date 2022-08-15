@@ -1145,7 +1145,8 @@ if __name__ == '__main__':
     global h, w, colors, target, current_canvas
     stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
     h, w = stroke_shape[0], stroke_shape[1]
-    h, w = int(h/4), int(w/4)
+    h = int(opt.max_height)
+    w = int((h/opt.max_height)*w)
     print('hw', h, w)
 
     

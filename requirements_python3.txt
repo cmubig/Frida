@@ -1,4 +1,5 @@
-torch==1.7.1
+torch==1.9.1
+torchvision==0.10.1
 torchgeometry
 torch-tools
 lpips
