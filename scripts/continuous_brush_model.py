@@ -34,7 +34,7 @@ def special_sigmoid(x):
     # return 1/(1+torch.exp(-1.*((x*2-1)+0.2) / 0.05))
     # return x
 
-    # x[x < 0.5] = 1/(1+torch.exp(-1.*((x[x < 0.5]*2-1)+0.2) / 0.05))
+    x[x < 0.5] = 1/(1+torch.exp(-1.*((x[x < 0.5]*2-1)+0.2) / 0.05))
     return x
 
 def get_n_params(model):
