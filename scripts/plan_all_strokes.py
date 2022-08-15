@@ -607,34 +607,32 @@ def segment_strokes_by_size(strokes, n_segments):
 
 def plan_all_strokes_grid_continuous(opt, optim_iter=150, num_strokes_x=20, num_strokes_y=20, 
             x_y_attempts=1, num_passes=1):
-    global strokes_small, strokes_full, target
-    strokes_full = load_brush_strokes(opt, scale_factor=1)
-    # print(strokes_full[0].shape)
-    scale_factor = strokes_full[0].shape[0] / opt.max_height
-    strokes_small = load_brush_strokes(opt, scale_factor=scale_factor)
+    # global strokes_small, strokes_full, target
+    # strokes_full = load_brush_strokes(opt, scale_factor=1)
+    # # print(strokes_full[0].shape)
+    # scale_factor = strokes_full[0].shape[0] / opt.max_height
+    # strokes_small = load_brush_strokes(opt, scale_factor=scale_factor)
     
-    h, w = strokes_small[0].shape[0], strokes_small[0].shape[1]
+    # h, w = strokes_small[0].shape[0], strokes_small[0].shape[1]
 
-    # target = load_img(opt.target,
+    # # target = load_img(opt.target,
+    # #     h=strokes_small[0].shape[0], w=strokes_small[0].shape[1]).to(device)/255.
+    # target = load_img(os.path.join(opt.cache_dir, 'target_discrete.jpg'),
     #     h=strokes_small[0].shape[0], w=strokes_small[0].shape[1]).to(device)/255.
-    target = load_img(os.path.join(opt.cache_dir, 'target_discrete.jpg'),
-        h=strokes_small[0].shape[0], w=strokes_small[0].shape[1]).to(device)/255.
 
-    opt.writer.add_image('target/target', np.clip(target.detach().cpu().numpy()[0].transpose(1,2,0), a_min=0, a_max=1), local_it)
+    # opt.writer.add_image('target/target', np.clip(target.detach().cpu().numpy()[0].transpose(1,2,0), a_min=0, a_max=1), local_it)
 
-    # colors = get_colors(cv2.resize(cv2.imread(opt.target)[:,:,::-1], (256, 256)), n_colors=opt.n_colors)
-    with open(os.path.join(opt.cache_dir, 'colors.npy'), 'rb') as f:
-        colors = np.load(f)
-    colors = (torch.from_numpy(np.array(colors)) / 255.).to(device)
+    # # colors = get_colors(cv2.resize(cv2.imread(opt.target)[:,:,::-1], (256, 256)), n_colors=opt.n_colors)
+    # with open(os.path.join(opt.cache_dir, 'colors.npy'), 'rb') as f:
+    #     colors = np.load(f)
+    # colors = (torch.from_numpy(np.array(colors)) / 255.).to(device)
 
 
-    # Get the background of painting to be the current canvas
-    current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg')).to(device)/255.
-    painting = Painting(0, background_img=current_canvas, 
-        unique_strokes=len(strokes_small)).to(device)
-    for n, p in painting.named_parameters():
-        print(n)
-    layer_background = painting(strokes=strokes_small).clone()
+    # # Get the background of painting to be the current canvas
+    # current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg')).to(device)/255.
+    painting = Painting(0, background_img=current_canvas).to(device)
+
+    layer_background = painting(h,w).clone()
 
     total_strokes = []
 
@@ -642,14 +640,13 @@ def plan_all_strokes_grid_continuous(opt, optim_iter=150, num_strokes_x=20, num_
     for i in range(num_passes):
         if opt.just_fine and i != num_passes-1: continue
         canvas = layer_background
-        painting = Painting(0, background_img=canvas, 
-            unique_strokes=len(strokes_small)).to(device)
+        painting = Painting(0, background_img=canvas).to(device)
 
         layer_brush_strokes = []
 
         xys = [(x,y) for x in torch.linspace(-.99,.99,num_strokes_x) for y in torch.linspace(-.99,.99,num_strokes_y)]
         # xys = [(x,y) for x in torch.linspace(-.99,.99,num_strokes_x) for y in torch.linspace(-.99,0,num_strokes_y)]
-        xys = [(x,y) for x in torch.linspace(-.3,.75,num_strokes_x) for y in torch.linspace(-.3,.8,num_strokes_y)]
+        # xys = [(x,y) for x in torch.linspace(-.3,.75,num_strokes_x) for y in torch.linspace(-.3,.8,num_strokes_y)]
         
         # Sort the xy pairs by how dark the color is there
         intense_corr = [target[:,:3,int((y+1)/2*target.shape[2]), int((x+1)/2*target.shape[3])][0].sum() for x,y in xys]
@@ -672,9 +669,9 @@ def plan_all_strokes_grid_continuous(opt, optim_iter=150, num_strokes_x=20, num_
                 #     a=(np.random.randint(20)-10)/10*3.14,
                 #     color=color.detach().clone())
                 #     # color=colors[np.random.randint(len(colors))].clone()).to(device)
-                brush_stroke = BrushStroke(random.choice(strokes_small)).to(device)
+                brush_stroke = BrushStroke().to(device)
                         
-                single_stroke = brush_stroke(strokes_small)
+                single_stroke = brush_stroke(h,w)
                 # print(canvas.shape, single_stroke.shape)
                 # single_stroke[:,3][single_stroke[:,3] > 0.5] = 1. # opaque
                 canvas_candidate = canvas[:,:3] * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke[:,:3]
@@ -788,7 +785,7 @@ def plan_all_strokes_grid_continuous(opt, optim_iter=150, num_strokes_x=20, num_
             length_opt.zero_grad()
             thickness_opt.zero_grad()
 
-            p = painting(strokes=strokes_small, use_alpha=False)
+            p = painting(h,w, use_alpha=False)
             loss = 0
             # loss += loss_fcn(p, target,  use_clip_loss=True, use_style_loss=False)*0.25
             loss += loss_fcn(p, target,  use_clip_loss=False, use_style_loss=False)
@@ -822,7 +819,7 @@ def plan_all_strokes_grid_continuous(opt, optim_iter=150, num_strokes_x=20, num_
         painting = sort_brush_strokes_by_color(painting)
 
         total_strokes += [bs for bs in painting.brush_strokes]
-        layer_background = painting(strokes=strokes_small).detach().clone()
+        layer_background = painting(h,w).detach().clone()
 
         from paint_utils import to_video
         import time
