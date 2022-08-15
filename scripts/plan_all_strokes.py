@@ -1138,8 +1138,10 @@ if __name__ == '__main__':
         if '_planner' not in tensorboard_dir:
             tensorboard_dir += '_planner'
     except:
-        import time
-        tensorboard_dir = './painting/planner' + time.time()
+        import datetime
+        date_and_time = datetime.datetime.now()
+        run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
+        tensorboard_dir = 'painting/{}_planner'.format(run_name)
 
     writer = TensorBoard(tensorboard_dir)
     opt.writer = writer
