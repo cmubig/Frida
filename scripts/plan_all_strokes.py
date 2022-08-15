@@ -1131,12 +1131,15 @@ if __name__ == '__main__':
 
     # painting = calibrate(opt)
 
-
-    b = './painting'
-    all_subdirs = [os.path.join(b, d) for d in os.listdir(b) if os.path.isdir(os.path.join(b, d))]
-    tensorboard_dir = max(all_subdirs, key=os.path.getmtime) # most recent tensorboard dir is right
-    if '_planner' not in tensorboard_dir:
-        tensorboard_dir += '_planner'
+    try:
+        b = './painting'
+        all_subdirs = [os.path.join(b, d) for d in os.listdir(b) if os.path.isdir(os.path.join(b, d))]
+        tensorboard_dir = max(all_subdirs, key=os.path.getmtime) # most recent tensorboard dir is right
+        if '_planner' not in tensorboard_dir:
+            tensorboard_dir += '_planner'
+    except:
+        import time
+        tensorboard_dir = 'painting/planner' + time.time()
 
     writer = TensorBoard(tensorboard_dir)
     opt.writer = writer
