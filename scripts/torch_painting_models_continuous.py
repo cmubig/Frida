@@ -102,7 +102,7 @@ class RigidBodyTransformation(nn.Module):
             return torchgeometry.warp_perspective(x, M, dsize=(h,w))
 
 class BrushStroke(nn.Module):
-    def __init__(self, stroke_ind, 
+    def __init__(self, 
                 stroke_length=None, stroke_z=None, stroke_bend=None,
                 color=None, 
                 a=None, xt=None, yt=None):
@@ -121,7 +121,6 @@ class BrushStroke(nn.Module):
 
         self.transformation = RigidBodyTransformation(a, xt, yt)
         
-        #self.stroke_ind = stroke_ind
         self.stroke_length = stroke_length
         self.stroke_z = stroke_z
         self.stroke_bend = stroke_bend
@@ -136,7 +135,7 @@ class BrushStroke(nn.Module):
 
         self.color_transform = nn.Parameter(color)
 
-    def forward(self, strokes):
+    def forward(self, h, w):
         # Do rigid body transformation
         full_param = torch.zeros((1,12)).to(device)
         
@@ -161,7 +160,7 @@ class BrushStroke(nn.Module):
 
         # Pad 1 or two to make it fit
         # print('ffff', strokes[0].shape)
-        stroke = T.Resize((strokes[0].shape[0], strokes[0].shape[1]))(stroke)
+        stroke = T.Resize((h, w))(stroke)
 
         # x = self.transformation(strokes[self.stroke_ind].permute(2,0,1).unsqueeze(0))
         from plan_all_strokes import show_img
@@ -201,7 +200,7 @@ class BrushStroke(nn.Module):
             stroke.transformation.yt.data.clamp_(-1.,1.)
 
 class Painting(nn.Module):
-    def __init__(self, n_strokes, background_img=None, brush_strokes=None, unique_strokes=None):
+    def __init__(self, n_strokes, background_img=None, brush_strokes=None):
         # h, w are canvas height and width in pixels
         super(Painting, self).__init__()
         self.n_strokes = n_strokes
@@ -214,7 +213,7 @@ class Painting(nn.Module):
             self.background_img = torch.cat((self.background_img, t), dim=1)
 
         if brush_strokes is None:
-            self.brush_strokes = nn.ModuleList([BrushStroke(np.random.randint(unique_strokes)) for _ in range(n_strokes)])
+            self.brush_strokes = nn.ModuleList([BrushStroke() for _ in range(n_strokes)])
         else:
             self.brush_strokes = nn.ModuleList(brush_strokes)
 
@@ -246,18 +245,18 @@ class Painting(nn.Module):
         return position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt
 
 
-    def forward(self, strokes, use_alpha=True):
+    def forward(self, h, w, use_alpha=True, strokes=None):
         if self.background_img is None:
-            canvas = torch.ones((1,4,strokes[0].shape[0],strokes[0].shape[1])).to(device)
+            canvas = torch.ones((1,4,h,w)).to(device)
         else:
-            canvas = T.Resize(size=(strokes[0].shape[0],strokes[0].shape[1]))(self.background_img).detach()
+            canvas = T.Resize(size=(h,w))(self.background_img).detach()
 
         canvas[:,3] = 1 # alpha channel
 
         mostly_opaque = False#True
 
         for brush_stroke in self.brush_strokes:
-            single_stroke = brush_stroke(strokes=strokes)
+            single_stroke = brush_stroke(h,w)
 
             if mostly_opaque: single_stroke[:,3][single_stroke[:,3] > 0.5] = 1.
             
@@ -278,7 +277,6 @@ class Painting(nn.Module):
             x = str((bs.transformation.xt[0].detach().cpu().item()+1)/2)
             y = str((bs.transformation.yt[0].detach().cpu().item()+1)/2)
             r = str(bs.transformation.a[0].detach().cpu().item())
-            # stroke_ind = str(bs.stroke_ind)
             length = str(bs.stroke_length.detach().cpu().item())
             thickness = str(bs.stroke_z.detach().cpu().item())
             bend = str(bs.stroke_bend.detach().cpu().item())

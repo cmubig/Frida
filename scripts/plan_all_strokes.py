@@ -115,7 +115,6 @@ strokes_full = None#load_brush_strokes(scale_factor=1)
 
 
 writer = None
-target = None
 local_it = 0 
 
 def log_progress(painting, force_log=False):
@@ -123,13 +122,14 @@ def log_progress(painting, force_log=False):
     local_it +=1
     if (local_it %10==0) or force_log:
         with torch.no_grad():
-            np_painting = painting(strokes=strokes_small, use_alpha=False).detach().cpu().numpy()[0].transpose(1,2,0)
+            np_painting = painting(h,w, strokes=strokes_small, use_alpha=False).detach().cpu().numpy()[0].transpose(1,2,0)
             opt.writer.add_image('images/planasdfasdf', np.clip(np_painting, a_min=0, a_max=1), local_it)
-            if target is not None:
-                opt.writer.add_scalar('loss/plan_all_strokes_local', loss_fcn(painting(strokes=strokes_small), target).item(), local_it)
+            # if target is not None:
+            #     opt.writer.add_scalar('loss/plan_all_strokes_local', 
+            #         loss_fcn(painting(strokes=strokes_small), target).item(), local_it)
 
 def log_painting(painting, step, name='images/plan_all_strokes'):
-    np_painting = painting(strokes=strokes_small).detach().cpu().numpy()[0].transpose(1,2,0)
+    np_painting = painting(h,w, strokes=strokes_small).detach().cpu().numpy()[0].transpose(1,2,0)
     opt.writer.add_image(name, np.clip(np_painting, a_min=0, a_max=1), step)
 
 def sort_brush_strokes_by_color(painting, bin_size=3000):
@@ -864,44 +864,20 @@ def save_painting_strokes(painting, opt):
         if i % 5 == 0 or i == len(running_strokes)-1:
             opt.writer.add_image('images/individual_strokes', individual_strokes[i], i)
 
-def plan_all_strokes_text_continuous(opt, optim_iter=500, 
-        num_strokes=500, num_augs=50, num_passes=2):
-    global strokes_small, strokes_full, target
-    strokes_full = load_brush_strokes(opt, scale_factor=1)
-    # print(strokes_full[0].shape)
-    scale_factor = strokes_full[0].shape[0] / opt.max_height
-    strokes_small = load_brush_strokes(opt, scale_factor=scale_factor)
-
+def plan_all_strokes_text_continuous(opt, optim_iter=5000, 
+        num_strokes=300, num_augs=20, num_passes=2):
     with torch.no_grad():
         text_features = clip_model.encode_text(clip.tokenize(opt.prompt).to(device))
-    
-    target = load_img(opt.target,h=strokes_small[0].shape[0], w=strokes_small[0].shape[1]).to(device)/255.
 
-    colors = get_colors(cv2.resize(cv2.imread(opt.target)[:,:,::-1], (256, 256)), n_colors=opt.n_colors)
-    with open(os.path.join(opt.cache_dir, 'colors.npy'), 'rb') as f:
-        colors = np.load(f)
-    colors = (torch.from_numpy(np.array(colors)) / 255.).float().to(device)
-    # print(strokes_small[0].shape)
-
-
-    # Get the background of painting to be the current canvas
-    current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg')).to(device)/255.
-
-    current_canvas = current_canvas#*0 + 1.
-    painting = Painting(0, background_img=current_canvas, unique_strokes=len(strokes_small)).to(device)
-
-
+    painting = Painting(0, background_img=current_canvas).to(device)
 
     for i in range(num_passes):
         # Add a brush strokes
-        canvas = painting(strokes=strokes_small)
+        canvas = painting(h,w)
 
         gridded_brush_strokes = []
 
-        h, w = strokes_small[0].shape[0], strokes_small[0].shape[1]
-
         xys = [(x,y) for x in torch.linspace(-.99,.99,int(num_strokes**0.5)) for y in torch.linspace(-.99,.99,int(num_strokes**0.5))]
-
         
         random.shuffle(xys)
         for x,y in tqdm(xys):
@@ -912,14 +888,14 @@ def plan_all_strokes_text_continuous(opt, optim_iter=500,
             for x_y_attempt in range(1):
                 # Random brush stroke
                 color = target[:,:3,int((y+1)/2*target.shape[2]), int((x+1)/2*target.shape[3])][0]
-                brush_stroke = BrushStroke(np.random.randint(len(strokes_small)), 
+                brush_stroke = BrushStroke(
                     xt=x,
                     yt=y,
                     # color=color.detach().clone()
                     )
                     # color=colors[np.random.randint(len(colors))].clone()).to(device)
                         
-                single_stroke = brush_stroke(strokes_small)
+                single_stroke = brush_stroke(h,w)
                 # single_stroke[:,3][single_stroke[:,3] > 0.5] = 1. # opaque
                 canvas_candidate = canvas[:,:3] * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke[:,:3]
                 
@@ -952,7 +928,7 @@ def plan_all_strokes_text_continuous(opt, optim_iter=500,
         optim = torch.optim.RMSprop(painting.parameters(), lr=1e-3)
         for j in tqdm(range(30)):
             optim.zero_grad()
-            p = painting(strokes=strokes_small, use_alpha=False)
+            p = painting(h, w, use_alpha=False)
             loss = ((p[:,:3]-target[:,:3])**2).mean()
             loss.backward()
             optim.step()
@@ -980,11 +956,11 @@ def plan_all_strokes_text_continuous(opt, optim_iter=500,
             length_opt.zero_grad()
             thickness_opt.zero_grad()
 
-            p = painting(strokes=strokes_small)
+            p = painting(h,w, use_alpha=False)
             loss = 0
             loss += clip_text_loss(p, text_features, num_augs)
-            sl = compute_style_loss(p[:,:3], target) * .5
-            loss += sl
+            # sl = compute_style_loss(p[:,:3], target) * .5
+            # loss += sl
             loss.backward()
             # for bs in painting.brush_strokes:
             #     bs.color_transform.grad.data *= 0. # Don't change the color because CLIP sucks at color
@@ -1164,6 +1140,26 @@ if __name__ == '__main__':
 
     writer = TensorBoard(tensorboard_dir)
     opt.writer = writer
+
+
+    global h, w, colors, target, current_canvas
+    stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
+    h, w = stroke_shape[0], stroke_shape[1]
+    h, w = int(h/4), int(w/4)
+    print('hw', h, w)
+
+    
+    target = load_img(opt.target,h=h, w=w).to(device)/255.
+
+    colors = get_colors(cv2.resize(cv2.imread(opt.target)[:,:,::-1], (256, 256)), n_colors=opt.n_colors)
+    with open(os.path.join(opt.cache_dir, 'colors.npy'), 'rb') as f:
+        colors = np.load(f)
+    colors = (torch.from_numpy(np.array(colors)) / 255.).float().to(device)
+
+
+
+    # Get the background of painting to be the current canvas
+    current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg')).to(device)/255.
 
     if opt.adaptive:
         if opt.generate_whole_plan:

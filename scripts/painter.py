@@ -151,8 +151,8 @@ class Painter():
                     except SyntaxError:
                         pass
                     self.paint_extended_stroke_library()
-            #if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
-            self.create_continuous_stroke_model()
+            if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
+                self.create_continuous_stroke_model()
 
         # export the processed strokes for the python3 code
         from export_strokes import export_strokes
