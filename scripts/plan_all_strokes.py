@@ -865,7 +865,7 @@ def save_painting_strokes(painting, opt):
             opt.writer.add_image('images/individual_strokes', individual_strokes[i], i)
 
 def plan_all_strokes_text_continuous(opt, optim_iter=5000, 
-        num_strokes=300, num_augs=20, num_passes=2):
+        num_strokes=1000, num_augs=20, num_passes=2):
     with torch.no_grad():
         text_features = clip_model.encode_text(clip.tokenize(opt.prompt).to(device))
 
@@ -1148,8 +1148,8 @@ if __name__ == '__main__':
     global h, w, colors, target, current_canvas
     stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
     h, w = stroke_shape[0], stroke_shape[1]
+    w = int((opt.max_height/h)*w)
     h = int(opt.max_height)
-    w = int((h/opt.max_height)*w)
     print('hw', h, w)
 
     
@@ -1177,7 +1177,7 @@ if __name__ == '__main__':
             if opt.discrete:
                 painting = plan_all_strokes_text(opt)
             else:
-                painting = plan_all_strokes_text_continuous(opt)
+                painting = plan_all_strokes_text_continuous(opt, num_strokes=opt.num_strokes)
         else:
             if opt.discrete:
                 painting = plan_all_strokes_grid(opt)

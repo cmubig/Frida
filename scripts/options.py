@@ -72,6 +72,8 @@ class Options(object):
             default=0, help='Picking up where it left off.')
 
 
+        parser.add_argument('--num_strokes', type=int, default=400)
+
         parser.add_argument('--adaptive', action='store_true')
         parser.add_argument('--generate_whole_plan', action='store_true')
         parser.add_argument('--strokes_before_adapting', type=int, default=25)
