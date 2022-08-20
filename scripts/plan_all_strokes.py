@@ -120,7 +120,7 @@ local_it = 0
 def log_progress(painting, force_log=False):
     global local_it
     local_it +=1
-    if (local_it %10==0) or force_log:
+    if (local_it %5==0) or force_log:
         with torch.no_grad():
             np_painting = painting(h,w, strokes=strokes_small, use_alpha=False).detach().cpu().numpy()[0].transpose(1,2,0)
             opt.writer.add_image('images/planasdfasdf', np.clip(np_painting, a_min=0, a_max=1), local_it)
@@ -314,7 +314,6 @@ def plan_all_strokes_text(opt, optim_iter=1000, num_strokes=700, num_augs=80, nu
         colors = np.load(f)
     colors = (torch.from_numpy(np.array(colors)) / 255.).float().to(device)
     # print(strokes_small[0].shape)
-
 
     # Get the background of painting to be the current canvas
     current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg')).to(device)/255.
@@ -832,14 +831,14 @@ def plan_all_strokes_grid_continuous(opt, optim_iter=150, num_strokes_x=20, num_
 
 def save_painting_strokes(painting, opt):
     # brush_stroke = BrushStroke(random.choice(strokes_small)).to(device)
-    canvas = painting.background_img
+    canvas = transforms.Resize(size=(h,w))(painting.background_img)
 
     individual_strokes = torch.empty((len(painting.brush_strokes),canvas.shape[1], canvas.shape[2], canvas.shape[3]))
     running_strokes = torch.empty((len(painting.brush_strokes),canvas.shape[1], canvas.shape[2], canvas.shape[3]))
 
     with torch.no_grad():
         for i in range(len(painting.brush_strokes)):                
-            single_stroke = painting.brush_strokes[i](strokes_small)
+            single_stroke = painting.brush_strokes[i](h,w)
 
             canvas = canvas[:,:3] * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke[:,:3]
             
@@ -861,86 +860,196 @@ def save_painting_strokes(painting, opt):
         if i % 5 == 0 or i == len(running_strokes)-1:
             opt.writer.add_image('images/individual_strokes', individual_strokes[i], i)
 
-def plan_all_strokes_text_continuous(opt, optim_iter=5000, 
-        num_strokes=1000, num_augs=20, num_passes=2):
+# def plan_all_strokes_text_continuous(opt, optim_iter=5000, 
+#         num_strokes=1000, num_augs=20, num_passes=2):
+#     with torch.no_grad():
+#         text_features = clip_model.encode_text(clip.tokenize(opt.prompt).to(device))
+
+#     painting = Painting(0, background_img=current_canvas).to(device)
+
+#     for i in range(num_passes):
+#         # Add a brush strokes
+#         canvas = painting(h,w)
+
+#         gridded_brush_strokes = []
+
+#         xys = [(x,y) for x in torch.linspace(-.99,.99,int(num_strokes**0.5)) for y in torch.linspace(-.99,.99,int(num_strokes**0.5))]
+        
+#         random.shuffle(xys)
+#         for x,y in tqdm(xys):
+#             opt_params = { # Find the optimal parameters
+#                 'brush_stroke':None, 'canvas':None, 'loss':9999999, 'stroke_ind':None,
+#             }
+#             # solve for stroke type, color, and rotation
+#             for x_y_attempt in range(1):
+#                 # Random brush stroke
+#                 color = target[:,:3,int((y+1)/2*target.shape[2]), int((x+1)/2*target.shape[3])][0]
+#                 brush_stroke = BrushStroke(
+#                     xt=x,
+#                     yt=y,
+#                     # color=color.detach().clone()
+#                     )
+#                     # color=colors[np.random.randint(len(colors))].clone()).to(device)
+                        
+#                 single_stroke = brush_stroke(h,w)
+#                 # single_stroke[:,3][single_stroke[:,3] > 0.5] = 1. # opaque
+#                 canvas_candidate = canvas[:,:3] * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke[:,:3]
+                
+#                 with torch.no_grad():
+#                     #loss = loss_fcn(canvas_candidate, target,  use_clip_loss=False).item()
+#                     diff = torch.abs(canvas_candidate - target)
+#                     diff[diff>0.05] = 1.
+#                     loss = diff.mean()
+
+#                 #loss = loss_fcn(canvas_candidate, target, use_clip_loss=False)
+#                 if loss < opt_params['loss']:
+#                     opt_params['canvas'] = canvas_candidate
+#                     opt_params['loss'] = loss
+#                     opt_params['brush_stroke'] = brush_stroke
+#             canvas = opt_params['canvas']
+#             gridded_brush_strokes.append(opt_params['brush_stroke'])
+
+#             # painting = Painting(0, background_img=current_canvas, brush_strokes=gridded_brush_strokes).to(device)
+#             # log_progress(painting)
+#             if len(gridded_brush_strokes) % 50 == 0:
+#                 np_painting = canvas.detach().cpu().numpy()[0].transpose(1,2,0)
+#                 opt.writer.add_image('images/grid_add', np.clip(np_painting, a_min=0, a_max=1), len(gridded_brush_strokes))
+
+#         painting = Painting(0, background_img=current_canvas, 
+#             brush_strokes=[bs for bs in painting.brush_strokes] + gridded_brush_strokes).to(device)
+#         discretize_colors(painting, colors)
+#         painting = sort_brush_strokes_by_color(painting)
+
+
+#         optim = torch.optim.RMSprop(painting.parameters(), lr=1e-3)
+#         for j in tqdm(range(30)):
+#             optim.zero_grad()
+#             p = painting(h, w, use_alpha=False)
+#             loss = ((p[:,:3]-target[:,:3])**2).mean()
+#             loss.backward()
+#             optim.step()
+#             painting.validate()
+#             log_progress(painting)#, force_log=True)
+
+#             optim.param_groups[0]['lr'] = optim.param_groups[0]['lr'] * 0.99
+
+#             if j % 10 == 0 and (j > .25*optim_iter):
+#                 discretize_colors(painting, colors)
+#                 painting = sort_brush_strokes_by_color(painting)
+#                 optim = torch.optim.RMSprop(painting.parameters(), lr=optim.param_groups[0]['lr'])
+
+#         # Optimize all brush strokes
+#         print('Optimizing all {} brush strokes'.format(str(len(painting.brush_strokes))))
+#         # optim = torch.optim.RMSprop(painting.parameters(), lr=5e-4)# * (len(painting.brush_strokes)/100))
+#         position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
+#                 = painting.get_optimizers(multiplier=.2)
+#         for j in tqdm(range(optim_iter)):
+#             # optim.zero_grad()
+#             position_opt.zero_grad()
+#             rotation_opt.zero_grad()
+#             color_opt.zero_grad()
+#             bend_opt.zero_grad()
+#             length_opt.zero_grad()
+#             thickness_opt.zero_grad()
+
+#             p = painting(h,w, use_alpha=False)
+#             loss = 0
+#             loss += clip_text_loss(p, text_features, num_augs)
+#             # sl = compute_style_loss(p[:,:3], target) * .5
+#             # loss += sl
+#             loss.backward()
+#             # for bs in painting.brush_strokes:
+#             #     bs.color_transform.grad.data *= 0. # Don't change the color because CLIP sucks at color
+#             # optim.step()
+
+#             position_opt.step()
+#             rotation_opt.step()
+#             if j < .8*optim_iter: color_opt.step()
+#             bend_opt.step()
+#             length_opt.step()
+#             thickness_opt.step()
+#             # if j > .8*optim_iter: position_opt.step()
+#             # if j > .8*optim_iter: rotation_opt.step()
+#             # if j < .8*optim_iter: color_opt.step()
+#             # if j > .8*optim_iter: bend_opt.step()
+#             # if j > .8*optim_iter: length_opt.step()
+#             # if j > .8*optim_iter: thickness_opt.step()
+
+#             painting.validate()
+
+#             if j % 30 == 0 and j > (100):
+#                 discretize_colors(painting, colors)
+#                 painting = sort_brush_strokes_by_color(painting)
+#                 position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
+#                     = painting.get_optimizers(multiplier=.2)
+#             log_progress(painting)
+
+#     discretize_colors(painting, colors)
+#     log_progress(painting, force_log=True)
+#     # show_img(painting(strokes=strokes_full))
+#     save_painting_strokes(painting, opt)
+#     return painting
+
+from continuous_brush_model import train_param2stroke
+
+def plan_all_strokes_text_continuous(opt, optim_iter=200, 
+        num_strokes=10, num_augs=10):
+    global h, w, colors
     with torch.no_grad():
         text_features = clip_model.encode_text(clip.tokenize(opt.prompt).to(device))
 
     painting = Painting(0, background_img=current_canvas).to(device)
 
-    for i in range(num_passes):
-        # Add a brush strokes
-        canvas = painting(h,w)
+    # Initialize painting
+    # Add a brush strokes
+    canvas = painting(h,w)
 
-        gridded_brush_strokes = []
+    gridded_brush_strokes = []
 
-        xys = [(x,y) for x in torch.linspace(-.99,.99,int(num_strokes**0.5)) for y in torch.linspace(-.99,.99,int(num_strokes**0.5))]
-        
-        random.shuffle(xys)
-        for x,y in tqdm(xys):
-            opt_params = { # Find the optimal parameters
-                'brush_stroke':None, 'canvas':None, 'loss':9999999, 'stroke_ind':None,
-            }
-            # solve for stroke type, color, and rotation
-            for x_y_attempt in range(1):
-                # Random brush stroke
-                color = target[:,:3,int((y+1)/2*target.shape[2]), int((x+1)/2*target.shape[3])][0]
-                brush_stroke = BrushStroke(
-                    xt=x,
-                    yt=y,
-                    # color=color.detach().clone()
-                    )
-                    # color=colors[np.random.randint(len(colors))].clone()).to(device)
-                        
-                single_stroke = brush_stroke(h,w)
-                # single_stroke[:,3][single_stroke[:,3] > 0.5] = 1. # opaque
-                canvas_candidate = canvas[:,:3] * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke[:,:3]
-                
-                with torch.no_grad():
-                    #loss = loss_fcn(canvas_candidate, target,  use_clip_loss=False).item()
-                    diff = torch.abs(canvas_candidate - target)
-                    diff[diff>0.05] = 1.
-                    loss = diff.mean()
+    xys = [(x,y) for x in torch.linspace(-.99,.99,int(num_strokes**0.5)) for y in torch.linspace(-.99,.99,int(num_strokes**0.5))]
+    
+    random.shuffle(xys)
+    for x,y in tqdm(xys):
+        # Random brush stroke
+        brush_stroke = BrushStroke(xt=x, yt=y)
+               
+        gridded_brush_strokes.append(brush_stroke)
 
-                #loss = loss_fcn(canvas_candidate, target, use_clip_loss=False)
-                if loss < opt_params['loss']:
-                    opt_params['canvas'] = canvas_candidate
-                    opt_params['loss'] = loss
-                    opt_params['brush_stroke'] = brush_stroke
-            canvas = opt_params['canvas']
-            gridded_brush_strokes.append(opt_params['brush_stroke'])
+    painting = Painting(0, background_img=current_canvas, 
+        brush_strokes=[bs for bs in painting.brush_strokes] + gridded_brush_strokes).to(device)
+    discretize_colors(painting, colors)
+    painting = sort_brush_strokes_by_color(painting)
 
-            # painting = Painting(0, background_img=current_canvas, brush_strokes=gridded_brush_strokes).to(device)
-            # log_progress(painting)
-            if len(gridded_brush_strokes) % 50 == 0:
-                np_painting = canvas.detach().cpu().numpy()[0].transpose(1,2,0)
-                opt.writer.add_image('images/grid_add', np.clip(np_painting, a_min=0, a_max=1), len(gridded_brush_strokes))
+    # Make the painitng look like the style image to start
+    optim = torch.optim.RMSprop(painting.parameters(), lr=5e-3)
+    for j in tqdm(range(40)):
+        optim.zero_grad()
+        p = painting(h, w, use_alpha=False)
+        loss = ((p[:,:3]-target[:,:3])**2).mean()
+        loss.backward()
+        optim.step()
+        painting.validate()
+        # log_progress(painting)#, force_log=True)
 
-        painting = Painting(0, background_img=current_canvas, 
-            brush_strokes=[bs for bs in painting.brush_strokes] + gridded_brush_strokes).to(device)
-        discretize_colors(painting, colors)
-        painting = sort_brush_strokes_by_color(painting)
+        optim.param_groups[0]['lr'] = optim.param_groups[0]['lr'] * 0.99
 
+        if True:#j % 5 == 0 and (j > .25*optim_iter):
+            # discretize_colors(painting, colors)
+            painting = sort_brush_strokes_by_color(painting)
+            # optim = torch.optim.RMSprop(painting.parameters(), lr=optim.param_groups[0]['lr'])
+        log_progress(painting)#, force_log=True)
 
-        optim = torch.optim.RMSprop(painting.parameters(), lr=1e-3)
-        for j in tqdm(range(30)):
-            optim.zero_grad()
-            p = painting(h, w, use_alpha=False)
-            loss = ((p[:,:3]-target[:,:3])**2).mean()
-            loss.backward()
-            optim.step()
-            painting.validate()
-            log_progress(painting)#, force_log=True)
-
-            optim.param_groups[0]['lr'] = optim.param_groups[0]['lr'] * 0.99
-
-            if j % 10 == 0 and (j > .25*optim_iter):
-                discretize_colors(painting, colors)
-                painting = sort_brush_strokes_by_color(painting)
-                optim = torch.optim.RMSprop(painting.parameters(), lr=optim.param_groups[0]['lr'])
+    for res in [196]:
+        # Retrain the stroke model with the new resolution of brush strokes
+        opt.max_height = res
+        # h, w = train_param2stroke(opt)
+        param2img.load_state_dict(torch.load(
+            os.path.join(opt.cache_dir, 'param2img.pt')))
+        param2img.eval()
+        param2img.to(device)
 
         # Optimize all brush strokes
-        print('Optimizing all {} brush strokes'.format(str(len(painting.brush_strokes))))
+        print('Optimizing all {} brush strokes resolution {}'.format(str(len(painting.brush_strokes)), res))
         # optim = torch.optim.RMSprop(painting.parameters(), lr=5e-4)# * (len(painting.brush_strokes)/100))
         position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
                 = painting.get_optimizers(multiplier=.2)
@@ -956,8 +1065,8 @@ def plan_all_strokes_text_continuous(opt, optim_iter=5000,
             p = painting(h,w, use_alpha=False)
             loss = 0
             loss += clip_text_loss(p, text_features, num_augs)
-            # sl = compute_style_loss(p[:,:3], target) * .5
-            # loss += sl
+            sl = compute_style_loss(p[:,:3], target) * .2
+            loss += sl
             loss.backward()
             # for bs in painting.brush_strokes:
             #     bs.color_transform.grad.data *= 0. # Don't change the color because CLIP sucks at color
@@ -978,17 +1087,24 @@ def plan_all_strokes_text_continuous(opt, optim_iter=5000,
 
             painting.validate()
 
-            if j % 30 == 0 and j > (100):
-                discretize_colors(painting, colors)
+            if j%2 == 0:
                 painting = sort_brush_strokes_by_color(painting)
+            if (j % 20 == 0 and j > (0.25*optim_iter)) or j == optim_iter-1:
+                # Cluster the colors from the exisiting painting
+                colors = painting.cluster_colors(opt.n_colors)
+
+                discretize_colors(painting, colors)
                 position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
-                    = painting.get_optimizers(multiplier=.2)
-            log_progress(painting)
+                    = painting.get_optimizers(multiplier=.1)
+            log_progress(painting)#, force_log=True)
+
+    colors = painting.cluster_colors(opt.n_colors)
+    with open(os.path.join(opt.cache_dir, 'colors_updated.npy'), 'wb') as f:
+        np.save(f, (colors.detach().cpu().numpy()*255).astype(np.uint8))
 
     discretize_colors(painting, colors)
     log_progress(painting, force_log=True)
-    # show_img(painting(strokes=strokes_full))
-    save_painting_strokes(painting, opt)
+    # save_painting_strokes(painting, opt)
     return painting
 
 def calibrate(opt):

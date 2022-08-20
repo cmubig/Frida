@@ -69,6 +69,13 @@ class Painter():
 
         self.robot.good_morning_robot()
 
+        
+        # Setup Camera
+        if not self.opt.simulate:
+            self.camera = WebCam(opt)
+        else:
+            self.camera = SimulatedWebCam(opt)
+
         self.curr_position = None
         self.seed_position = None
         self.H_coord = None # Translate coordinates based on faulty camera location
@@ -112,11 +119,6 @@ class Painter():
 
         # self.calibrate_robot_tilt()
 
-        # Setup Camera
-        if not self.opt.simulate:
-            self.camera = WebCam(opt)
-        else:
-            self.camera = SimulatedWebCam(opt)
 
         if self.camera is not None:
             self.camera.debug = True
@@ -151,8 +153,8 @@ class Painter():
                     except SyntaxError:
                         pass
                     self.paint_extended_stroke_library()
-            if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
-                self.create_continuous_stroke_model()
+            # if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
+            self.create_continuous_stroke_model()
 
         # export the processed strokes for the python3 code
         from export_strokes import export_strokes
