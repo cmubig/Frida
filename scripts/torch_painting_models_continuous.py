@@ -24,19 +24,22 @@ if h != opt.max_height:
 print(h,w)
 h_og, w_og = h, w
 
-# Crop
-hs, he = int(.4*h), int(0.6*h)
-ws, we = int(0.45*w), int(0.75*w)
+def get_param2img(h_full, w_full):
+    # Crop
+    hs, he = int(.4*h_full), int(0.6*h_full)
+    ws, we = int(0.45*w_full), int(0.75*w_full)
 
-pad_for_full = T.Pad((ws, hs, w_og-we, h_og-he))
+    pad_for_full = T.Pad((ws, hs, w_full-we, h_full-he))
 
-param2img = StrokeParametersToImage(int(.6*h - .4*h), int(0.75*w - 0.45*w))
-param2img.load_state_dict(torch.load(
-    os.path.join(opt.cache_dir, 'param2img.pt')))
-param2img.eval()
-param2img.to(device)
+    param2img = StrokeParametersToImage(int(.6*h_full - .4*h_full), int(0.75*w_full - 0.45*w_full))
+    param2img.load_state_dict(torch.load(
+        os.path.join(opt.cache_dir, 'param2img.pt')))
+    param2img.eval()
+    param2img.to(device)
 
-# def 
+    return param2img, pad_for_full
+
+param2img, pad_for_full = get_param2img(h_og, w_og)
 
 cos = torch.cos
 sin = torch.sin
@@ -290,3 +293,22 @@ class Painting(nn.Module):
         ''' Make sure all brush strokes have valid parameters '''
         for s in self.brush_strokes:
             BrushStroke.make_valid(s)
+
+
+    def cluster_colors(self, n_colors):
+        colors = [b.color_transform[:3].detach().cpu().numpy() for b in self.brush_strokes]
+        colors = np.stack(colors)[None,:,:]
+
+        from sklearn.cluster import KMeans
+        from paint_utils import rgb2lab, lab2rgb
+        # Cluster in LAB space
+        colors = rgb2lab(colors)
+        kmeans = KMeans(n_clusters=n_colors, random_state=0)
+        kmeans.fit(colors.reshape((colors.shape[0]*colors.shape[1],3)))
+        colors = [kmeans.cluster_centers_[i] for i in range(len(kmeans.cluster_centers_))]
+
+        colors = np.array(colors)
+
+        # Back to rgb
+        colors = lab2rgb(colors[None,:,:])[0]
+        return torch.from_numpy(colors).to(device)# *255., labels

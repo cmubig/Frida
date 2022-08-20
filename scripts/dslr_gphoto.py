@@ -32,6 +32,7 @@ def capture_image(camera, channels='rgb', debug=False):
     if (debug):
         print('Capturing image')
     file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
+    # file_path = camera.capture(gp.GP_CAPTURE_IMAGE_PREVIEW)
     if (debug):
         print('Camera file path: {0}/{1}'.format(file_path.folder, file_path.name))
     

@@ -186,6 +186,7 @@ def load_instructions(fn):
 def get_colors(img, n_colors=6):
     from sklearn.cluster import KMeans
     # Cluster in LAB space
+    print(img.shape)
     img = rgb2lab(img)
     kmeans = KMeans(n_clusters=n_colors, random_state=0)
     kmeans.fit(img.reshape((img.shape[0]*img.shape[1],3)))

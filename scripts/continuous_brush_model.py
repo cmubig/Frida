@@ -34,7 +34,7 @@ def special_sigmoid(x):
     # return 1/(1+torch.exp(-1.*((x*2-1)+0.2) / 0.05))
     # return x
 
-    x[x < 0.5] = 1/(1+torch.exp(-1.*((x[x < 0.5]*2-1)+0.2) / 0.05))
+    x[x < 0.1] = 1/(1+torch.exp(-1.*((x[x < 0.1]*2-1)+0.2) / 0.05))
     return x
 
 def get_n_params(model):
@@ -143,7 +143,8 @@ class StrokeParametersToImage(nn.Module):
             # nn.BatchNorm1d(nh),
             # nn.Linear(nh, nh),
             # nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(nh, 64*64),
+            # nn.Linear(nh, 64*64),
+            nn.Linear(nh, 48*48),
             nn.LeakyReLU(0.2, inplace=True)
         )
         self.conv = nn.Sequential(
@@ -162,7 +163,8 @@ class StrokeParametersToImage(nn.Module):
         # return self.fc1(x).view(-1, self.h, self.w)
         # return nn.Sigmoid()(self.fc4(nn.ReLU()(self.fc3(nn.ReLU()(self.fc2(nn.ReLU()(self.fc1(x))))))).view(-1, h, w))
         # return self.conv(self.main(x).view(-1, self.nc, self.h, self.w))[:,0]
-        x = self.res2(self.conv((self.main(x).view(-1, 1, 64, 64))))[:,0]
+        # x = self.res2(self.conv((self.main(x).view(-1, 1, 64, 64))))[:,0]
+        x = self.res2(self.conv((self.main(x).view(-1, 1, 48, 48))))[:,0]
         # x = 1/(1+torch.exp(-1.*(x*2-1) / 0.05))
         return x
 
@@ -172,19 +174,7 @@ class StrokeParametersToImage(nn.Module):
 
 
 
-if __name__ == '__main__':
-    global opt, strokes
-    opt = Options()
-    opt.gather_options()
-
-    b = './painting'
-    all_subdirs = [os.path.join(b, d) for d in os.listdir(b) if os.path.isdir(os.path.join(b, d))]
-    tensorboard_dir = max(all_subdirs, key=os.path.getmtime) # most recent tensorboard dir is right
-    if '_planner' not in tensorboard_dir:
-        tensorboard_dir += '_planner'
-    writer = TensorBoard(tensorboard_dir)
-    opt.writer = writer
-
+def train_param2stroke(opt):
     strokes = np.load(os.path.join(opt.cache_dir, 'extended_stroke_library_intensities.npy')).astype(np.float32)/255.
     trajectories = np.load(os.path.join(opt.cache_dir, 'extended_stroke_library_trajectories.npy'), 
             allow_pickle=True, encoding='bytes') 
@@ -249,7 +239,7 @@ if __name__ == '__main__':
         loss.backward()
         optim.step()
 
-        writer.add_scalar('loss/train_loss_stroke_model', ep_loss, it)
+        opt.writer.add_scalar('loss/train_loss_stroke_model', ep_loss, it)
         
         n_view = 10
         with torch.no_grad():
@@ -267,7 +257,7 @@ if __name__ == '__main__':
             #             ['real','sim'], 'images_stroke_modeling/train_{}_stroke'.format(train_ind), opt.writer, step=it)
 
             loss = nn.MSELoss()(pred_strokes_val, val_strokes)
-            writer.add_scalar('loss/val_loss_stroke_model', loss.item(), it)
+            opt.writer.add_scalar('loss/val_loss_stroke_model', loss.item(), it)
 
             if loss.item() < best_val_loss and it > 50:
                 best_val_loss = loss.item()
@@ -299,6 +289,23 @@ if __name__ == '__main__':
             log_images([process_img(val_strokes_full[val_ind]),
                 process_img(pred_strokes_val[val_ind])], 
                 ['real','sim'], 'images_stroke_modeling/val_{}_stroke_full'.format(val_ind), opt.writer)
-    log_all_permutations(best_model, writer)
+    log_all_permutations(best_model, opt.writer)
     torch.save(best_model.cpu().state_dict(), os.path.join(opt.cache_dir, 'param2img.pt'))
 
+    return h_og, w_og
+
+
+if __name__ == '__main__':
+    global opt, strokes
+    opt = Options()
+    opt.gather_options()
+
+    b = './painting'
+    all_subdirs = [os.path.join(b, d) for d in os.listdir(b) if os.path.isdir(os.path.join(b, d))]
+    tensorboard_dir = max(all_subdirs, key=os.path.getmtime) # most recent tensorboard dir is right
+    if '_planner' not in tensorboard_dir:
+        tensorboard_dir += '_planner'
+    writer = TensorBoard(tensorboard_dir)
+    opt.writer = writer
+
+    train_param2stroke(opt)

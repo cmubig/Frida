@@ -276,4 +276,4 @@ def clip_text_loss(p, text_features, num_augs):
     image_features = clip_model.encode_image(im_batch)
     for n in range(num_augs):
         loss -= torch.cosine_similarity(text_features, image_features[n:n+1], dim=1)
-    return loss
+    return loss / num_augs

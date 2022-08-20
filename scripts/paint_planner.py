@@ -149,8 +149,18 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
             if exit_code != 0:
                 print('exit code', exit_code)
                 return
+        
+        # Colors possibly updated during planning
+        if painter.opt.prompt is not None:
+            with open(os.path.join(painter.opt.cache_dir, 'colors_updated.npy'), 'rb') as f:
+                colors = np.load(f).astype(np.float32)
+            all_colors = save_colors(colors)
+            painter.writer.add_image('paint_colors/updated', all_colors/255., 0)
+            painter.writer.add_image('paint_colors/updated', all_colors/255., 1)
+
         if not painter.opt.simulate:
             show_img(canvas_before/255., title="Ready to start painting. Ensure mixed paint is provided and then exit this to start painting.")
+
 
         # Run Planned Strokes
         with open(os.path.join(painter.opt.cache_dir, "next_brush_strokes.csv"), 'r') as fp:
