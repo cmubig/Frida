@@ -24,22 +24,25 @@ if h != opt.max_height:
 print(h,w)
 h_og, w_og = h, w
 
-def get_param2img(h_full, w_full):
+def get_param2img(h_full, w_full, n_stroke_models=1):
     # Crop
     hs, he = int(.4*h_full), int(0.6*h_full)
     ws, we = int(0.45*w_full), int(0.75*w_full)
 
     pad_for_full = T.Pad((ws, hs, w_full-we, h_full-he))
 
-    param2img = StrokeParametersToImage(int(.6*h_full - .4*h_full), int(0.75*w_full - 0.45*w_full))
-    param2img.load_state_dict(torch.load(
-        os.path.join(opt.cache_dir, 'param2img.pt')))
-    param2img.eval()
-    param2img.to(device)
+    param2imgs = []
+    for model_ind in range(opt.n_stroke_models):
+        param2img = StrokeParametersToImage(int(.6*h_full - .4*h_full), int(0.75*w_full - 0.45*w_full))
+        param2img.load_state_dict(torch.load(
+            os.path.join(opt.cache_dir, 'param2img{}.pt'.format(model_ind))))
+        param2img.eval()
+        param2img.to(device)
+        param2imgs.append(param2img)
 
-    return param2img, pad_for_full
+    return param2imgs, pad_for_full
 
-param2img, pad_for_full = get_param2img(h_og, w_og)
+param2imgs, pad_for_full = get_param2img(h_og, w_og)
 
 cos = torch.cos
 sin = torch.sin
@@ -158,7 +161,9 @@ class BrushStroke(nn.Module):
         full_param[0,8] = self.stroke_z
         full_param[0,11] = 0.2
 
-        stroke = param2img(full_param).unsqueeze(0)
+        model_ind = np.random.randint(len(param2imgs))
+        # print(model_ind)
+        stroke = param2imgs[model_ind](full_param).unsqueeze(0)
         stroke = pad_for_full(stroke)
 
         # Pad 1 or two to make it fit
@@ -244,6 +249,14 @@ class Painting(nn.Module):
         bend_opt = torch.optim.RMSprop(bend, lr=3e-3*multiplier)
         length_opt = torch.optim.RMSprop(length, lr=1e-2*multiplier)
         thickness_opt = torch.optim.RMSprop(z, lr=1e-2*multiplier)
+        
+        # t=5
+        # position_opt = torch.optim.Adam(xt + yt, lr=5e-3*multiplier*t)
+        # rotation_opt = torch.optim.Adam(a, lr=1e-2*multiplier*t)
+        # color_opt = torch.optim.Adam(color, lr=5e-3*multiplier*t)
+        # bend_opt = torch.optim.Adam(bend, lr=3e-3*multiplier*t)
+        # length_opt = torch.optim.Adam(length, lr=1e-2*multiplier*t)
+        # thickness_opt = torch.optim.Adam(z, lr=1e-2*multiplier*t)
 
         return position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt
 

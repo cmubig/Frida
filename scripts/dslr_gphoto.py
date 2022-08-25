@@ -32,7 +32,11 @@ def capture_image(camera, channels='rgb', debug=False):
     if (debug):
         print('Capturing image')
     file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
-    # file_path = camera.capture(gp.GP_CAPTURE_IMAGE_PREVIEW)
+    # file_path = camera.capture(gp.GP_CAMERA_CAPTURE_PREVIEW)
+    # https://github.com/jim-easterbrook/python-gphoto2/blob/master/examples/preview-image.py
+    # print((gp.gp_camera_capture_preview(camera)))
+    # file_path = gp.gp_camera_capture_preview(camera)[1]
+
     if (debug):
         print('Camera file path: {0}/{1}'.format(file_path.folder, file_path.name))
     
