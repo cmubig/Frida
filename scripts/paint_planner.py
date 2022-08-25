@@ -21,7 +21,7 @@ from PIL import Image
 
 from simulated_painting_environment import apply_stroke
 from painter import canvas_to_global_coordinates
-from strokes import all_strokes, paint_diffvg, simple_parameterization_to_real
+from strokes import all_strokes, paint_diffvg, simple_parameterization_to_real, StrokeBD
 from paint_utils import *
 
 def parse_csv_line(line, painter, colors):
@@ -69,7 +69,8 @@ def get_real_colors(painter, colors):
             x,y,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
             # Paint the brush stroke
-            all_strokes[-1]().paint(painter, x, y, 45)
+            # all_strokes[-1]().paint(painter, x, y, 45)
+            StrokeBD().paint(painter, x, y, 45)
 
         painter.to_neutral()
         canvas_after = painter.camera.get_canvas()
@@ -80,6 +81,8 @@ def get_real_colors(painter, colors):
         if new_paint_color is not None:
             colors[color_ind] = colors[color_ind] * (1-color_momentum) \
                             + new_paint_color * color_momentum
+        else:
+            colors[color_ind] = colors[color_ind] * 0 + 230 # Basically white
         canvas_before = canvas_after
     return colors
 
@@ -100,7 +103,7 @@ def save_for_python3_file(painter, colors, target, full_sim_canvas):
     with open(os.path.join(painter.opt.cache_dir, 'colors.npy'), 'wb') as f:
         np.save(f, colors)
 
-def paint_color_calibration(painter):
+def paint_color_calibration(painter, colors):
     ''' Make a mark with each paint color, then measure that color '''
     if not painter.opt.simulate:
         cached_color_fn = os.path.join(painter.opt.cache_dir, 'colors.npy')
@@ -111,7 +114,7 @@ def paint_color_calibration(painter):
                 pass
             colors = get_real_colors(painter, colors)
             all_colors = save_colors(colors)
-            # show_img(all_colors/255., title="Actual Measured Colors")
+            show_img(all_colors/255., title="Actual Measured Colors")
             try:
                 input('Make sure blank canvas is exposed. Press enter to start painting.')
             except SyntaxError:
@@ -132,7 +135,7 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
     camera_capture_interval = 8
     curr_color = -1
 
-    # colors = paint_color_calibration(painter)
+    # colors = paint_color_calibration(painter, colors)
 
     target = discretize_with_labels(colors, labels)
 
@@ -158,7 +161,7 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
             painter.writer.add_image('paint_colors/updated', all_colors/255., 0)
             painter.writer.add_image('paint_colors/updated', all_colors/255., 1)
 
-        if not painter.opt.simulate:
+        if not painter.opt.simulate and it == 0:
             show_img(canvas_before/255., title="Ready to start painting. Ensure mixed paint is provided and then exit this to start painting.")
 
 
@@ -169,6 +172,7 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
             else:
                 instructions = [parse_csv_line_continuous(line, painter, colors) for line in fp.readlines()] 
             #max_instructions = 40
+            n_instr = len(instructions)
             if painter.opt.adaptive:
                 instructions = instructions[:painter.opt.strokes_before_adapting]
             for instruction in tqdm(instructions[:]):
@@ -197,11 +201,11 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
                 new_paint_color = color_ind != curr_color
                 if new_paint_color:
                     dark_to_light = np.mean(colors[curr_color]) < np.mean(colors[color_ind])
-                    if dark_to_light and curr_color != -1:
-                        painter.clean_paint_brush() # Really clean this thing
-                        painter.clean_paint_brush()
-                        if not painter.opt.simulate:
-                            show_img(target/255., title="About to start painting with a lighter color")
+                    # if dark_to_light and curr_color != -1:
+                    #     painter.clean_paint_brush() # Really clean this thing
+                    #     painter.clean_paint_brush()
+                    #     if not painter.opt.simulate:
+                    #         show_img(target/255., title="About to start painting with a lighter color")
                     painter.clean_paint_brush()
                     painter.clean_paint_brush()
                     curr_color = color_ind
@@ -248,13 +252,14 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
                 global_it += 1
                 consecutive_paints += 1
 
-                # if painter.opt.adaptive and k >= len(instructions):
-                #     break # all done
-
                 # if global_it % 100 == 0:
                 #     # to_gif(all_canvases)
                 #     to_video(real_canvases, fn='real_canvases.mp4')
                 #     to_video(sim_canvases, fn='sim_canvases.mp4')
+            if painter.opt.adaptive:
+                if n_instr <= painter.opt.strokes_before_adapting:
+                    break
+
     painter.clean_paint_brush()
     painter.clean_paint_brush()
     to_video(real_canvases, fn='/home/frida/Videos/frida/real_canvases{}.mp4'.format(str(time.time())))

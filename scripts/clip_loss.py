@@ -259,6 +259,11 @@ import torchvision.transforms as transforms
 
 augment_trans_text = transforms.Compose([
     # transforms.GaussianBlur((21,21), sigma=(1.)),
+    # transforms.GaussianBlur((15,15), sigma=(1.)), # Doesn't work well it appears
+    # transforms.GaussianBlur((5,5), sigma=(1.)), # Maybe better than nothing? but marginally
+    # transforms.GaussianBlur((15,15), sigma=(2.)),
+    # transforms.Resize(64),
+    # transforms.Resize(256),
     transforms.RandomPerspective(fill=1, p=1, distortion_scale=0.5),
     transforms.RandomResizedCrop(224, scale=(0.7,0.9)),
     transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
@@ -266,14 +271,21 @@ augment_trans_text = transforms.Compose([
 
 import clip
 clip_model, preprocess = clip.load('ViT-B/32', device, jit=False)
+clip_model_16, preprocess_16 = clip.load('ViT-B/16', device, jit=False)
 
-def clip_text_loss(p, text_features, num_augs):
+def clip_text_loss(p, text_features, num_augs, text_features_16=None):
     loss = 0
     img_augs = []
     for n in range(num_augs):
         img_augs.append(augment_trans_text(p[:,:3]))
     im_batch = torch.cat(img_augs)
+    # from plan_all_strokes import show_img 
+    # show_img(im_batch[0])
     image_features = clip_model.encode_image(im_batch)
+    if text_features_16 is not None:
+        image_features_16 = clip_model.encode_image(im_batch)
     for n in range(num_augs):
         loss -= torch.cosine_similarity(text_features, image_features[n:n+1], dim=1)
-    return loss / num_augs
+        if text_features_16 is not None:
+            loss -= torch.cosine_similarity(text_features_16, image_features_16[n:n+1], dim=1)
+    return loss / num_augs if text_features_16 is not None else loss / (2*num_augs)
