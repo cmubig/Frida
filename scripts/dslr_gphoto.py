@@ -14,6 +14,8 @@ import os
 import gphoto2 as gp
 from matplotlib import pyplot as plt
 import cv2
+from PIL import Image 
+import io
 
 # initialize camera object
 def camera_init():
@@ -23,19 +25,43 @@ def camera_init():
     # initialize camera
     camera = gp.Camera()
     camera.init()
+    camera.file_data = None
 
     return camera
 
 # capture image from camera object
 # returns both the filename and numpy array of target
-def capture_image(camera, channels='rgb', debug=False):
+def capture_image(camera, channels='rgb', preview=True, debug=False):
     if (debug):
         print('Capturing image')
+
+    # if preview:
+    #     # Use the preview functionality
+        
+    #     # file_path = camera.capture(gp.GP_CAMERA_CAPTURE_PREVIEW)
+    #     # https://github.com/jim-easterbrook/python-gphoto2/blob/master/examples/preview-image.py
+    #     # print((gp.gp_camera_capture_preview(camera)))
+    #     # file_path = gp.gp_camera_capture_preview(camera)[1]
+    #     if camera.file_data is None:
+    #         global file_data
+    #         camera_file = gp.check_result(gp.gp_camera_capture_preview(camera))
+    #         file_data = gp.check_result(gp.gp_file_get_data_and_size(camera_file))
+    #         # image_data = io.BytesIO(file_data)
+            
+    #         # print(dir(file_data))
+    #         # for att in dir(file_data):
+    #         #     print(att, getattr(file_data,att))
+    #         # print(str(file_data))
+    #         #print('opening camera lens for preview')
+    #         camera.file_data = file_data
+    #     try:
+    #         image = Image.open(io.BytesIO(file_data))
+    #         return None, image
+    #     except Exception as e:
+    #         #print('exception', e)
+    #         pass
+    
     file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
-    # file_path = camera.capture(gp.GP_CAMERA_CAPTURE_PREVIEW)
-    # https://github.com/jim-easterbrook/python-gphoto2/blob/master/examples/preview-image.py
-    # print((gp.gp_camera_capture_preview(camera)))
-    # file_path = gp.gp_camera_capture_preview(camera)[1]
 
     if (debug):
         print('Camera file path: {0}/{1}'.format(file_path.folder, file_path.name))

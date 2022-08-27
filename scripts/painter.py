@@ -69,7 +69,7 @@ class Painter():
 
         self.robot.good_morning_robot()
 
-        
+
         # Setup Camera
         if not self.opt.simulate:
             self.camera = WebCam(opt)
