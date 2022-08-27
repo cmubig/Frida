@@ -808,7 +808,7 @@ def segment_strokes_by_size(strokes, n_segments):
 #     save_painting_strokes(painting, opt)
 #     return painting
 
-def plan_all_strokes_grid_continuous(opt, optim_iter=150, num_strokes_x=20, num_strokes_y=20, 
+def plan_all_strokes_grid_continuous(opt, optim_iter=50, num_strokes_x=20, num_strokes_y=20, 
             x_y_attempts=1, num_passes=6):
     painting = Painting(0, background_img=current_canvas).to(device)
     num_strokes = opt.num_strokes
@@ -902,8 +902,8 @@ def plan_all_strokes_grid_continuous(opt, optim_iter=150, num_strokes_x=20, num_
 
         p = painting(h,w, use_alpha=False)
         loss = 0
-        loss += loss_fcn(p, target,  use_clip_loss=False, use_style_loss=False)
-        # loss += loss_fcn(p, target,  use_clip_loss=True, use_style_loss=False)
+        # loss += loss_fcn(p, target,  use_clip_loss=False, use_style_loss=False)
+        loss += loss_fcn(p, target,  use_clip_loss=True, use_style_loss=False)
         loss.backward()
         position_opt.step()
         rotation_opt.step()
@@ -1202,7 +1202,7 @@ from continuous_brush_model import train_param2stroke
 #     # save_painting_strokes(painting, opt)
 #     return painting
 def plan_all_strokes_text_continuous(opt, optim_iter=50, 
-        num_strokes=10, num_augs=30, n_inits=10, style_weight=0.1):
+        num_strokes=10, num_augs=30, n_inits=10, style_weight=0.01):
     global h, w, colors
     with torch.no_grad():
         text_features = clip_model.encode_text(clip.tokenize(opt.prompt).to(device))
@@ -1223,13 +1223,16 @@ def plan_all_strokes_text_continuous(opt, optim_iter=50,
         brush_strokes=[bs for bs in painting.brush_strokes] + gridded_brush_strokes).to(device)
     painting = sort_brush_strokes_by_color(painting)
     log_progress(painting, force_log=True)
+    
+    sketch = load_img('/home/frida/Downloads/sketch.jpg',h=h, w=w).to(device)/255.
 
     # Make the painitng look like the style image to start
     optim = torch.optim.RMSprop(painting.parameters(), lr=3e-2)
-    for j in tqdm(range(20)):
+    for j in tqdm(range(40)):
         optim.zero_grad()
         p = painting(h, w, use_alpha=False)
         loss = ((p[:,:3]-target[:,:3])**2).mean()
+        # loss = ((p[:,:3]-sketch[:,:3])**2).mean()
         loss.backward()
         optim.step()
         painting.validate()
@@ -1245,21 +1248,27 @@ def plan_all_strokes_text_continuous(opt, optim_iter=50,
         painting = copy.deepcopy(start_painting.cpu()).to(device)
         optims = painting.get_optimizers(multiplier=0.3)
 
-        for j in tqdm(range(20)):
+        for j in tqdm(range(40)):
             [o.zero_grad() for o in optims]
             p = painting(h,w, use_alpha=False)
             cl = clip_text_loss(p, text_features, num_augs)
             sl = compute_style_loss(p[:,:3], target) * style_weight
+            # sl = clip_conv_loss(p[:,:3], target)
             loss = cl + sl
             loss.backward()
             [o.step() for o in optims]
             painting.validate()
-            log_progress(painting, force_log=True)
-        if cl.item() < best_clip_loss:
+            log_progress(painting)#, force_log=True)
+        was_best = cl.item() < best_clip_loss
+        if was_best:
             best_clip_loss = cl.item()
             best_painting = copy.deepcopy(painting.cpu())
             print('best_painting')
-        show_img(p[0])
+        np_painting = p.detach().cpu().numpy()[0].transpose(1,2,0)
+        opt.writer.add_image('images/option{}_{}'.format(attempt, 'best' if was_best else ''), 
+            np.clip(np_painting, a_min=0, a_max=1), 0)
+
+        # show_img(p[0])
 
     painting = copy.deepcopy(best_painting).to(device)
 
@@ -1335,7 +1344,7 @@ def plan_all_strokes_text_continuous(opt, optim_iter=50,
 
 def plan_all_strokes_text_continuous_adapt(opt,
             remove_prop=0.8,#Proportion of executed strokes to remove
-            optim_iter=10, num_augs=15):
+            optim_iter=20, num_augs=15):
     global h, w, colors
     with torch.no_grad():
         text_features = clip_model.encode_text(clip.tokenize(opt.prompt).to(device))
@@ -1413,6 +1422,7 @@ def plan_all_strokes_text_continuous_adapt(opt,
 
     painting = sort_brush_strokes_by_color(painting)
     discretize_colors(painting, colors)
+    painting = sort_brush_strokes_by_color(painting)
 
     with torch.no_grad():
         p = painting(h,w, use_alpha=False)
@@ -1509,8 +1519,8 @@ def plan_adaptive(opt,
 
         p = painting(h,w, use_alpha=False)
         loss = 0
-        loss += loss_fcn(p, target,  use_clip_loss=False, use_style_loss=False)
-        # loss += loss_fcn(p, target,  use_clip_loss=True, use_style_loss=False)
+        # loss += loss_fcn(p, target,  use_clip_loss=False, use_style_loss=False)
+        loss += loss_fcn(p, target,  use_clip_loss=True, use_style_loss=False)
         loss.backward()
 
         [optim.step() for optim in optims]
@@ -1577,7 +1587,6 @@ if __name__ == '__main__':
     colors = (torch.from_numpy(np.array(colors)) / 255.).float().to(device)
 
 
-
     # Get the background of painting to be the current canvas
     current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg')).to(device)/255.
 
@@ -1586,7 +1595,7 @@ if __name__ == '__main__':
             if opt.generate_whole_plan:
                 painting = plan_all_strokes_grid_continuous(opt, optim_iter=50, 
                     num_strokes_x=30, num_strokes_y=25, 
-                    x_y_attempts=1, num_passes=6)
+                    x_y_attempts=1, num_passes=1)
             else:
                 painting = plan_adaptive(opt)
         else:
@@ -1599,7 +1608,8 @@ if __name__ == '__main__':
             if opt.discrete:
                 painting = plan_all_strokes_text(opt)
             else:
-                painting = plan_all_strokes_text_continuous(opt, num_strokes=opt.num_strokes)
+                painting = plan_all_strokes_text_continuous(opt, 
+                    num_strokes=opt.num_strokes)
         else:
             if opt.discrete:
                 painting = plan_all_strokes_grid(opt)

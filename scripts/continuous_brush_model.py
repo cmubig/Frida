@@ -109,6 +109,101 @@ def log_all_permutations(model, writer):
     writer.add_figure('images_stroke_modeling/stroke_modelling_thickness_vs_length', fig, 0)
     # plt.show()
 
+    # img_fig = None
+    # for i in range(n_img):
+    #     trajectory = to_full_param(.04, 0.0, zs[i])
+    #     s = model(trajectory)
+    #     # print(s.shape)
+    #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
+    #     s = np.pad(s, (3), 'constant', constant_values=(1.))
+    #     if img_fig is None:
+    #         img_fig = s 
+    #     else:
+    #         img_fig = np.concatenate([img_fig, s], axis=1)
+    # plt.figure(figsize=(12,1))
+    # plt.imshow(img_fig, cmap='gray')
+    # plt.xticks([])
+    # plt.yticks([])
+    # plt.show()
+
+    # img_fig = None
+    # for i in range(n_img):
+    #     trajectory = to_full_param(.04, bends[i], .5)
+    #     s = model(trajectory)
+    #     # print(s.shape)
+    #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
+    #     s = np.pad(s, (3), 'constant', constant_values=(1.))
+    #     if img_fig is None:
+    #         img_fig = s 
+    #     else:
+    #         img_fig = np.concatenate([img_fig, s], axis=1)
+    # plt.figure(figsize=(12,1))
+    # plt.imshow(img_fig, cmap='gray')
+    # plt.xticks([])
+    # plt.yticks([])
+    # plt.show()
+
+    # img_fig = None
+    # for i in range(n_img):
+    #     trajectory = to_full_param(lengths[i], 0, .5)
+    #     s = model(trajectory)
+    #     # print(s.shape)
+    #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
+    #     s = np.pad(s, (3), 'constant', constant_values=(1.))
+    #     if img_fig is None:
+    #         img_fig = s 
+    #     else:
+    #         img_fig = np.concatenate([img_fig, s], axis=1)
+    # plt.figure(figsize=(12,1))
+    # plt.imshow(img_fig, cmap='gray')
+    # plt.xticks([])
+    # plt.yticks([])
+    # plt.show()
+
+    # fig, ax = plt.subplots(1, n_img, figsize=(12,1))
+    # for i in range(n_img):
+    #     trajectory = to_full_param(.04, 0.0, zs[i])
+    #     s = model(trajectory)
+    #     # print(s.shape)
+    #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
+
+        
+
+    #     ax[i].imshow(s, cmap='gray')
+    #     ax[i].set_xticks([])
+    #     ax[i].set_yticks([])
+    # fig.tight_layout()
+    # plt.show()
+    # writer.add_figure('images_stroke_modeling/stroke_modelling_thickness', fig, 0)
+
+    # fig, ax = plt.subplots(1, n_img, figsize=(12,1))
+    # for i in range(n_img):
+    #     trajectory = to_full_param(.04, bends[i], .5)
+    #     s = model(trajectory)
+    #     # print(s.shape)
+    #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
+
+    #     ax[i].imshow(s, cmap='gray')
+    #     ax[i].set_xticks([])
+    #     ax[i].set_yticks([])
+    # fig.tight_layout()
+    # plt.show()
+    # writer.add_figure('images_stroke_modeling/stroke_modelling_bend', fig, 0)
+
+    # fig, ax = plt.subplots(1, n_img, figsize=(12,1))
+    # for i in range(n_img):
+    #     trajectory = to_full_param(lengths[i], 0, .5)
+    #     s = model(trajectory)
+    #     # print(s.shape)
+    #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
+
+    #     ax[i].imshow(s, cmap='gray')
+    #     ax[i].set_xticks([])
+    #     ax[i].set_yticks([])
+    # fig.tight_layout()
+    # plt.show()
+    # writer.add_figure('images_stroke_modeling/stroke_modelling_length', fig, 0)
+
 
 def log_images(imgs, labels, label, writer, step=0):
     fig, ax = plt.subplots(1, len(imgs), figsize=(5*len(imgs),5))
