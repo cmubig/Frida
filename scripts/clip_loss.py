@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 from torchvision import models, transforms
 import clip
-
+import warnings
 
 
 
@@ -158,7 +158,10 @@ class CLIPConvLoss(torch.nn.Module):
             self.normalize_transform(y)]
         if mode == "train":
             for n in range(self.num_augs):
-                augmented_pair = self.augment_trans(torch.cat([x, y]))
+                with warnings.catch_warnings():
+                    # RandomPerspective has a really annoying warning
+                    warnings.simplefilter("ignore")
+                    augmented_pair = self.augment_trans(torch.cat([x, y]))
                 sketch_augs.append(augmented_pair[0].unsqueeze(0))
                 img_augs.append(augmented_pair[1].unsqueeze(0))
 
@@ -276,8 +279,12 @@ clip_model_16, preprocess_16 = clip.load('ViT-B/16', device, jit=False)
 def clip_text_loss(p, text_features, num_augs, text_features_16=None):
     loss = 0
     img_augs = []
-    for n in range(num_augs):
-        img_augs.append(augment_trans_text(p[:,:3]))
+    with warnings.catch_warnings():
+        # RandomPerspective has a really annoying warning
+        warnings.simplefilter("ignore")
+        for n in range(num_augs):
+            img_augs.append(augment_trans_text(p[:,:3]))
+
     im_batch = torch.cat(img_augs)
     # from plan_all_strokes import show_img 
     # show_img(im_batch[0])
@@ -288,4 +295,5 @@ def clip_text_loss(p, text_features, num_augs, text_features_16=None):
         loss -= torch.cosine_similarity(text_features, image_features[n:n+1], dim=1)
         if text_features_16 is not None:
             loss -= torch.cosine_similarity(text_features_16, image_features_16[n:n+1], dim=1)
+
     return loss / num_augs if text_features_16 is not None else loss / (2*num_augs)

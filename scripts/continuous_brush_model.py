@@ -82,7 +82,7 @@ def log_all_permutations(model, writer):
     for i in range(n_img):
         for j in range(n_img):
             trajectory = to_full_param(lengths[i], bends[j], 0.5)
-            s = model(trajectory)
+            s = 1-model(trajectory)
             # print(s.shape)
             s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
 
@@ -98,7 +98,7 @@ def log_all_permutations(model, writer):
     for i in range(n_img):
         for j in range(n_img):
             trajectory = to_full_param(lengths[i], 0.0, zs[j])
-            s = model(trajectory)
+            s = 1-model(trajectory)
             # print(s.shape)
             s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
 
@@ -112,7 +112,7 @@ def log_all_permutations(model, writer):
     # img_fig = None
     # for i in range(n_img):
     #     trajectory = to_full_param(.04, 0.0, zs[i])
-    #     s = model(trajectory)
+    #     s = 1-model(trajectory)
     #     # print(s.shape)
     #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
     #     s = np.pad(s, (3), 'constant', constant_values=(1.))
@@ -129,7 +129,7 @@ def log_all_permutations(model, writer):
     # img_fig = None
     # for i in range(n_img):
     #     trajectory = to_full_param(.04, bends[i], .5)
-    #     s = model(trajectory)
+    #     s = 1-model(trajectory)
     #     # print(s.shape)
     #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
     #     s = np.pad(s, (3), 'constant', constant_values=(1.))
@@ -146,7 +146,7 @@ def log_all_permutations(model, writer):
     # img_fig = None
     # for i in range(n_img):
     #     trajectory = to_full_param(lengths[i], 0, .5)
-    #     s = model(trajectory)
+    #     s = 1-model(trajectory)
     #     # print(s.shape)
     #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
     #     s = np.pad(s, (3), 'constant', constant_values=(1.))
@@ -163,7 +163,7 @@ def log_all_permutations(model, writer):
     # fig, ax = plt.subplots(1, n_img, figsize=(12,1))
     # for i in range(n_img):
     #     trajectory = to_full_param(.04, 0.0, zs[i])
-    #     s = model(trajectory)
+    #     s = 1-model(trajectory)
     #     # print(s.shape)
     #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
 
@@ -179,7 +179,7 @@ def log_all_permutations(model, writer):
     # fig, ax = plt.subplots(1, n_img, figsize=(12,1))
     # for i in range(n_img):
     #     trajectory = to_full_param(.04, bends[i], .5)
-    #     s = model(trajectory)
+    #     s = 1-model(trajectory)
     #     # print(s.shape)
     #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
 
@@ -193,7 +193,7 @@ def log_all_permutations(model, writer):
     # fig, ax = plt.subplots(1, n_img, figsize=(12,1))
     # for i in range(n_img):
     #     trajectory = to_full_param(lengths[i], 0, .5)
-    #     s = model(trajectory)
+    #     s = 1-model(trajectory)
     #     # print(s.shape)
     #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
 
@@ -243,10 +243,10 @@ class StrokeParametersToImage(nn.Module):
             nn.LeakyReLU(0.2, inplace=True)
         )
         self.conv = nn.Sequential(
-            nn.Conv2d(1, self.nc, kernel_size=4, padding='same', dilation=1),
+            nn.Conv2d(1, self.nc, kernel_size=5, padding='same', dilation=1),
             nn.LeakyReLU(0.2, inplace=True),
             nn.BatchNorm2d(self.nc),
-            nn.Conv2d(self.nc, 1, kernel_size=4, padding='same', dilation=1),
+            nn.Conv2d(self.nc, 1, kernel_size=5, padding='same', dilation=1),
             nn.Sigmoid()
         )
         self.w = w 
@@ -364,14 +364,14 @@ def train_param2stroke(opt):
                 best_model.eval()
                 pred_strokes_val = best_model(val_trajectories)
                 for val_ind in range(min(n_view,len(val_strokes))):
-                    log_images([process_img(val_strokes[val_ind]),
-                        process_img(special_sigmoid(pred_strokes_val[val_ind]))], 
+                    log_images([process_img(1-val_strokes[val_ind]),
+                        process_img(1-special_sigmoid(pred_strokes_val[val_ind]))], 
                         ['real','sim'], 'images_stroke_modeling/val_{}_sim_stroke_best'.format(val_ind), opt.writer)
 
                 pred_strokes_train = best_model(train_trajectories)
                 for train_ind in range(min(n_view,len(train_strokes))):
-                    log_images([process_img(train_strokes[train_ind]),
-                        process_img(special_sigmoid(pred_strokes_train[train_ind]))], 
+                    log_images([process_img(1-train_strokes[train_ind]),
+                        process_img(1-special_sigmoid(pred_strokes_train[train_ind]))], 
                         ['real','sim'], 'images_stroke_modeling/train_{}_sim_stroke_best'.format(train_ind), opt.writer)
 
                 # Make them into full sized strokes
@@ -380,8 +380,8 @@ def train_param2stroke(opt):
                 pred_strokes_val = transforms.Pad((ws, hs, w_og-we, h_og-he))(pred_strokes_val)
                 val_strokes_full = transforms.Pad((ws, hs, w_og-we, h_og-he))(val_strokes)
                 for val_ind in range(min(n_view,len(val_strokes))):
-                    log_images([process_img(val_strokes_full[val_ind]),
-                        process_img(pred_strokes_val[val_ind])], 
+                    log_images([process_img(1-val_strokes_full[val_ind]),
+                        process_img(1-pred_strokes_val[val_ind])], 
                         ['real','sim'], 'images_stroke_modeling/val_{}_stroke_full'.format(val_ind), opt.writer)
             log_all_permutations(best_model, opt.writer)
         torch.save(best_model.cpu().state_dict(), os.path.join(opt.cache_dir, 'param2img{}.pt'.format(model_ind)))

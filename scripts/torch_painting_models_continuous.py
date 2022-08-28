@@ -17,11 +17,11 @@ opt.gather_options()
 # strokes = np.load('/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/extended_stroke_library_intensities.npy') 
 stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
 h, w = stroke_shape[0], stroke_shape[1]
-print('stroke_shape', stroke_shape)
+# print('stroke_shape', stroke_shape)
 if h != opt.max_height:
     w = int(opt.max_height/h*w)
     h = opt.max_height
-print(h,w)
+# print(h,w)
 h_og, w_og = h, w
 
 def get_param2img(h_full, w_full, n_stroke_models=1):
@@ -167,8 +167,8 @@ class BrushStroke(nn.Module):
         stroke = pad_for_full(stroke)
 
         # Pad 1 or two to make it fit
-        # print('ffff', strokes[0].shape)
-        stroke = T.Resize((h, w))(stroke)
+        # print('ffff', stroke.shape, h, w)
+        # stroke = T.Resize((h, w))(stroke)
 
         # x = self.transformation(strokes[self.stroke_ind].permute(2,0,1).unsqueeze(0))
         from plan_all_strokes import show_img
@@ -242,7 +242,7 @@ class Painting(nn.Module):
             if "stroke_z" in n.split('.')[-1]: z.append(p)
             if "stroke_bend" in n.split('.')[-1]: bend.append(p)
             if "color_transform" in n.split('.')[-1]: color.append(p)
-        
+
         position_opt = torch.optim.RMSprop(xt + yt, lr=5e-3*multiplier)
         rotation_opt = torch.optim.RMSprop(a, lr=1e-2*multiplier)
         color_opt = torch.optim.RMSprop(color, lr=5e-3*multiplier)
