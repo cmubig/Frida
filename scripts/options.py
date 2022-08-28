@@ -59,11 +59,11 @@ class Options(object):
         parser.add_argument('--just_fine', action='store_true', help="Only plan for smallest strokes")
         parser.add_argument('--use_cached_colors', action='store_true')
         parser.add_argument('--n_colors', default=6, type=int, help='Number of colors of paint to use')
-        parser.add_argument("--file", type=str,
-            default='/home/peterschaldenbrand/Downloads/david_lynch.csv',
-            help='Path CSV instructions.')
-        parser.add_argument('--target', type=str, default=None)
-        parser.add_argument('--prompt', type=str, default=None)
+        # parser.add_argument("--file", type=str,
+        #     default='/home/peterschaldenbrand/Downloads/david_lynch.csv',
+        #     help='Path CSV instructions.')
+        # parser.add_argument('--target', type=str, default=None)
+        # parser.add_argument('--prompt', type=str, default=None)
         parser.add_argument("--cache_dir", type=str,
             default='/tmp', help='Where to store cached files.')
         parser.add_argument("--tensorboard_dir", type=str,
@@ -78,10 +78,32 @@ class Options(object):
         parser.add_argument('--adaptive', action='store_true')
         parser.add_argument('--generate_whole_plan', action='store_true')
         parser.add_argument('--strokes_before_adapting', type=int, default=50)
+        parser.add_argument('--remove_prop', type=float, default=0.8, help="Proportion of strokes to remove when adapting")
 
+        parser.add_argument('--adapt_optim_iter', type=int, default=25)
+        
         # parser.add_argument('--type', default='cubic_bezier', type=str, help='Type of instructions: [cubic_bezier | bezier]')
         # parser.add_argument('--continue_ind', default=0, type=int, help='Instruction to start from. Default 0.')
         parser.add_argument('--simulate', action='store_true')
+
+
+
+        parser.add_argument('--objective', nargs='*', type=str, help='text|style|clip_conv_loss|l2|clip_fc_loss')
+        parser.add_argument('--objective_data', nargs='*', type=str)
+        parser.add_argument('--objective_weight', nargs='*', type=float, default=1.0)
+        parser.add_argument('--optim_iter', type=int, default=150)
+
+        parser.add_argument('--init_objective', nargs='*', type=str, help='text|style|clip_conv_loss|l2|clip_fc_loss')
+        parser.add_argument('--init_objective_data', nargs='*', type=str)
+        parser.add_argument('--init_objective_weight', nargs='*', type=float, default=1.0)
+        parser.add_argument('--init_optim_iter', type=int, default=40)
+        parser.add_argument('--n_inits', type=int, default=1, help='Number of times to try different initializations')
+
+        parser.add_argument('--use_colors_from', type=str, default=None, help="Get the colors from this image. \
+                None if you want the colors to come from the optimized painting.")
+
+        parser.add_argument('--num_augs', type=int, default=30)
+
         return parser 
 
     def gather_options(self):

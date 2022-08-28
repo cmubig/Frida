@@ -86,7 +86,7 @@ def get_real_colors(painter, colors):
         canvas_before = canvas_after
     return colors
 
-def save_for_python3_file(painter, colors, target, full_sim_canvas):
+def save_for_python3_file(painter, full_sim_canvas):
     # Save strokes for planning python file
     painter.to_neutral()
     if painter.opt.simulate:
@@ -96,12 +96,12 @@ def save_for_python3_file(painter, colors, target, full_sim_canvas):
     im = Image.fromarray(current_canvas)
     im.save(os.path.join(painter.opt.cache_dir, 'current_canvas.jpg'))
 
-    im = Image.fromarray(target.astype(np.uint8))
-    im.save(os.path.join(painter.opt.cache_dir, 'target_discrete.jpg'))
+    # im = Image.fromarray(target.astype(np.uint8))
+    # im.save(os.path.join(painter.opt.cache_dir, 'target_discrete.jpg'))
 
     # Save paint colors for the other python file
-    with open(os.path.join(painter.opt.cache_dir, 'colors.npy'), 'wb') as f:
-        np.save(f, colors)
+    # with open(os.path.join(painter.opt.cache_dir, 'colors.npy'), 'wb') as f:
+    #     np.save(f, colors)
 
 def paint_color_calibration(painter, colors):
     ''' Make a mark with each paint color, then measure that color '''
@@ -124,7 +124,7 @@ def paint_color_calibration(painter, colors):
     return colors
 
 global_it = 0
-def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5):
+def paint_planner_new(painter, how_often_to_get_paint=5):
     global global_it
     painter.to_neutral()
     canvas_after = painter.camera.get_canvas()
@@ -137,29 +137,31 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
 
     # colors = paint_color_calibration(painter, colors)
 
-    target = discretize_with_labels(colors, labels)
+    # target = discretize_with_labels(colors, labels)
 
     for it in tqdm(range(100 if painter.opt.adaptive else 1)): # how many times to go visit planning file
         canvas_before = canvas_after 
 
         # Save data that the python3 file needs
-        save_for_python3_file(painter, colors, target, full_sim_canvas)
+        save_for_python3_file(painter, full_sim_canvas)
 
         # Plan the new strokes with SawyerPainter/scripts/plan_all_strokes.py
         if not painter.opt.dont_plan:
             add_adapt = ['--generate_whole_plan'] if painter.opt.adaptive and it==0 else []
-            exit_code = subprocess.call(['python3', '/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/plan_all_strokes.py']+sys.argv[1:]+['--global_it', str(global_it)]+add_adapt)
+            exit_code = subprocess.call(['python3', 
+                '/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/plan.py']+sys.argv[1:]+['--global_it', str(global_it)]+add_adapt)
             if exit_code != 0:
                 print('exit code', exit_code)
                 return
         
         # Colors possibly updated during planning
-        if painter.opt.prompt is not None:
-            with open(os.path.join(painter.opt.cache_dir, 'colors_updated.npy'), 'rb') as f:
-                colors = np.load(f).astype(np.float32)
-            all_colors = save_colors(colors)
-            painter.writer.add_image('paint_colors/updated', all_colors/255., 0)
-            painter.writer.add_image('paint_colors/updated', all_colors/255., 1)
+        # if painter.opt.prompt is not None:
+        #if not opt.use_colors_from:
+        with open(os.path.join(painter.opt.cache_dir, 'colors_updated.npy'), 'rb') as f:
+            colors = np.load(f).astype(np.float32)
+        all_colors = save_colors(colors)
+        painter.writer.add_image('paint_colors/updated', all_colors/255., it)
+        painter.writer.add_image('paint_colors/updated', all_colors/255., it)
 
         if not painter.opt.simulate and it == 0:
             show_img(canvas_before/255., title="Ready to start painting. Ensure mixed paint is provided and then exit this to start painting.")
@@ -175,7 +177,7 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
             n_instr = len(instructions)
             if painter.opt.adaptive:
                 instructions = instructions[:painter.opt.strokes_before_adapting]
-            for instruction in tqdm(instructions[:]):
+            for instruction in tqdm(instructions[:], desc="Painting"):
                 canvas_before = canvas_after
                 if painter.opt.discrete:
                     x, y, r, stroke_ind, color, color_ind, color_discrete = instruction
@@ -247,7 +249,7 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
                         painter.writer.add_image('images/sim_canvas', full_sim_canvas/255., global_it)
                     all_colors = save_colors(colors)
                     painter.writer.add_image('paint_colors/are', all_colors/255., global_it)
-                    painter.writer.add_image('target/target_discrete', target/255., global_it)
+                    # painter.writer.add_image('target/target_discrete', target/255., global_it)
 
                 global_it += 1
                 consecutive_paints += 1
@@ -260,82 +262,14 @@ def paint_planner_new(painter, target, colors, labels, how_often_to_get_paint=5)
                 if n_instr <= painter.opt.strokes_before_adapting:
                     break
 
+
     painter.clean_paint_brush()
     painter.clean_paint_brush()
     to_video(real_canvases, fn='/home/frida/Videos/frida/real_canvases{}.mp4'.format(str(time.time())))
     to_video(sim_canvases, fn='/home/frida/Videos/frida/sim_canvases{}.mp4'.format(str(time.time())))
 
-
-
-def paint_planner_diffvg(painter, target, colors, labels, how_often_to_get_paint=5):
-    global global_it
-    painter.to_neutral()
-    canvas_after = painter.camera.get_canvas()
-    real_canvases = [canvas_after]
-    consecutive_paints = 0
-    camera_capture_interval = 8
-    curr_color = -1
-
-    target = discretize_with_labels(colors, labels)
-
-    for it in tqdm(range(1)): # how many times to go visit planning file
-        canvas_before = canvas_after 
-
-        # Save data that the python3 file needs
-        save_for_python3_file(painter, colors, target, canvas_after.copy())
-
-        # Plan the new strokes with SawyerPainter/scripts/plan_all_strokes.py
-        exit_code = subprocess.call(['python3.7', '/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/plan_all_strokes_diffvg.py']+sys.argv[1:]+['--global_it', str(global_it)])
-        if exit_code != 0:
-            print('exit code', exit_code)
-            return
-        show_img(canvas_before/255., title="Ready to start painting. Ensure mixed paint is provided and then exit this to start painting.")
-
-        # Run Planned Strokes
-        instructions = pickle.load(open(os.path.join(painter.opt.cache_dir, "next_brush_strokes_diffvg.pkl"),'r'))
-        
-        for instruction in tqdm(instructions):
-            canvas_before = canvas_after
-            xs, ys, z, color = instruction['xs'], 1-instruction['ys'], instruction['z'], instruction['color']
-            color *= 255.
-            color_ind, color_discrete = nearest_color(color, colors)
-
-            # Clean paint brush and/or get more paint
-            new_paint_color = color_ind != curr_color
-            if new_paint_color:
-                dark_to_light = np.mean(colors[curr_color]) < np.mean(colors[color_ind])
-                # if dark_to_light and curr_color != -1:
-                #     painter.clean_paint_brush() # Really clean this thing
-                #     painter.clean_paint_brush()
-                #     show_img(target/255., title="About to start painting with a lighter color")
-                # painter.clean_paint_brush()
-                # painter.clean_paint_brush()
-                curr_color = color_ind
-            if consecutive_paints >= how_often_to_get_paint or new_paint_color:
-                painter.get_paint(color_ind)
-                consecutive_paints = 0
-
-            # Paint the brush stroke
-            paint_diffvg(painter, xs, ys, z)
-
-            if global_it%camera_capture_interval == 0:
-                painter.to_neutral()
-                canvas_after = painter.camera.get_canvas()
-                
-                real_canvases.append(canvas_after)
-
-
-            if global_it%5==0: # loggin be sloggin
-                if not painter.opt.simulate:
-                    painter.writer.add_image('images/canvas', canvas_after/255., global_it)
-                all_colors = save_colors(colors)
-                painter.writer.add_image('paint_colors/are', all_colors/255., global_it)
-                painter.writer.add_image('target/target_discrete', target/255., global_it)
-
-            global_it += 1
-            consecutive_paints += 1
-
-    to_video(real_canvases, fn='real_canvases.mp4')
-
+    canvas_after = painter.camera.get_canvas() if not painter.opt.simulate else full_sim_canvas
+    if not painter.opt.simulate:
+        painter.writer.add_image('images/canvas', canvas_after/255., global_it)
 
 
