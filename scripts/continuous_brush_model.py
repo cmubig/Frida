@@ -364,15 +364,18 @@ def train_param2stroke(opt):
                 best_model.eval()
                 pred_strokes_val = best_model(val_trajectories)
                 for val_ind in range(min(n_view,len(val_strokes))):
+                    print(val_trajectories[val_ind])
+                    b, l, z = val_trajectories[val_ind][4], val_trajectories[val_ind][9], val_trajectories[val_ind][5]
                     log_images([process_img(1-val_strokes[val_ind]),
                         process_img(1-special_sigmoid(pred_strokes_val[val_ind]))], 
-                        ['real','sim'], 'images_stroke_modeling/val_{}_sim_stroke_best'.format(val_ind), opt.writer)
+                        ['real','sim'], 'images_stroke_modeling/val_{}_sim_stroke_best_b{:.2f}_l{:.2f}_z{:.2f}'.format(val_ind, b, l, z), opt.writer)
 
                 pred_strokes_train = best_model(train_trajectories)
                 for train_ind in range(min(n_view,len(train_strokes))):
+                    b, l, z = train_trajectories[train_ind][4], train_trajectories[train_ind][9], train_trajectories[train_ind][5]
                     log_images([process_img(1-train_strokes[train_ind]),
                         process_img(1-special_sigmoid(pred_strokes_train[train_ind]))], 
-                        ['real','sim'], 'images_stroke_modeling/train_{}_sim_stroke_best'.format(train_ind), opt.writer)
+                        ['real','sim'], 'images_stroke_modeling/train_{}_sim_stroke_best_b{:.2f}_l{:.2f}_z{:.2f}'.format(train_ind, b, l, z), opt.writer)
 
                 # Make them into full sized strokes
                 pred_strokes_val = best_model(val_trajectories)
