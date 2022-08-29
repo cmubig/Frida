@@ -364,7 +364,7 @@ def train_param2stroke(opt):
                 best_model.eval()
                 pred_strokes_val = best_model(val_trajectories)
                 for val_ind in range(min(n_view,len(val_strokes))):
-                    print(val_trajectories[val_ind])
+                    # print(val_trajectories[val_ind])
                     b, l, z = val_trajectories[val_ind][4], val_trajectories[val_ind][9], val_trajectories[val_ind][5]
                     log_images([process_img(1-val_strokes[val_ind]),
                         process_img(1-special_sigmoid(pred_strokes_val[val_ind]))], 
