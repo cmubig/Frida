@@ -1,5 +1,17 @@
 # SawyerPainter
 
+```
+# Run robot
+rosrun paint paint.py --target /home/frida/Downloads/andy.jpg  --n_colors 9  --max_height 196 --num_strokes 70 --adaptive --use_cache --simulate --n_stroke_models 1 --init_objective l2 --init_objective_data /home/frida/Downloads/georgia.jpg --init_objective_weight 0.2 --objective text --objective_data "A car" --objective_weight 1.0  --objective style --objective_data /home/frida/Downloads/georgia.jpg  --objective_weight 0.1
+
+# Run Sim add the --simulate commandline arg
+
+# Just plan using python3 (Colab)
+cd scripts
+python3 plan.py [args]
+```
+
+# Everything below this is pretty old
 
 ```
 git clone https://github.com/pschaldenbrand/SawyerPainter.git
