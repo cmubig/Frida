@@ -132,6 +132,7 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
     real_canvases = [canvas_after]
     sim_canvases = [canvas_after]
     consecutive_paints = 0
+    consecutive_strokes_no_clean = 0
     camera_capture_interval = 8
     curr_color = -1
 
@@ -201,7 +202,7 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
 
                 # Clean paint brush and/or get more paint
                 new_paint_color = color_ind != curr_color
-                if new_paint_color:
+                if new_paint_color or consecutive_strokes_no_clean > 12:
                     dark_to_light = np.mean(colors[curr_color]) < np.mean(colors[color_ind])
                     # if dark_to_light and curr_color != -1:
                     #     painter.clean_paint_brush() # Really clean this thing
@@ -209,8 +210,12 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
                     #     if not painter.opt.simulate:
                     #         show_img(target/255., title="About to start painting with a lighter color")
                     painter.clean_paint_brush()
-                    painter.clean_paint_brush()
+                    if consecutive_strokes_no_clean <= 12: painter.clean_paint_brush()
+                    consecutive_strokes_no_clean = 0
                     curr_color = color_ind
+                    new_paint_color = True
+                else:
+                    consecutive_strokes_no_clean += 1
                 if consecutive_paints >= how_often_to_get_paint or new_paint_color:
                     painter.get_paint(color_ind)
                     consecutive_paints = 0

@@ -207,6 +207,9 @@ class BrushStroke(nn.Module):
             stroke.transformation.xt.data.clamp_(-1.,1.)
             stroke.transformation.yt.data.clamp_(-1.,1.)
 
+
+            stroke.color_transform.data.clamp_(0.02,0.98)
+
 class Painting(nn.Module):
     def __init__(self, n_strokes, background_img=None, brush_strokes=None):
         # h, w are canvas height and width in pixels
@@ -281,6 +284,7 @@ class Painting(nn.Module):
             else:
                 canvas = canvas[:,:3] * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke[:,:3]
         return canvas
+
 
     def to_csv(self):
         ''' To csv string '''

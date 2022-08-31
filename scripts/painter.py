@@ -635,7 +635,7 @@ class Painter():
                 j+=1
                 prev_canvas = canvas
 
-    def paint_extended_stroke_library(self, num_papers=4):
+    def paint_extended_stroke_library(self):
         from scipy.ndimage import median_filter
         w = self.opt.CANVAS_WIDTH_PIX
         h = self.opt.CANVAS_HEIGHT_PIX
@@ -660,7 +660,7 @@ class Painter():
 
         stroke_trajectories = [] # Flatten so it's just twelve values x0,y0,z0,x1,y1,...
         stroke_intensities = [] # list of 2D numpy arrays 0-1 where 1 is paint
-        for paper_it in range(num_papers):
+        for paper_it in range(self.opt.num_papers):
             for y_offset_pix in np.linspace(0.1, 0.9, 6)*h:
                 for x_offset_pix in np.linspace(0.1, 0.9, 5)*w:
                     x, y = x_offset_pix / w, 1 - (y_offset_pix / h)
@@ -737,14 +737,18 @@ class Painter():
                     # Save data
                     with open(os.path.join(self.opt.cache_dir, 'extended_stroke_library_trajectories.npy'), 'wb') as f:
                         np.save(f, np.stack(stroke_trajectories, axis=0))
-                    with open(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy'), 'wb') as f:
+                    # with open(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy'), 'wb') as f:
+                    #     intensities = np.stack(np.stack(stroke_intensities, axis=0), axis=0)
+                    #     intensities = (intensities * 255).astype(np.uint8)
+                    #     np.save(f, intensities)
+                    with gzip.GzipFile(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy'), 'w') as f:
                         intensities = np.stack(np.stack(stroke_intensities, axis=0), axis=0)
                         intensities = (intensities * 255).astype(np.uint8)
                         np.save(f, intensities)
                     with open(os.path.join(self.opt.cache_dir, 'stroke_size.npy'), 'wb') as f:
                         np.save(f, np.array(stroke_intensities[0].shape))
 
-            if paper_it != num_papers-1:
+            if paper_it != self.opt.num_papers-1:
                 try:
                     input('Place down new paper. Press enter to start.')
                 except SyntaxError:
