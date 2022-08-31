@@ -349,6 +349,10 @@ def plan(opt):
 
         painting = sort_brush_strokes_by_color(painting)
         
+        if i < 0.3*opt.optim_iter and i %3 == 0:
+            # make sure hidden strokes get some attention
+            painting = randomize_brush_stroke_order(painting)
+
         if (i % 10 == 0 and i > (0.5*opt.optim_iter)) or i > 0.9*opt.optim_iter:
             if opt.use_colors_from is None:
                 # Cluster the colors from the existing painting
