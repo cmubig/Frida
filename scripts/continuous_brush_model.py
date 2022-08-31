@@ -17,7 +17,7 @@ import os
 import copy
 # import colour
 # import random
-# import gzip
+import gzip
 import kornia as K
 import datetime
 from tqdm import tqdm
@@ -109,55 +109,61 @@ def log_all_permutations(model, writer):
     writer.add_figure('images_stroke_modeling/stroke_modelling_thickness_vs_length', fig, 0)
     # plt.show()
 
-    # img_fig = None
-    # for i in range(n_img):
-    #     trajectory = to_full_param(.04, 0.0, zs[i])
-    #     s = 1-model(trajectory)
-    #     # print(s.shape)
-    #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
-    #     s = np.pad(s, (3), 'constant', constant_values=(1.))
-    #     if img_fig is None:
-    #         img_fig = s 
-    #     else:
-    #         img_fig = np.concatenate([img_fig, s], axis=1)
-    # plt.figure(figsize=(12,1))
-    # plt.imshow(img_fig, cmap='gray')
-    # plt.xticks([])
-    # plt.yticks([])
+    img_fig = None
+    for i in range(n_img):
+        trajectory = to_full_param(.04, 0.0, zs[i])
+        s = 1-model(trajectory)
+        # print(s.shape)
+        s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
+        s = np.pad(s, (3), 'constant', constant_values=(1.))
+        if img_fig is None:
+            img_fig = s 
+        else:
+            img_fig = np.concatenate([img_fig, s], axis=1)
+    plt.figure(figsize=(19,3))
+    plt.imshow(img_fig, cmap='gray')
+    plt.xticks([])
+    plt.yticks([])
+    plt.tight_layout()
+    plt.savefig('thickness.png')
     # plt.show()
 
-    # img_fig = None
-    # for i in range(n_img):
-    #     trajectory = to_full_param(.04, bends[i], .5)
-    #     s = 1-model(trajectory)
-    #     # print(s.shape)
-    #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
-    #     s = np.pad(s, (3), 'constant', constant_values=(1.))
-    #     if img_fig is None:
-    #         img_fig = s 
-    #     else:
-    #         img_fig = np.concatenate([img_fig, s], axis=1)
-    # plt.figure(figsize=(12,1))
-    # plt.imshow(img_fig, cmap='gray')
-    # plt.xticks([])
-    # plt.yticks([])
+    img_fig = None
+    for i in range(n_img):
+        trajectory = to_full_param(.04, bends[i], .5)
+        s = 1-model(trajectory)
+        # print(s.shape)
+        s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
+        s = np.pad(s, (3), 'constant', constant_values=(1.))
+        if img_fig is None:
+            img_fig = s 
+        else:
+            img_fig = np.concatenate([img_fig, s], axis=1)
+    plt.figure(figsize=(19,3))
+    plt.imshow(img_fig, cmap='gray')
+    plt.xticks([])
+    plt.yticks([])
+    plt.tight_layout()
+    plt.savefig('bends.png')
     # plt.show()
 
-    # img_fig = None
-    # for i in range(n_img):
-    #     trajectory = to_full_param(lengths[i], 0, .5)
-    #     s = 1-model(trajectory)
-    #     # print(s.shape)
-    #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
-    #     s = np.pad(s, (3), 'constant', constant_values=(1.))
-    #     if img_fig is None:
-    #         img_fig = s 
-    #     else:
-    #         img_fig = np.concatenate([img_fig, s], axis=1)
-    # plt.figure(figsize=(12,1))
-    # plt.imshow(img_fig, cmap='gray')
-    # plt.xticks([])
-    # plt.yticks([])
+    img_fig = None
+    for i in range(n_img):
+        trajectory = to_full_param(lengths[i], 0, .5)
+        s = 1-model(trajectory)
+        # print(s.shape)
+        s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
+        s = np.pad(s, (3), 'constant', constant_values=(1.))
+        if img_fig is None:
+            img_fig = s 
+        else:
+            img_fig = np.concatenate([img_fig, s], axis=1)
+    plt.figure(figsize=(19,3))
+    plt.imshow(img_fig, cmap='gray')
+    plt.xticks([])
+    plt.yticks([])
+    plt.tight_layout()
+    plt.savefig('lengths.png')
     # plt.show()
 
     # fig, ax = plt.subplots(1, n_img, figsize=(12,1))
@@ -270,7 +276,9 @@ class StrokeParametersToImage(nn.Module):
 
 
 def train_param2stroke(opt):
-    strokes = np.load(os.path.join(opt.cache_dir, 'extended_stroke_library_intensities.npy')).astype(np.float32)/255.
+    #strokes = np.load(os.path.join(opt.cache_dir, 'extended_stroke_library_intensities.npy')).astype(np.float32)/255.
+    with gzip.GzipFile(os.path.join(opt.cache_dir, 'extended_stroke_library_intensities.npy'),'r') as f:
+        strokes = np.load(f).astype(np.float32)/255.
     trajectories = np.load(os.path.join(opt.cache_dir, 'extended_stroke_library_trajectories.npy'), 
             allow_pickle=True, encoding='bytes') 
 
@@ -279,8 +287,11 @@ def train_param2stroke(opt):
     
     n = len(strokes)
     
-    scale_factor = opt.max_height / strokes.shape[1]
-    strokes = transforms.Resize((int(strokes.shape[1]*scale_factor), int(strokes.shape[2]*scale_factor)))(strokes)
+    # scale_factor = opt.max_height / strokes.shape[1]
+    stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
+    h, w = stroke_shape[0], stroke_shape[1]
+    # strokes = transforms.Resize((int(strokes.shape[1]*scale_factor), int(strokes.shape[2]*scale_factor)))(strokes)
+    strokes = transforms.Resize((h,w))(strokes)
 
     # Randomize
     rand_ind = torch.randperm(strokes.shape[0])
@@ -291,7 +302,7 @@ def train_param2stroke(opt):
     # strokes[strokes >= 0.5] = 1.
     # strokes[strokes < 0.5] = 0.
 
-    h, w = strokes[0].shape[0], strokes[0].shape[1]
+    # h, w = strokes[0].shape[0], strokes[0].shape[1]
     h_og, w_og = h, w
 
     # Crop
@@ -325,8 +336,8 @@ def train_param2stroke(opt):
             noise = torch.randn(train_trajectories.shape).to(device)*0.005 # For robustness
             pred_strokes = trans(train_trajectories + noise)
 
-            # loss = nn.L1Loss()(pred_strokes, train_strokes)
-            loss = nn.MSELoss()(pred_strokes, train_strokes) # MSE loss produces crisper stroke images
+            loss = nn.L1Loss()(pred_strokes, train_strokes)
+            # loss = nn.MSELoss()(pred_strokes, train_strokes) # MSE loss produces crisper stroke images
 
             ep_loss = loss.item()
             loss.backward()
@@ -349,9 +360,9 @@ def train_param2stroke(opt):
                 #             process_img(pred_strokes_train[train_ind])], 
                 #             ['real','sim'], 'images_stroke_modeling/train_{}_stroke'.format(train_ind), opt.writer, step=it)
 
-                loss = nn.MSELoss()(pred_strokes_val, val_strokes)
+                # loss = nn.MSELoss()(pred_strokes_val, val_strokes)
+                loss = nn.L1Loss()(pred_strokes_val, val_strokes)
                 opt.writer.add_scalar('loss/val_loss_stroke_model', loss.item(), it)
-
                 if loss.item() < best_val_loss and it > 50:
                     best_val_loss = loss.item()
                     best_hasnt_changed_for = 0
@@ -391,6 +402,137 @@ def train_param2stroke(opt):
 
     return h_og, w_og
 
+def n_stroke_test(opt):
+    #strokes = np.load(os.path.join(opt.cache_dir, 'extended_stroke_library_intensities.npy')).astype(np.float32)/255.
+    with gzip.GzipFile(os.path.join(opt.cache_dir, 'extended_stroke_library_intensities.npy'),'r') as f:
+        strokes = np.load(f).astype(np.float32)/255.
+    trajectories = np.load(os.path.join(opt.cache_dir, 'extended_stroke_library_trajectories.npy'), 
+            allow_pickle=True, encoding='bytes') 
+
+    strokes = torch.from_numpy(strokes).to(device).float().nan_to_num()
+    trajectories = torch.from_numpy(trajectories.astype(np.float32)).to(device).float().nan_to_num()
+    
+    # Randomize
+    rand_ind = torch.randperm(strokes.shape[0])
+    strokes = strokes[rand_ind]
+    trajectories = trajectories[rand_ind]
+
+    stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
+    h, w = stroke_shape[0], stroke_shape[1]
+    strokes = transforms.Resize((h,w))(strokes)
+
+    h_og, w_og = h, w
+
+    # Crop
+    hs, he = int(.4*h), int(0.6*h)
+    ws, we = int(0.45*w), int(0.75*w)
+    strokes = strokes[:, hs:he, ws:we]
+
+
+    n = len(strokes)
+    print(n)
+    test_prop = 0.2 
+    test_strokes = strokes[:int(test_prop*n)]
+    test_trajectories = trajectories[:int(test_prop*n)]
+    strokes = strokes[int(test_prop*n):]
+    trajectories = trajectories[int(test_prop*n):]
+    n = len(strokes)
+    print(n, 'test strokes', len(test_strokes), len(strokes))
+
+
+    h, w = strokes[0].shape[0], strokes[0].shape[1]
+
+    n = len(strokes)
+
+    plot_x = []
+    plot_y = []
+    
+    for n_strokes in range(10, n, 5):
+        s = strokes[:n_strokes]
+        t = trajectories[:n_strokes]
+
+
+        avg_test_err = 0
+        n_folds = 5
+        for fold in range(n_folds):
+            trans = StrokeParametersToImage(h,w).to(device)
+            #print('# parameters in StrokeParam2Image model:', get_n_params(trans))
+            optim = torch.optim.Adam(trans.parameters(), lr=1e-3)
+            best_model = None
+            best_val_loss = 999
+            best_hasnt_changed_for = 0
+
+            #val_prop = .3
+
+            train_strokes = torch.cat([s[:int((fold/n_folds)*n_strokes)], s[int(((fold+1)/n_folds)*n_strokes):]], dim=0)
+            train_trajectories = torch.cat([t[:int((fold/n_folds)*n_strokes)], t[int(((fold+1)/n_folds)*n_strokes):]], dim=0)
+            val_strokes = s[int((fold/n_folds)*n_strokes):int(((fold+1)/n_folds)*n_strokes)]
+            val_trajectories = t[int((fold/n_folds)*n_strokes):int(((fold+1)/n_folds)*n_strokes)]
+            if fold == 0:
+                print('{} training strokes. {} validation strokes'.format(len(train_strokes), len(val_strokes)))
+
+            for it in tqdm(range(2000)):
+                if best_hasnt_changed_for >= 200:
+                    break # all done :)
+                optim.zero_grad()
+
+                noise = torch.randn(train_trajectories.shape).to(device)*0.005 # For robustness
+                pred_strokes = trans(train_trajectories + noise)
+
+                loss = nn.L1Loss()(pred_strokes, train_strokes)
+                # loss = nn.MSELoss()(pred_strokes, train_strokes) # MSE loss produces crisper stroke images
+
+                ep_loss = loss.item()
+                loss.backward()
+                optim.step()
+
+                opt.writer.add_scalar('loss/train_loss_stroke_model', ep_loss, it)
+                
+                n_view = 10
+                with torch.no_grad():
+                    trans.eval()
+                    pred_strokes_val = trans(val_trajectories)
+                    # loss = nn.MSELoss()(pred_strokes_val, val_strokes)
+                    loss = nn.L1Loss()(pred_strokes_val, val_strokes)
+                    # print(pred_strokes_val.shape, val_strokes.shape)
+                    opt.writer.add_scalar('loss/val_loss_stroke_model', loss.item(), it)
+
+                    if loss.item() < best_val_loss and it > 50:
+                        best_val_loss = loss.item()
+                        best_hasnt_changed_for = 0
+                        best_model = copy.deepcopy(trans)
+                    best_hasnt_changed_for += 1
+                    trans.train()
+            with torch.no_grad():
+                trans.eval()
+                pred_strokes_test = best_model(test_trajectories)
+                # loss = nn.MSELoss()(pred_strokes_test, test_strokes)
+                test_loss = nn.L1Loss()(pred_strokes_test, test_strokes)
+                
+                trans.train()
+            avg_test_err += test_loss.item()/n_folds
+        print('test error', avg_test_err)
+        opt.writer.add_scalar('loss/test_loss_stroke_model', avg_test_err, n_strokes)
+
+        plot_x.append(n_strokes)
+        plot_y.append(avg_test_err)
+
+    import matplotlib.pyplot as plt 
+    plt.rcParams["font.family"] = "Times New Roman"
+    # plot_x = [1,2,3]
+    # plot_y = [.1,.05, .01]
+    plt.plot(plot_x, plot_y)
+    csfont = {'fontname':'Times New Roman'}
+    plt.title('Stroke Shape Model Performance Versus Number of Training Examples')
+    plt.ylabel('Average Absolute Test Error')
+    plt.xlabel('Number of Training and Validation Brush Strokes')
+    from matplotlib.ticker import MaxNLocator
+    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+    plt.savefig('err_v_strokes.svg', format='svg')
+    plt.show()
+
+
+    return h_og, w_og
 
 if __name__ == '__main__':
     global opt, strokes
@@ -405,4 +547,5 @@ if __name__ == '__main__':
     writer = TensorBoard(tensorboard_dir)
     opt.writer = writer
 
+    # n_stroke_test(opt)
     train_param2stroke(opt)

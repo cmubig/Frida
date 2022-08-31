@@ -117,6 +117,13 @@ def sort_brush_strokes_by_color(painting, bin_size=3000):
         painting.brush_strokes = nn.ModuleList(brush_strokes)
         return painting
 
+def randomize_brush_stroke_order(painting):
+    with torch.no_grad():
+        brush_strokes = [bs for bs in painting.brush_strokes]
+        random.shuffle(brush_strokes)
+        painting.brush_strokes = nn.ModuleList(brush_strokes)
+        return painting
+
 def discretize_colors(painting, discrete_colors):
     # pass
     with torch.no_grad():
@@ -266,7 +273,7 @@ def plan(opt):
     painting.to(device)
 
     if opt.init_objective:
-        optim = torch.optim.RMSprop(painting.parameters(), lr=3e-2) # Coarse optimization
+        optim = torch.optim.RMSprop(painting.parameters(), lr=opt.init_lr) # Coarse optimization
         for j in tqdm(range(opt.init_optim_iter), desc="Initializing"):
             optim.zero_grad()
             p = painting(h, w, use_alpha=False)
@@ -279,7 +286,8 @@ def plan(opt):
             optim.step()
             painting.validate()
             optim.param_groups[0]['lr'] = optim.param_groups[0]['lr'] * 0.95
-            painting = sort_brush_strokes_by_color(painting)
+            # painting = sort_brush_strokes_by_color(painting)
+            painting = randomize_brush_stroke_order(painting)
             log_progress(painting, title='init_optimization')#, force_log=True)
             
 
@@ -310,7 +318,7 @@ def plan(opt):
 
     # Create the plan
     position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
-                = painting.get_optimizers(multiplier=.2)
+                = painting.get_optimizers(multiplier=opt.lr_multiplier)
     optims = (position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt)
     for i in tqdm(range(opt.optim_iter), desc='Optimizing {} Strokes'.format(str(len(painting.brush_strokes)))):
         for o in optims: o.zero_grad()
@@ -388,7 +396,7 @@ def adapt(opt):
     
     # Optimize all brush strokes
     position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
-            = painting.get_optimizers(multiplier=.2)
+            = painting.get_optimizers(multiplier=opt.lr_multiplier*.5)
     for j in tqdm(range(opt.adapt_optim_iter), desc='Optimizing {} Strokes'.format(str(len(painting.brush_strokes)))):
         position_opt.zero_grad()
         rotation_opt.zero_grad()
@@ -505,7 +513,7 @@ if __name__ == '__main__':
         opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(colors), 0)
 
     # Get the background of painting to be the current canvas
-    current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg')).to(device)/255.
+    current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg'), h=h, w=w).to(device)/255.
 
     load_objectives_data(opt)
 
