@@ -199,7 +199,7 @@ def random_init_painting(background_img, n_strokes):
 def parse_objective(objective_type, objective_data, p, weight=1.0):
     ''' p is the rendered painting '''
     if objective_type == 'text':
-        return clip_text_loss(p, objective_data, opt.num_augs) * weight
+        return clip_text_loss(p, objective_data, opt.num_augs)[0] * weight
     elif objective_type == 'style':
         return compute_style_loss(p, objective_data) * weight
     elif objective_type == 'clip_conv_loss':
@@ -401,6 +401,7 @@ def adapt(opt):
     # Optimize all brush strokes
     position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
             = painting.get_optimizers(multiplier=opt.lr_multiplier*.5)
+    print(opt.objective)
     for j in tqdm(range(opt.adapt_optim_iter), desc='Optimizing {} Strokes'.format(str(len(painting.brush_strokes)))):
         position_opt.zero_grad()
         rotation_opt.zero_grad()
