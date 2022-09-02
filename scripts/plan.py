@@ -3,8 +3,9 @@ import numpy as np
 import torch
 from torchvision import transforms
 from torch import nn
-import matplotlib.pyplot as plt
 import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import requests
 from PIL import Image
 import io

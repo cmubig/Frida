@@ -71,10 +71,18 @@ class Painter():
 
 
         # Setup Camera
-        if not self.opt.simulate:
-            self.camera = WebCam(opt)
-        else:
-            self.camera = SimulatedWebCam(opt)
+        while True:
+            try:
+                if not self.opt.simulate:
+                    self.camera = WebCam(opt)
+                else:
+                    self.camera = SimulatedWebCam(opt)
+                break
+            except:
+                try:
+                    input('Could not connect camera. Try turning it off and on, then press start.')
+                except SyntaxError:
+                    pass
 
         self.curr_position = None
         self.seed_position = None
@@ -406,6 +414,7 @@ class Painter():
     def coordinate_calibration(self, debug=True, use_cache=False):
         import matplotlib.pyplot as plt
         from simulated_painting_environment import apply_stroke
+        from scipy.ndimage import median_filter
         import cv2
         # If you run painter.paint on a given x,y it will be slightly off (both in real and simulation)
         # Close this gap by transforming the given x,y into a coordinate that painter.paint will use
@@ -426,15 +435,22 @@ class Painter():
         stroke_ind = 0 # This stroke is pretty much a dot
 
         canvas = self.camera.get_canvas()
+        canvas_og = canvas.copy()
         canvas_width_pix, canvas_height_pix = canvas.shape[1], canvas.shape[0]
 
         # Points for computing the homography
         t = 0.1 # How far away from corners to paint
-        homography_points = [[t,t],[1-t,t],[t,1-t],[1-t,1-t]]
+        # homography_points = [[t,t],[1-t,t],[t,1-t],[1-t,1-t]]
+        homography_points = []
+        for i in np.linspace(0.1, 0.9, 4):
+            for j in np.linspace(0.1, 0.9, 4):
+                homography_points.append([i,j])
 
-
-        self.get_paint(0)
+        
+        i = 0
         for canvas_coord in homography_points:
+            if i % 5 == 0: self.get_paint(0)
+            i += 1
             x_prop, y_prop = canvas_coord # Coord in canvas proportions
             x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix) #  Coord in canvas pixels
             x_glob,y_glob,_ = canvas_to_global_coordinates(x_prop,y_prop,None, self.opt) # Coord in meters from robot
@@ -444,7 +460,7 @@ class Painter():
 
         # Picture of the new strokes
         self.to_neutral()
-        canvas = self.camera.get_canvas()
+        canvas = self.camera.get_canvas().astype(np.float32)
 
         sim_coords = []
         real_coords = []
@@ -460,12 +476,27 @@ class Painter():
             window = window.mean(axis=2)
             window /= 255.
             window = 1 - window
-            # plt.imshow(window, cmap='gray')
+            # plt.imshow(window, cmap='gray', vmin=0, vmax=1)
             # plt.show()
             window = window > 0.5
+            window[:int(0.05*window.shape[0])] = 0
+            window[int(0.95*window.shape[0]):] = 0
+            window[:,:int(0.05*window.shape[1])] = 0
+            window[:,int(0.95*window.shape[1]):] = 0
+            window = median_filter(window, size=(9,9))
             dark_y, dark_x = window.nonzero()
-            x_pix_real = int(np.mean(dark_x)) + x_pix-w
-            y_pix_real = int(np.mean(dark_y)) + y_pix-w
+            # plt.matshow(window)
+            # plt.scatter(int(np.median(dark_x)), int(np.median(dark_y)))
+            # plt.show()
+            # fig, ax = plt.subplots(1)
+            fig = plt.figure()
+            ax = fig.gca()
+            ax.matshow(window)
+            ax.scatter(int(np.median(dark_x)), int(np.median(dark_y)))
+            self.writer.add_figure('coordinate_homography/{}'.format(len(real_coords_global)), fig, 0)
+
+            x_pix_real = int(np.median(dark_x)) + x_pix-w
+            y_pix_real = int(np.median(dark_y)) + y_pix-w
 
             real_coords.append(np.array([x_pix_real, y_pix_real]))
             sim_coords.append(np.array([x_pix, y_pix]))
@@ -636,7 +667,6 @@ class Painter():
                 prev_canvas = canvas
 
     def paint_extended_stroke_library(self):
-        from scipy.ndimage import median_filter
         w = self.opt.CANVAS_WIDTH_PIX
         h = self.opt.CANVAS_HEIGHT_PIX
 
@@ -662,7 +692,7 @@ class Painter():
         stroke_intensities = [] # list of 2D numpy arrays 0-1 where 1 is paint
         for paper_it in range(self.opt.num_papers):
             for y_offset_pix in np.linspace(0.1, 0.9, 6)*h:
-                for x_offset_pix in np.linspace(0.1, 0.9, 5)*w:
+                for x_offset_pix in np.linspace(0.05, 0.8, 5)*w:
                     x, y = x_offset_pix / w, 1 - (y_offset_pix / h)
                     x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
                     x,y,_ = canvas_to_global_coordinates(x,y,None,self.opt)
@@ -715,8 +745,19 @@ class Painter():
                     # show_img(stroke)
                     stroke = stroke.mean(axis=2)
                     # show_img(stroke)
-                    stroke /= stroke.max()
+                    if stroke.max() < 0.1 or stroke.min() > 0.8:
+                        continue # Didn't make a mark
+                    # stroke /= stroke.max()
                     # show_img(stroke)
+
+                    if len(stroke_intensities) % 5 == 0:
+                        fig = plt.figure()
+                        ax = fig.gca()
+                        ax.scatter(stroke.shape[1]/2, stroke.shape[0]/2)
+                        ax.imshow(stroke, cmap='gray', vmin=0, vmax=1)
+                        ax.set_xticks([]), ax.set_yticks([])
+                        fig.tight_layout()
+                        self.writer.add_figure('stroke_library/{}'.format(len(stroke_intensities)), fig, 0)
 
                     stroke[:int(.3*h)] = 0 
                     stroke[int(.6*h)] = 0
@@ -734,25 +775,27 @@ class Painter():
 
                     canvas_without_stroke = canvas_with_stroke.copy()
 
-                    # Save data
-                    with open(os.path.join(self.opt.cache_dir, 'extended_stroke_library_trajectories.npy'), 'wb') as f:
-                        np.save(f, np.stack(stroke_trajectories, axis=0))
-                    # with open(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy'), 'wb') as f:
-                    #     intensities = np.stack(np.stack(stroke_intensities, axis=0), axis=0)
-                    #     intensities = (intensities * 255).astype(np.uint8)
-                    #     np.save(f, intensities)
-                    with gzip.GzipFile(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy'), 'w') as f:
-                        intensities = np.stack(np.stack(stroke_intensities, axis=0), axis=0)
-                        intensities = (intensities * 255).astype(np.uint8)
-                        np.save(f, intensities)
-                    with open(os.path.join(self.opt.cache_dir, 'stroke_size.npy'), 'wb') as f:
-                        np.save(f, np.array(stroke_intensities[0].shape))
+                    if len(stroke_intensities) % 5 == 0:
+                        # Save data
+                        with open(os.path.join(self.opt.cache_dir, 'extended_stroke_library_trajectories.npy'), 'wb') as f:
+                            np.save(f, np.stack(stroke_trajectories, axis=0))
+                        # with open(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy'), 'wb') as f:
+                        #     intensities = np.stack(np.stack(stroke_intensities, axis=0), axis=0)
+                        #     intensities = (intensities * 255).astype(np.uint8)
+                        #     np.save(f, intensities)
+                        with gzip.GzipFile(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy'), 'w') as f:
+                            intensities = np.stack(np.stack(stroke_intensities, axis=0), axis=0)
+                            intensities = (intensities * 255).astype(np.uint8)
+                            np.save(f, intensities)
+                        with open(os.path.join(self.opt.cache_dir, 'stroke_size.npy'), 'wb') as f:
+                            np.save(f, np.array(stroke_intensities[0].shape))
 
             if paper_it != self.opt.num_papers-1:
                 try:
                     input('Place down new paper. Press enter to start.')
                 except SyntaxError:
                     pass
+
     def create_continuous_stroke_model(self):
         # Call a script to take the stroke library and model it using a neural network
         # It will save the model to a file to be used later
