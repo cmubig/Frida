@@ -29,6 +29,14 @@ def camera_init():
 
     return camera
 
+def empty_event_queue(camera):
+    while True:
+        type_, data = camera.wait_for_event(10)
+        if type_ == gp.GP_EVENT_TIMEOUT:
+            return
+        # if type_ == gp.GP_EVENT_FILE_ADDED:
+        #     print()
+
 # capture image from camera object
 # returns both the filename and numpy array of target
 def capture_image(camera, channels='rgb', preview=True, debug=False):
@@ -61,7 +69,12 @@ def capture_image(camera, channels='rgb', preview=True, debug=False):
     #         #print('exception', e)
     #         pass
     
-    file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
+    while True:
+        try:
+            file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
+            break
+        except:
+            empty_event_queue(camera)
 
     if (debug):
         print('Camera file path: {0}/{1}'.format(file_path.folder, file_path.name))

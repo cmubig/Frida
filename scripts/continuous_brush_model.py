@@ -3,8 +3,10 @@ import numpy as np
 import torch
 from torchvision import transforms
 from torch import nn
-import matplotlib.pyplot as plt
+
 import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 # import requests
 # from PIL import Image
 import io
@@ -34,7 +36,7 @@ def special_sigmoid(x):
     # return 1/(1+torch.exp(-1.*((x*2-1)+0.2) / 0.05))
     # return x
 
-    x[x < 0.1] = 1/(1+torch.exp(-1.*((x[x < 0.1]*2-1)+0.2) / 0.05))
+    # x[x < 0.1] = 1/(1+torch.exp(-1.*((x[x < 0.1]*2-1)+0.2) / 0.05))
     return x
 
 def get_n_params(model):
@@ -215,7 +217,8 @@ def log_images(imgs, labels, label, writer, step=0):
     fig, ax = plt.subplots(1, len(imgs), figsize=(5*len(imgs),5))
 
     for i in range(len(imgs)):
-        ax[i].imshow(imgs[i], cmap='gray')
+        # print(imgs[i].min(), imgs[i].max())
+        ax[i].imshow(imgs[i], cmap='gray', vmin=0, vmax=255)
         ax[i].set_xticks([])
         ax[i].set_yticks([])
         ax[i].set_title(labels[i])
@@ -266,6 +269,7 @@ class StrokeParametersToImage(nn.Module):
         # return self.conv(self.main(x).view(-1, self.nc, self.h, self.w))[:,0]
         # x = self.res2(self.conv((self.main(x).view(-1, 1, 64, 64))))[:,0]
         x = self.res2(self.conv((self.main(x).view(-1, 1, 48, 48))))[:,0]
+        # x = self.res2(self.conv((self.main(x).view(-1, 1, 32, 32))))[:,0]
         # x = 1/(1+torch.exp(-1.*(x*2-1) / 0.05))
         return x
 
@@ -273,7 +277,7 @@ class StrokeParametersToImage(nn.Module):
         x = self.forward(x)
         return transforms.Pad((ws, hs, w_og-we, h_og-he))(x)
 
-
+loss_fcn = nn.L1Loss()#nn.MSELoss()
 
 def train_param2stroke(opt):
     #strokes = np.load(os.path.join(opt.cache_dir, 'extended_stroke_library_intensities.npy')).astype(np.float32)/255.
@@ -310,6 +314,10 @@ def train_param2stroke(opt):
     ws, we = int(0.45*w), int(0.75*w)
     strokes = strokes[:, hs:he, ws:we]
 
+    # for i in range(len(strokes)):
+    #     strokes[i] -= strokes[i].min()
+    #     strokes[i] /= strokes[i].max()
+
     h, w = strokes[0].shape[0], strokes[0].shape[1]
 
     for model_ind in range(opt.n_stroke_models):
@@ -328,15 +336,15 @@ def train_param2stroke(opt):
         val_trajectories = trajectories[:int(val_prop*n)]
         print('{} training strokes. {} validation strokes'.format(len(train_strokes), len(val_strokes)))
 
-        for it in tqdm(range(2000)):
-            if best_hasnt_changed_for >= 200:
+        for it in tqdm(range(4000)):
+            if best_hasnt_changed_for >= 400:
                 break # all done :)
             optim.zero_grad()
 
             noise = torch.randn(train_trajectories.shape).to(device)*0.005 # For robustness
             pred_strokes = trans(train_trajectories + noise)
 
-            loss = nn.L1Loss()(pred_strokes, train_strokes)
+            loss = loss_fcn(pred_strokes, train_strokes)
             # loss = nn.MSELoss()(pred_strokes, train_strokes) # MSE loss produces crisper stroke images
 
             ep_loss = loss.item()
@@ -361,7 +369,7 @@ def train_param2stroke(opt):
                 #             ['real','sim'], 'images_stroke_modeling/train_{}_stroke'.format(train_ind), opt.writer, step=it)
 
                 # loss = nn.MSELoss()(pred_strokes_val, val_strokes)
-                loss = nn.L1Loss()(pred_strokes_val, val_strokes)
+                loss = loss_fcn(pred_strokes_val, val_strokes)
                 opt.writer.add_scalar('loss/val_loss_stroke_model', loss.item(), it)
                 if loss.item() < best_val_loss and it > 50:
                     best_val_loss = loss.item()
@@ -479,7 +487,7 @@ def n_stroke_test(opt):
                 noise = torch.randn(train_trajectories.shape).to(device)*0.005 # For robustness
                 pred_strokes = trans(train_trajectories + noise)
 
-                loss = nn.L1Loss()(pred_strokes, train_strokes)
+                loss = loss_fcn(pred_strokes, train_strokes)
                 # loss = nn.MSELoss()(pred_strokes, train_strokes) # MSE loss produces crisper stroke images
 
                 ep_loss = loss.item()
@@ -493,7 +501,7 @@ def n_stroke_test(opt):
                     trans.eval()
                     pred_strokes_val = trans(val_trajectories)
                     # loss = nn.MSELoss()(pred_strokes_val, val_strokes)
-                    loss = nn.L1Loss()(pred_strokes_val, val_strokes)
+                    loss = loss_fcn(pred_strokes_val, val_strokes)
                     # print(pred_strokes_val.shape, val_strokes.shape)
                     opt.writer.add_scalar('loss/val_loss_stroke_model', loss.item(), it)
 
@@ -507,7 +515,7 @@ def n_stroke_test(opt):
                 trans.eval()
                 pred_strokes_test = best_model(test_trajectories)
                 # loss = nn.MSELoss()(pred_strokes_test, test_strokes)
-                test_loss = nn.L1Loss()(pred_strokes_test, test_strokes)
+                test_loss = loss_fcn(pred_strokes_test, test_strokes)
                 
                 trans.train()
             avg_test_err += test_loss.item()/n_folds
