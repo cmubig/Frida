@@ -297,3 +297,23 @@ def clip_text_loss(p, text_features, num_augs, text_features_16=None):
             loss -= torch.cosine_similarity(text_features_16, image_features_16[n:n+1], dim=1)
 
     return loss / num_augs if text_features_16 is not None else loss / (2*num_augs)
+
+def clip_fc_loss(p, other_img, num_augs, text_features_16=None):
+    loss = 0
+    p_augs, other_img_augs = [], []
+    with warnings.catch_warnings():
+        # RandomPerspective has a really annoying warning
+        warnings.simplefilter("ignore")
+        for n in range(num_augs):
+            p_augs.append(augment_trans_text(p[:,:3]))
+            other_img_augs.append(augment_trans_text(other_img[:,:3]))
+
+    p_batch = torch.cat(p_augs)
+    other_batch = torch.cat(other_img_augs)
+    p_features = clip_model.encode_image(p_batch)
+    other_features = clip_model.encode_image(other_batch)
+
+    for n in range(num_augs):
+        loss -= torch.cosine_similarity(other_features[n:n+1], p_features[n:n+1], dim=1)
+
+    return loss / num_augs if text_features_16 is not None else loss / (2*num_augs)
