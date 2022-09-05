@@ -27,6 +27,7 @@ from tensorboard import TensorBoard
 # from torch_painting_models import *
 from torch_painting_models_continuous import *
 from style_loss import compute_style_loss
+from sketch_loss import compute_sketch_loss
 
 
 from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16
@@ -209,6 +210,8 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
         return ((p - objective_data)**2).mean()
     elif objective_type == 'clip_fc_loss':
         1/0#return clip_conv_loss(p, objective_data)
+    elif objective_type == 'sketch':
+        return compute_sketch_loss(objective_data, p) * weight
     else:
         print('don\'t know what objective')
         1/0
