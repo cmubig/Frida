@@ -1,3 +1,17 @@
+
+##########################################################
+#################### Copyright 2022 ######################
+################ by Vihaan Misra ##################
+### The Robotics Institute, Carnegie Mellon University ###
+################ All rights reserved. ####################
+##########################################################
+
+'''
+This is modified code from: https://github.com/mtli/PhotoSketch
+'''
+
+
+import os
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -5,7 +19,7 @@ from pix2pix import ResnetGenerator
 from PIL import Image
 import torchvision.transforms as transforms
 
-
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def set_requires_grad(params, flag):
@@ -82,10 +96,17 @@ class OutputTransform(nn.Module):
         img = self.transforms(img)
         return img
 
-def compute_sketch_loss(style, painting):
-    path = '/mnt/Data1/vmisra/Frida/scripts/pretrained/photosketch.pth'
-    t_real = 'toSketch'
-    tf_real = OutputTransform(path, process=t_real)
+
+
+import pathlib
+working_dir = pathlib.Path().resolve()
+path = os.path.join(working_dir, 'pretrained/photosketch.pth')
+t_real = 'toSketch'
+tf_real = OutputTransform(path, process=t_real).to(device)
+
+
+def compute_sketch_loss(sketch, painting, comparator=torch.nn.MSELoss(), writer=None, it=0):
+    # path = '/mnt/Data1/vmisra/Frida/scripts/pretrained/photosketch.pth'
     # img_path = '/mnt/Data1/vmisra/Frida/scripts/frida.jpg'
     # img = Image.open(img_path)
     # tensor_transform = transforms.Compose([
@@ -94,15 +115,38 @@ def compute_sketch_loss(style, painting):
     # width, height = img.size
     # img_tensor = tensor_transform(img).float()
     # img_tensor = img_tensor.reshape(1, 3, height, width)
-    sketch_tensor = tf_real(style)
+    from plan import format_img
+    # print(painting.min().item(), painting.max().item(), sketch.min().item(), sketch.max().item())
+
+    sketch_tensor = (tf_real(sketch*2-1)+1)/2
 
     # image_transform = transforms.Compose([
     # transforms.ToPILImage()])
 
     # sketch_style = image_transform(sketch_tensor[0])
 
-    sketch_p_tensor = tf_real(painting)
+    sketch_p_tensor = (tf_real(painting*2-1)+1)/2
+    # print(sketch_p_tensor.min().item(), sketch_p_tensor.max().item(), sketch_tensor.min().item(), sketch_tensor.max().item())
+    # print(sketch_p_tensor.mean().item(), sketch_p_tensor.std().item(), sketch_tensor.mean().item(), sketch_tensor.std().item())
+    # print(format_img((sketch_p_tensor)).mean(), format_img((sketch_p_tensor)).max())
+    if writer is not None and it%5 == 0:
+        writer.add_image('images/painting_sketch', format_img((sketch_p_tensor))*255., it)
+    if writer is not None and it == 1: writer.add_image('images/sketch_sketch', format_img((sketch_tensor))*255., it)
 
     # sketch_painting = image_transform(sketch_p_tensor[0])
 
-    return ((sketch_tensor - sketch_p_tensor)**2).mean()
+    # return ((sketch_tensor - sketch_p_tensor)**2).mean()
+    return comparator(sketch_tensor, sketch_p_tensor)
+
+def compute_canny_loss(sketch, painting, comparator=torch.nn.MSELoss(), writer=None, it=0):
+    from kornia.filters import canny
+    from plan import format_img
+    canny_p = canny(painting)[0]
+    canny_sketch = canny(sketch)[0]
+
+    if writer is not None and it%5 == 0:
+        writer.add_image('images/painting_sketch', format_img((canny_p))*255., it)
+    if writer is not None and it == 1: writer.add_image('images/sketch_sketch', format_img((canny_sketch))*255., it)
+
+    return comparator(canny_p, canny_sketch)
+    # return -1. * (canny_p*canny_sketch).mean() # opposite of union

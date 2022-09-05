@@ -28,9 +28,10 @@ from tensorboard import TensorBoard
 from torch_painting_models_continuous import *
 from style_loss import compute_style_loss
 from sketch_loss import compute_sketch_loss
+from sketch_loss import compute_canny_loss
 
 
-from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16
+from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16, clip_fc_loss
 import clip
 import kornia as K
 
@@ -197,21 +198,37 @@ def random_init_painting(background_img, n_strokes):
         brush_strokes=gridded_brush_strokes).to(device)
     return painting
 
-
+local_it = 0
 def parse_objective(objective_type, objective_data, p, weight=1.0):
     ''' p is the rendered painting '''
+    global local_it
     if objective_type == 'text':
         return clip_text_loss(p, objective_data, opt.num_augs)[0] * weight
     elif objective_type == 'style':
         return compute_style_loss(p, objective_data) * weight
     elif objective_type == 'clip_conv_loss':
-        return clip_conv_loss(p, objective_data)
+        return clip_conv_loss(p, objective_data) * weight
     elif objective_type == 'l2':
-        return ((p - objective_data)**2).mean()
+        return ((p - objective_data)**2).mean() * weight
     elif objective_type == 'clip_fc_loss':
-        1/0#return clip_conv_loss(p, objective_data)
+        return clip_fc_loss(p, objective_data, opt.num_augs) * weight
     elif objective_type == 'sketch':
-        return compute_sketch_loss(objective_data, p) * weight
+        local_it += 1
+        return compute_sketch_loss(objective_data, p, writer=writer, it=local_it) * weight
+        # return compute_sketch_loss(objective_data, p, comparator=clip_conv_loss) * weight
+        def clip_sketch_comparison(sketch, p):
+            return clip_conv_loss(K.color.grayscale_to_rgb(sketch), K.color.grayscale_to_rgb(p))
+        return compute_sketch_loss(objective_data, p,
+            comparator=clip_sketch_comparison, writer=writer, it=local_it) * weight
+    elif objective_type == 'canny':
+        local_it += 1
+        return compute_canny_loss(objective_data, p, writer=writer, it=local_it) * weight
+        # def clip_sketch_comparison(sketch, p):
+        #     return clip_conv_loss(K.color.grayscale_to_rgb(sketch), K.color.grayscale_to_rgb(p))
+        # return compute_canny_loss(objective_data, p,
+        #     comparator=clip_sketch_comparison, writer=writer, it=local_it) * weight
+
+
     else:
         print('don\'t know what objective')
         1/0
@@ -492,17 +509,23 @@ if __name__ == '__main__':
 
     # painting = calibrate(opt)
 
-    try:
-        b = './painting'
-        all_subdirs = [os.path.join(b, d) for d in os.listdir(b) if os.path.isdir(os.path.join(b, d))]
-        tensorboard_dir = max(all_subdirs, key=os.path.getmtime) # most recent tensorboard dir is right
-        if '_planner' not in tensorboard_dir:
-            tensorboard_dir += '_planner'
-    except:
+    def new_tb_entry():
         import datetime
         date_and_time = datetime.datetime.now()
         run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
-        tensorboard_dir = 'painting/{}_planner'.format(run_name)
+        return 'painting/{}_planner'.format(run_name)
+    try:
+        from multiprocessing import current_process
+        if current_process().name == 'MainProcess':
+            tensorboard_dir = new_tb_entry()
+        else:
+            b = './painting'
+            all_subdirs = [os.path.join(b, d) for d in os.listdir(b) if os.path.isdir(os.path.join(b, d))]
+            tensorboard_dir = max(all_subdirs, key=os.path.getmtime) # most recent tensorboard dir is right
+            if '_planner' not in tensorboard_dir:
+                tensorboard_dir += '_planner'
+    except:
+        tensorboard_dir = new_tb_entry()
 
     writer = TensorBoard(tensorboard_dir)
     opt.writer = writer
