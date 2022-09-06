@@ -211,7 +211,7 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
     elif objective_type == 'l2':
         return ((p - objective_data)**2).mean() * weight
     elif objective_type == 'clip_fc_loss':
-        return clip_fc_loss(p, objective_data, opt.num_augs) * weight
+        return clip_fc_loss(p, objective_data, opt.num_augs)[0] * weight
     elif objective_type == 'sketch':
         local_it += 1
         return compute_sketch_loss(objective_data, p, writer=writer, it=local_it) * weight
