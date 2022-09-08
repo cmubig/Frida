@@ -290,7 +290,6 @@ def plan(opt):
     painting = random_init_painting(current_canvas, opt.num_strokes)
 
     # Do initilization objective(s)
-    best_init_painting, best_init_loss = copy.deepcopy(painting.cpu()), 999999999
     painting.to(device)
 
     if opt.init_objective:
@@ -313,29 +312,35 @@ def plan(opt):
             
 
     # Intermediate optimization. Do it a few times, and pick the best
-    # for attempt in range(opt.n_inits):
-    #     optim = torch.optim.RMSprop(painting.parameters(), lr=3e-2) # Coarse optimization
-    #     for j in tqdm(range(opt.init_optim_iter)):
-    #         optim.zero_grad()
-    #         p = painting(h, w, use_alpha=False)
-    #         loss = 0
-    #         for k in range(len(opt.init_objective)):
-    #             loss += parse_objective(opt.init_objective[k], 
-    #                 init_objective_data[k], p[:,:3], weight=opt.init_objective_weight[k])
-
-    #         loss.backward()
-    #         optim.step()
-    #         painting.validate()
-    #         optim.param_groups[0]['lr'] = optim.param_groups[0]['lr'] * 0.95
-    #         painting = sort_brush_strokes_by_color(painting)
-    #         log_progress(painting, title='init_optimization_{}'.format(attempt))#, force_log=True)
+    init_painting = copy.deepcopy(painting.cpu())
+    best_init_painting, best_init_loss = init_painting, 999999999
+    painting.to(device)
+    for attempt in range(opt.n_inits):
+        painting = copy.deepcopy(init_painting).to(device)
+        # optim = torch.optim.RMSprop(painting.parameters(), lr=5e-3) # Coarse optimization
+        optims = painting.get_optimizers(multiplier=opt.lr_multiplier)
+        for j in tqdm(range(opt.intermediate_optim_iter), desc="Intermediate Optimization"):
+            #optim.zero_grad()
+            for o in optims: o.zero_grad()
+            p = painting(h, w, use_alpha=False)
+            loss = 0
+            for k in range(len(opt.objective)):
+                loss += parse_objective(opt.objective[k], 
+                    objective_data[k], p[:,:3], weight=opt.objective_weight[k])
+            loss.backward()
+            # optim.step()
+            for o in optims: o.step()
+            painting.validate()
+            for o in optims: o.param_groups[0]['lr'] = o.param_groups[0]['lr'] * 0.95
+            painting = sort_brush_strokes_by_color(painting)
+            log_progress(painting, title='int_optimization_{}'.format(attempt))#, force_log=True)
             
-    #     if loss.item() < best_init_loss:
-    #         best_init_loss = loss.item()
-    #         best_init_painting = copy.deepcopy(painting.cpu())
-    #         painting.to(device)
-    #         print('best_painting {}'.format(attempt))
-    # painting = best_init_painting
+        if loss.item() < best_init_loss:
+            best_init_loss = loss.item()
+            best_init_painting = copy.deepcopy(painting.cpu())
+            painting.to(device)
+            print('best_painting {}'.format(attempt))
+    painting = best_init_painting.to(device)
 
     # Create the plan
     position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
@@ -421,7 +426,7 @@ def adapt(opt):
     
     # Optimize all brush strokes
     position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
-            = painting.get_optimizers(multiplier=opt.lr_multiplier*.5)
+            = painting.get_optimizers(multiplier=opt.lr_multiplier*.25)
     print(opt.objective)
     for j in tqdm(range(opt.adapt_optim_iter), desc='Optimizing {} Strokes'.format(str(len(painting.brush_strokes)))):
         position_opt.zero_grad()
@@ -454,7 +459,7 @@ def adapt(opt):
 
         painting.validate()
 
-        if j%2 == 0:
+        if j%2 == 0 and j > 0.5*opt.adapt_optim_iter:
             painting = sort_brush_strokes_by_color(painting)
             discretize_colors(painting, colors)
         # log_progress(painting)#, force_log=True)
@@ -516,7 +521,7 @@ if __name__ == '__main__':
         return 'painting/{}_planner'.format(run_name)
     try:
         from multiprocessing import current_process
-        if current_process().name == 'MainProcess':
+        if current_process().name == 'MainProcess' and False:
             tensorboard_dir = new_tb_entry()
         else:
             b = './painting'

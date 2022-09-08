@@ -29,11 +29,16 @@ def get_param2img(h_full, w_full, n_stroke_models=1):
     hs, he = int(.4*h_full), int(0.6*h_full)
     ws, we = int(0.45*w_full), int(0.75*w_full)
 
-    pad_for_full = T.Pad((ws, hs, w_full-we, h_full-he))
+    cropped_h, cropped_w = int(.6*h_full - .4*h_full), int(0.75*w_full - 0.45*w_full)
+
+    pad_for_full = T.Pad((ws, hs, w_full-cropped_w-ws, h_full-cropped_h-hs))
+    # print(h_full, w_full)
+    # print(ws, hs, w_full-cropped_w-ws, h_full-cropped_h-hs)
+    # print(int(.6*h_full - .4*h_full), int(0.75*w_full - 0.45*w_full))
 
     param2imgs = []
     for model_ind in range(opt.n_stroke_models):
-        param2img = StrokeParametersToImage(int(.6*h_full - .4*h_full), int(0.75*w_full - 0.45*w_full))
+        param2img = StrokeParametersToImage(cropped_h, cropped_w)
         param2img.load_state_dict(torch.load(
             os.path.join(opt.cache_dir, 'param2img{}.pt'.format(model_ind))))
         param2img.eval()
@@ -114,7 +119,8 @@ class BrushStroke(nn.Module):
                 a=None, xt=None, yt=None):
         super(BrushStroke, self).__init__()
 
-        if color is None: color=torch.rand(3).to(device)
+        # if color is None: color=torch.rand(3).to(device)
+        if color is None: color=(torch.rand(3).to(device)/10)+0.45
         if a is None: a=(torch.rand(1)*2-1)*3.14
         if xt is None: xt=(torch.rand(1)*2-1)
         if yt is None: yt=(torch.rand(1)*2-1)

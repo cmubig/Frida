@@ -65,6 +65,7 @@ def show_img(img, title=''):
 
     plt.figure(figsize=figsize)
     plt.title(title)
+    plt.scatter(width/2, height/2)
     if len(img.shape) == 2:
         plt.imshow(img, cmap='gray')
     else:

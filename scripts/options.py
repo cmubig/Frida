@@ -40,7 +40,7 @@ class Options(object):
 
 
         # Number of cells to paint in x and y directions
-        self.cells_x, self.cells_y = 5, 5
+        self.cells_x, self.cells_y = 4, 5
 
         # Dimensions of the cells in Meters
         #cell_dim = (0.0254, 0.0508) #h/w in meters. 1"x2"
@@ -81,7 +81,7 @@ class Options(object):
         parser.add_argument('--strokes_before_adapting', type=int, default=50)
         parser.add_argument('--remove_prop', type=float, default=0.8, help="Proportion of strokes to remove when adapting")
 
-        parser.add_argument('--adapt_optim_iter', type=int, default=30)
+        parser.add_argument('--adapt_optim_iter', type=int, default=20)
 
         # parser.add_argument('--type', default='cubic_bezier', type=str, help='Type of instructions: [cubic_bezier | bezier]')
         # parser.add_argument('--continue_ind', default=0, type=int, help='Instruction to start from. Default 0.')
@@ -100,8 +100,9 @@ class Options(object):
         parser.add_argument('--init_objective_data', nargs='*', type=str)
         parser.add_argument('--init_objective_weight', nargs='*', type=float, default=1.0)
         parser.add_argument('--init_optim_iter', type=int, default=40)
-        parser.add_argument('--n_inits', type=int, default=1, help='Number of times to try different initializations')
+        parser.add_argument('--n_inits', type=int, default=5, help='Number of times to try different initializations')
 
+        parser.add_argument('--intermediate_optim_iter', type=int, default=40)
         parser.add_argument('--use_colors_from', type=str, default=None, help="Get the colors from this image. \
                 None if you want the colors to come from the optimized painting.")
 
