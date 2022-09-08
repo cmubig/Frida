@@ -94,7 +94,7 @@ def paint_diffvg_quadratic(painter, xs, ys, z, step_size=.005):
     painter.move_to(p0[0], p0[1], painter.Z_CANVAS + 0.02, speed=0.2)
     p3 = None
 
-    import matplotlib.pyplot as plt
+    # import matplotlib.pyplot as plt
     for i in range(1, len(xs)-1, 3):
         p1 = canvas_to_global_coordinates(xs[i+0], ys[i+0], painter.Z_CANVAS, painter.opt)
         p2 = canvas_to_global_coordinates(xs[i+1], ys[i+1], painter.Z_CANVAS, painter.opt)
@@ -122,7 +122,7 @@ def paint_diffvg_quadratic(painter, xs, ys, z, step_size=.005):
                 sim_coords = np.array([x, y, 1.])
                 real_coords = painter.H_coord.dot(sim_coords)
                 x, y = real_coords[0]/real_coords[2], real_coords[1]/real_coords[2]
-            plt.scatter(x,y)
+            # plt.scatter(x,y)
             painter.move_to(x, y, z, method='direct', speed=0.03)
             time.sleep(0.02)
         # p0 = p3
@@ -185,10 +185,10 @@ class Stroke(object):
                     z = (1 - (t-.666)/.333) * p2[2] + ((t-.666)/.333)*p3[2]
 
                 z = painter.Z_CANVAS - z * z_range
-                painter.move_to(x_start+x, y_start+y, z, method='direct', speed=0.03)
+                painter.move_to(x_start+x, y_start+y, z, method='direct', speed=0.02)
                 time.sleep(0.02)
             p0 = p3
-        painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.01, speed=0.2)
+        painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.01, speed=0.1)
         painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.04, speed=0.3)
         # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
 

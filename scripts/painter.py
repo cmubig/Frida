@@ -162,7 +162,7 @@ class Painter():
                         pass
                     self.paint_extended_stroke_library()
             # if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
-            self.create_continuous_stroke_model()
+            # self.create_continuous_stroke_model()
 
         # export the processed strokes for the python3 code
         from export_strokes import export_strokes
@@ -688,6 +688,20 @@ class Painter():
         strokes_without_getting_new_paint = 999 
         strokes_without_cleaning = 9999
 
+        # Some pre-programmed strokes to start
+        random_strokes = []
+        random_strokes.append(simple_parameterization_to_real(.04, .02, 0.5))
+        r = 5
+        lengths = torch.arange(r)/(r-1)*(0.05-0.01) + 0.01
+        bends = torch.arange(r)/(r-1)*0.04 - 0.02
+        zs = torch.arange(r)/(r-1)
+        for i in range(r):
+            random_strokes.append(simple_parameterization_to_real(lengths[i], .02, 0.5))
+        for i in range(r):
+            random_strokes.append(simple_parameterization_to_real(.04, bends[i], 0.5))
+        for i in range(r):
+            random_strokes.append(simple_parameterization_to_real(.04, .02, zs[i]))
+
         stroke_trajectories = [] # Flatten so it's just twelve values x0,y0,z0,x1,y1,...
         stroke_intensities = [] # list of 2D numpy arrays 0-1 where 1 is paint
         for paper_it in range(self.opt.num_papers):
@@ -708,7 +722,10 @@ class Painter():
                     strokes_without_getting_new_paint += 1
                     strokes_without_cleaning += 1
 
-                    random_stroke = get_random_stroke()
+                    if len(stroke_trajectories) < len(random_strokes):
+                        random_stroke = random_strokes[len(stroke_trajectories)]
+                    else:
+                        random_stroke = get_random_stroke()
                     random_stroke.paint(self, x, y, 0)
 
                     self.to_neutral()
