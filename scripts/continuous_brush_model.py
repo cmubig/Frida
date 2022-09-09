@@ -34,10 +34,10 @@ if not torch.cuda.is_available():
 
 def special_sigmoid(x):
     # return 1/(1+torch.exp(-1.*((x*2-1)+0.2) / 0.05))
-    # return x
+    return x
 
     # x[x < 0.1] = 1/(1+torch.exp(-1.*((x[x < 0.1]*2-1)+0.2) / 0.05))
-    return x
+    # return x
 
 def get_n_params(model):
     pp = 0
@@ -74,7 +74,7 @@ def process_img(img):
 
 def log_all_permutations(model, writer):
     # Length v Bend
-    n_img = 7
+    n_img = 5
     lengths = torch.arange(n_img)/(n_img-1)*(0.05-0.01) + 0.01
     bends = torch.arange(n_img)/(n_img-1)*0.04 - 0.02
     zs = torch.arange(n_img)/(n_img-1)
@@ -113,7 +113,7 @@ def log_all_permutations(model, writer):
 
     img_fig = None
     for i in range(n_img):
-        trajectory = to_full_param(.04, 0.0, zs[i])
+        trajectory = to_full_param(.05, 0.0, zs[i])
         s = 1-model(trajectory)
         # print(s.shape)
         s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
@@ -132,7 +132,7 @@ def log_all_permutations(model, writer):
 
     img_fig = None
     for i in range(n_img):
-        trajectory = to_full_param(.04, bends[i], .5)
+        trajectory = to_full_param(.05, bends[i], .5)
         s = 1-model(trajectory)
         # print(s.shape)
         s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
@@ -228,8 +228,9 @@ def log_images(imgs, labels, label, writer, step=0):
 class StrokeParametersToImage(nn.Module):
     def __init__(self, h, w):
         super(StrokeParametersToImage, self).__init__()
-        nh = 10
-        self.nc = 10
+        nh = 20#100
+        self.nc = 20#100
+        self.size = 64
         self.main = nn.Sequential(
             nn.BatchNorm1d(12),
             #
@@ -248,7 +249,7 @@ class StrokeParametersToImage(nn.Module):
             # nn.Linear(nh, nh),
             # nn.LeakyReLU(0.2, inplace=True),
             # nn.Linear(nh, 64*64),
-            nn.Linear(nh, 48*48),
+            nn.Linear(nh, self.size*self.size),
             nn.LeakyReLU(0.2, inplace=True)
         )
         self.conv = nn.Sequential(
@@ -268,7 +269,7 @@ class StrokeParametersToImage(nn.Module):
         # return nn.Sigmoid()(self.fc4(nn.ReLU()(self.fc3(nn.ReLU()(self.fc2(nn.ReLU()(self.fc1(x))))))).view(-1, h, w))
         # return self.conv(self.main(x).view(-1, self.nc, self.h, self.w))[:,0]
         # x = self.res2(self.conv((self.main(x).view(-1, 1, 64, 64))))[:,0]
-        x = self.res2(self.conv((self.main(x).view(-1, 1, 48, 48))))[:,0]
+        x = self.res2(self.conv((self.main(x).view(-1, 1, self.size, self.size))))[:,0]
         # x = self.res2(self.conv((self.main(x).view(-1, 1, 32, 32))))[:,0]
         # x = 1/(1+torch.exp(-1.*(x*2-1) / 0.05))
         return x
@@ -341,7 +342,7 @@ def train_param2stroke(opt):
                 break # all done :)
             optim.zero_grad()
 
-            noise = torch.randn(train_trajectories.shape).to(device)*0.005 # For robustness
+            noise = torch.randn(train_trajectories.shape).to(device)*0.001 # For robustness
             pred_strokes = trans(train_trajectories + noise)
 
             loss = loss_fcn(pred_strokes, train_strokes)
@@ -419,7 +420,7 @@ def n_stroke_test(opt):
 
     strokes = torch.from_numpy(strokes).to(device).float().nan_to_num()
     trajectories = torch.from_numpy(trajectories.astype(np.float32)).to(device).float().nan_to_num()
-    
+
     # Randomize
     rand_ind = torch.randperm(strokes.shape[0])
     strokes = strokes[rand_ind]
@@ -437,6 +438,8 @@ def n_stroke_test(opt):
     strokes = strokes[:, hs:he, ws:we]
 
 
+
+
     n = len(strokes)
     print(n)
     test_prop = 0.2 
@@ -447,6 +450,9 @@ def n_stroke_test(opt):
     n = len(strokes)
     print(n, 'test strokes', len(test_strokes), len(strokes))
 
+    disp_traj = to_full_param(0.04, 0.02, .5)
+
+
 
     h, w = strokes[0].shape[0], strokes[0].shape[1]
 
@@ -454,13 +460,17 @@ def n_stroke_test(opt):
 
     plot_x = []
     plot_y = []
+
+    plot_x_std = []
+    plot_y_std = []
     
-    for n_strokes in range(10, n, 5):
+    for n_strokes in range(15, n, 5):
         s = strokes[:n_strokes]
         t = trajectories[:n_strokes]
 
 
         avg_test_err = 0
+        test_err = []
         n_folds = 5
         for fold in range(n_folds):
             trans = StrokeParametersToImage(h,w).to(device)
@@ -518,26 +528,73 @@ def n_stroke_test(opt):
                 test_loss = loss_fcn(pred_strokes_test, test_strokes)
                 
                 trans.train()
+
+            with torch.no_grad():
+                trans.eval()# The display model
+                import matplotlib.pyplot as plt 
+                fig, ax = plt.subplots(1)
+                disp_stroke = 1 - best_model(disp_traj)
+                disp_stroke = np.clip(disp_stroke.detach().cpu().numpy()[0], a_min=0, a_max=1)
+                ax.imshow(disp_stroke, cmap='gray')
+                ax.set_xticks([])
+                ax.set_yticks([])
+                fig.tight_layout()
+                writer.add_figure('limit_data_stroke_model/n_strokes{}'.format(n_strokes), fig, fold)
+                trans.train()
             avg_test_err += test_loss.item()/n_folds
+            test_err.append(test_loss.item())
         print('test error', avg_test_err)
         opt.writer.add_scalar('loss/test_loss_stroke_model', avg_test_err, n_strokes)
-
+        test_err_std = np.array(test_err).std()
+        opt.writer.add_scalar('loss/test_loss_std_stroke_model', test_err_std, n_strokes)
+        
         plot_x.append(n_strokes)
         plot_y.append(avg_test_err)
+        plot_x_std.append(n_strokes)
+        plot_y_std.append(test_err_std)
 
-    import matplotlib.pyplot as plt 
-    plt.rcParams["font.family"] = "Times New Roman"
-    # plot_x = [1,2,3]
-    # plot_y = [.1,.05, .01]
-    plt.plot(plot_x, plot_y)
-    csfont = {'fontname':'Times New Roman'}
-    plt.title('Stroke Shape Model Performance Versus Number of Training Examples')
-    plt.ylabel('Average Absolute Test Error')
-    plt.xlabel('Number of Training and Validation Brush Strokes')
-    from matplotlib.ticker import MaxNLocator
-    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
-    plt.savefig('err_v_strokes.svg', format='svg')
-    plt.show()
+        import matplotlib.pyplot as plt 
+        plt.rcParams["font.family"] = "Times New Roman"
+        # plot_x = [1,2,3]
+        # plot_y = [.1,.05, .01]
+        plt.plot(plot_x, plot_y)
+        csfont = {'fontname':'Times New Roman'}
+        plt.title('Stroke Shape Model Performance Versus Number of Training Examples')
+        plt.ylabel('Average Absolute Test Error')
+        plt.xlabel('Number of Training and Validation Brush Strokes')
+        from matplotlib.ticker import MaxNLocator
+        plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+        plt.savefig('err_v_strokes.svg', format='svg')
+        plt.show()
+
+        fig, ax = plt.subplots()
+
+        ax.plot(plot_x, plot_y, color='red')
+        ax.set_yscale('log')
+        ax.tick_params(axis='y', labelcolor='red')
+
+        ax2 = ax.twinx()
+        ax2.plot(plot_x_std, plot_y_std, color='green')
+        ax2.tick_params(axis='y', labelcolor='green')
+        ax.tick_params(axis='y', labelcolor='red')
+        plt.savefig('err_v_strokes_with_std.svg', format='svg')
+        plt.show()
+
+
+        fig, ax = plt.subplots()
+
+        ax.plot(plot_x, plot_y, 'brown')
+        ax.fill_between(plot_x, np.array(plot_y) - np.array(plot_y_std), np.array(plot_y) + np.array(plot_y_std),
+            color='lightsalmon')
+        ax.set_yscale('log')
+        ax.set_title('Stroke Shape Model Performance Versus Number of Training Examples')
+        ax.set_ylabel('Log Average Absolute Test Error')
+        ax.set_xlabel('Number of Training and Validation Brush Strokes')
+        plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+        # ax2.tick_params(axis='y', labelcolor='green')
+        # ax.tick_params(axis='y', labelcolor='red')
+        plt.savefig('err_v_strokes_with_std2.svg', format='svg')
+        plt.show()
 
 
     return h_og, w_og
