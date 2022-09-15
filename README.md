@@ -1,4 +1,9 @@
-# FRIDA: A Collaborative Robot Painter with a Differentiable, Real2Sim2Real Simulated Planning Environment
+# FRIDA: A Collaborative Robot Painter with a Differentiable, Real2Sim2Real Simulated Planning Environment <a href="https://twitter.com/FridaRobot" target="_blank"><img src="https://res.cloudinary.com/crunchbase-production/image/upload/c_lpad,h_256,w_256,f_auto,q_auto:eco,dpr_1/v1397180207/d242197edc3ff044620cf2d8ff39d6b3.jpg" height=32/></a>
+
+
+[Peter Schaldenbrand](https://pschaldenbrand.github.io/#about.html), [Jean Oh](https://www.cs.cmu.edu/~./jeanoh/), [Jim McCann](http://www.cs.cmu.edu/~jmccann/)
+
+The Robotics Institute, Carnegie Mellon University
 
 FRIDA (a Framework and Robotics
 Initiative for Developing Arts) enables humans to
@@ -8,9 +13,10 @@ images. FRIDA creates a fully differentiable simulation environment for
 painting using real data, adopting the idea of real to simulation to real
 (real2sim2real) in which it can plan and dynamically respond to stochasticity in the
 execution of that plan.
-
-####  [Peter Schaldenbrand](https://pschaldenbrand.github.io/#about.html), [Jean Oh](https://www.cs.cmu.edu/~./jeanoh/), [Jim McCann](http://www.cs.cmu.edu/~jmccann/)
-The Robotics Institute, Carnegie Mellon University
+<a href="https://twitter.com/FridaRobot" target="_blank">
+    <img src="https://res.cloudinary.com/crunchbase-production/image/upload/c_lpad,h_256,w_256,f_auto,q_auto:eco,dpr_1/v1397180207/d242197edc3ff044620cf2d8ff39d6b3.jpg" height=16/>
+    Follow FRIDA's Paintings on Twitter!
+</a>
 
 ![Depiction of FRIDA's capabilities and embodiment](./sample/github_figure.png)
 
@@ -97,10 +103,15 @@ python3 plan.py --simulate --use_cache --cache_dir cache/
 
 # Run with a robot
 
+See the `ROS` directory for necessary files for running a robot with ROS. We have only tested FRIDA's code with a Rethink Sawyer robot.  Some work will be needed to use this codebase with a new machine. See `src/robot.py` to see how things were done with the Sawyer and adapt the code for a new machine.  We would be happy to help with this if you're interested in using this code with your machine. Please email Peter at pschalde at andrew dot cmu dot edu
 ```
 rosrun paint paint.py [args]
 ```
 
 ## Acknowledgements
 
-Thank you to Jia Chen Xu for writing FRIDA's perception code! Thank you to Heera Sekhr and Jesse Ding for their help in the early stages of designing FRIDA's planning algorithms.  Thank you to Vihaan Misra for writing a sketch loss function.
+Thank you to: 
+- [Jia Chen Xu](https://github.com/jxu12345) for writing FRIDA's perception code
+- Heera Sekhr and Jesse Ding for their help in the early stages of designing FRIDA's planning algorithms
+- [Vihaan Misra](https://github.com/convexalpha) for writing a sketch loss function.
+- Tanmay Shankar for his help with initial installation and fixing the Sawyer robot
