@@ -120,7 +120,8 @@ class BrushStroke(nn.Module):
         super(BrushStroke, self).__init__()
 
         # if color is None: color=torch.rand(3).to(device)
-        if color is None: color=(torch.rand(3).to(device)/10)+0.45
+        # if color is None: color=(torch.rand(3).to(device)/10)+0.45
+        if color is None: color=(torch.rand(3).to(device)*.4)+0.3
         if a is None: a=(torch.rand(1)*2-1)*3.14
         if xt is None: xt=(torch.rand(1)*2-1)
         if yt is None: yt=(torch.rand(1)*2-1)

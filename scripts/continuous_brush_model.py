@@ -315,9 +315,9 @@ def train_param2stroke(opt):
     ws, we = int(0.45*w), int(0.75*w)
     strokes = strokes[:, hs:he, ws:we]
 
-    # for i in range(len(strokes)):
-    #     strokes[i] -= strokes[i].min()
-    #     strokes[i] /= strokes[i].max()
+    for i in range(len(strokes)):
+        strokes[i] -= strokes[i].min()
+        strokes[i] /= strokes[i].max()
 
     h, w = strokes[0].shape[0], strokes[0].shape[1]
 

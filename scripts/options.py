@@ -59,7 +59,7 @@ class Options(object):
         parser.add_argument('--num_papers', default=4, type=int, help='How papers of strokes to paint for stroke modelling data.')
         parser.add_argument('--just_fine', action='store_true', help="Only plan for smallest strokes")
         parser.add_argument('--use_cached_colors', action='store_true')
-        parser.add_argument('--n_colors', default=6, type=int, help='Number of colors of paint to use')
+        parser.add_argument('--n_colors', default=12, type=int, help='Number of colors of paint to use')
         # parser.add_argument("--file", type=str,
         #     default='/home/peterschaldenbrand/Downloads/david_lynch.csv',
         #     help='Path CSV instructions.')
@@ -78,10 +78,10 @@ class Options(object):
 
         parser.add_argument('--adaptive', action='store_true')
         parser.add_argument('--generate_whole_plan', action='store_true')
-        parser.add_argument('--strokes_before_adapting', type=int, default=50)
+        parser.add_argument('--strokes_before_adapting', type=int, default=100)
         parser.add_argument('--remove_prop', type=float, default=0.8, help="Proportion of strokes to remove when adapting")
 
-        parser.add_argument('--adapt_optim_iter', type=int, default=20)
+        parser.add_argument('--adapt_optim_iter', type=int, default=30)
 
         # parser.add_argument('--type', default='cubic_bezier', type=str, help='Type of instructions: [cubic_bezier | bezier]')
         # parser.add_argument('--continue_ind', default=0, type=int, help='Instruction to start from. Default 0.')
@@ -107,6 +107,7 @@ class Options(object):
                 None if you want the colors to come from the optimized painting.")
 
         parser.add_argument('--num_augs', type=int, default=30)
+        parser.add_argument('--bin_size', type=int, default=3000)
 
         return parser 
 
