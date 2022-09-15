@@ -116,7 +116,8 @@ def sort_brush_strokes_by_color(painting, bin_size=3000):
         brush_strokes = [bs for bs in painting.brush_strokes]
         for j in range(0,len(brush_strokes), bin_size):
             brush_strokes[j:j+bin_size] = sorted(brush_strokes[j:j+bin_size], 
-                key=lambda x : x.color_transform.mean(), reverse=True)
+                key=lambda x : x.color_transform.mean()+x.color_transform.prod(), 
+                reverse=True)
         painting.brush_strokes = nn.ModuleList(brush_strokes)
         return painting
 
@@ -306,7 +307,7 @@ def plan(opt):
             optim.step()
             painting.validate()
             optim.param_groups[0]['lr'] = optim.param_groups[0]['lr'] * 0.95
-            # painting = sort_brush_strokes_by_color(painting)
+            # painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
             painting = randomize_brush_stroke_order(painting)
             log_progress(painting, title='init_optimization')#, force_log=True)
             
@@ -332,7 +333,9 @@ def plan(opt):
             for o in optims: o.step()
             painting.validate()
             for o in optims: o.param_groups[0]['lr'] = o.param_groups[0]['lr'] * 0.95
-            painting = sort_brush_strokes_by_color(painting)
+            painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
+            # make sure hidden strokes get some attention
+            # painting = randomize_brush_stroke_order(painting)
             log_progress(painting, title='int_optimization_{}'.format(attempt))#, force_log=True)
             
         if loss.item() < best_init_loss:
@@ -373,7 +376,7 @@ def plan(opt):
 
         painting.validate()
 
-        painting = sort_brush_strokes_by_color(painting)
+        painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
         
         if i < 0.3*opt.optim_iter and i %3 == 0:
             # make sure hidden strokes get some attention
@@ -394,7 +397,7 @@ def plan(opt):
 
 
     discretize_colors(painting, colors)
-    painting = sort_brush_strokes_by_color(painting)
+    painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
     log_progress(painting, force_log=True)
     # save_painting_strokes(painting, opt)
     return painting
@@ -427,7 +430,7 @@ def adapt(opt):
     # Optimize all brush strokes
     position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
             = painting.get_optimizers(multiplier=opt.lr_multiplier*.25)
-    print(opt.objective)
+    # print(opt.objective)
     for j in tqdm(range(opt.adapt_optim_iter), desc='Optimizing {} Strokes'.format(str(len(painting.brush_strokes)))):
         position_opt.zero_grad()
         rotation_opt.zero_grad()
@@ -460,16 +463,16 @@ def adapt(opt):
         painting.validate()
 
         if j%2 == 0 and j > 0.5*opt.adapt_optim_iter:
-            painting = sort_brush_strokes_by_color(painting)
+            painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
             discretize_colors(painting, colors)
         # log_progress(painting)#, force_log=True)
 
         if j%5 == 0 or j == opt.adapt_optim_iter-1:
             opt.writer.add_image('images/plan_update{}'.format(opt.global_it), format_img(p), j+1)
 
-    painting = sort_brush_strokes_by_color(painting)
+    painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
     discretize_colors(painting, colors)
-    painting = sort_brush_strokes_by_color(painting)
+    painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
 
     with torch.no_grad():
         p = painting(h,w, use_alpha=False)

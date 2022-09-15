@@ -270,6 +270,8 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
 
     painter.clean_paint_brush()
     painter.clean_paint_brush()
+    painter.clean_paint_brush()
+    painter.clean_paint_brush()
     to_video(real_canvases, fn='/home/frida/Videos/frida/real_canvases{}.mp4'.format(str(time.time())))
     to_video(sim_canvases, fn='/home/frida/Videos/frida/sim_canvases{}.mp4'.format(str(time.time())))
 
