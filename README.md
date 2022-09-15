@@ -2,6 +2,18 @@
 
 Peter Schaldenbrand, Jean Oh, Jim McCann
 
+# Installation
+
+```
+git clone https://github.com/pschaldenbrand/Frida.git
+
+# Frida's robot code is in python2.7 and planning code is in python 3.6
+pip install --r [requirements.txt|requirements_windows.txt]
+pip3 install --r requirements_python3.txt
+
+# Camera installation
+sudo apt install gphoto2 libgphoto2*
+```
 
 # Run in Simulation
 
@@ -10,74 +22,73 @@ cd src/
 python3 plan.py --simulate [other args see below]
 ```
 
-# Arguments
+# Monitoring Painting Progress
 
-# Run with a robot
-
-
-## Acknowledgements
-
-Thank you to Jia Chen Xu for writing FRIDA's perception code! Thank you to Heera Sekhr and Jesse Ding for their help in the early stages of designing FRIDA's planning algorithms.  Thank you to Vihaan Misra for writing a sketch loss function.
-
+We use tensorboard to monitor the progress of the painting.
 
 ```
-# Run robot
-rosrun paint paint.py --target /home/frida/Downloads/andy.jpg  --n_colors 9  --max_height 196 --num_strokes 70 --adaptive --use_cache --simulate --n_stroke_models 1 --init_objective l2 --init_objective_data /home/frida/Downloads/georgia.jpg --init_objective_weight 0.2 --objective text --objective_data "A car" --objective_weight 1.0  --objective style --objective_data /home/frida/Downloads/georgia.jpg  --objective_weight 0.1
-
-# Run Sim add the --simulate commandline arg
-
-# Just plan using python3 (Colab)
-cd scripts
-python3 plan.py [args]
-```
-
-# Everything below this is pretty old
-
-```
-git clone https://github.com/pschaldenbrand/SawyerPainter.git
-cd SawyerPainter/scripts/
-
-# Might need to run the following line, especially if you get a pickle error
-dos2unix cache/*
-
-# Run the simulation
-python paint.py --use_cache --simulate --cache_dir cache --target frida.jpg
-
 # In another terminal, run this to view progress
-tensorboard --logdir SawyerPainter/scripts/painting
+tensorboard --logdir Frida/src/painting
 
 # Open browser and navigate to http://localhost:6006/
 ```
 
-## Options
-See options in scripts/options.py for commandline parameters and robot parameters (e.g., location of paint/canvas/water).
-
+# Arguments
 
 ```
-python paint.py [--target path] [--use_cache] [--simulate] [--cache_dir path] [--n_colors int]
+python3 plan.py // If running in simulation/Colab
+rosrun paint paint.py // If running with a robot
+    [--simulate] Run in only simulation
+    [--use_cache] Use cached calibration files. Necessary if --simulation
+    [--cache_dir path] Where the cached calibration files are stored if using them
+    [--max_height int] Height of the sim. canvases. Decrease for CUDA memory errors. Default 256
+    [--num_papers int] Number of full sheets of paper to fill with training brush strokes (30 per paper)
+    [--n_colors int] Number of discrete paint colors to use
+    [--use_colors_from path] If specified, use K-means to get paint colors from this image. Default None
+    [--num_strokes int] The desired number of strokes in the painting
+    [--n_stroke_models int] Number of different trained param2stroke models to use and randomly sample from
+    [--adaptive] Use the perception for replanning
+    [--strokes_before_adapting int] # strokes to perform before replanning
+    [--remove_prop float] proportion of strokes exectued from plan to remove when replanning
+    [--adapt_optim_iter int] Number of optimization iterations when replanning
+    [--objective [one or many text|clip_conv_los|l2|sketch|style]]
+    [--objective_data]
+    [--objective_weight]
+    [--n_inits int] Number of intermediate optimizations to try then choose the best based on loss
+    [--intermediate_optim_iter int] Number of optimization iterations for intermediate optimization
+    [--num_augs int] Number of augmentations when using CLIP
+    [--bin_size int] Sort strokes in bin sizes by color before executing
+    [--lr_multiplier float] How much to scale the learning rates for the brush stroke parameter optimization algorithm
 ```
 
-- `--target` - Path to image to paint
-- `--use_cache` - Use cached stroke library and robot parameters (use this for simulation)
-- `--simulate` - Use simulated painting environment
-- `--n_colors` - The number of discrete paint colors to use
-- `--cache_dir` - Location of cached robot parameters (for simulation use `scripts/cache/`)
+# Objectives
 
-## Installation
+Frida can paint with a number of different objectives that can be used singularly or in weighted combination. They are used to compare the simulated painting plan and a target datum (image or text):
+- `l2` - Simple Euclidean distance is computed between the painting and target image
+- `clip_conv_loss` - Compare the CLIP Convolutional features extracted from the painting and target image
+- `clip_fc_loss` - Compare the CLIP embeddings of the painting and target image
+- `text` - Compare the CLIP embeddings of the paiting and the input text description
+- `style` - Compares style features from the painting and the target image
+- `sketch` - [Use `clip_conv_loss` instead right now] Converts the painting and target sketch into sketches then compares them
 
-This code was written for Python 2.7, because that is compatible with the Sawyer robot
-
-### Dependencies
-Dependencies are tracked in `requirements.txt` and `requirements_windows.txt`.  Install with:
+Each objective specified must have a specified data file and weight given to it. Objectives can be specified for the initial optimization pass and for the full, final optimization. Here is an example of how to specify objectives where we have an initial objetive to make the painting look like `style_img.jpg` and then a final objective to have the style of `style_img.jpg` with the text description `"a frog ballerina"`:
 ```
-pip install --r [requirements.txt|requirements_windows.txt]
-pip3 install --r requirements_python3.txt
+cd Frida/src
+python3 plan.py --simulate --use_cache --cache_dir cache/
+   --init_objective l2 
+   --init_objective_data path/to/style_img.jpg
+   --init_objective_weight 1.0
+   --objective style text
+   --objective_data path/to/style_img.jpg  "a frog ballerina"
+   --objective_weight 0.2  1.0
 ```
 
-### For use with the robot:
-```
-sudo apt install gphoto2 libgphoto2*
+# Run with a robot
 
-sudo apt-get install dos2unix
-dos2unix cache/*
 ```
+rosrun paint paint.py [args]
+```
+
+## Acknowledgements
+
+Thank you to Jia Chen Xu for writing FRIDA's perception code! Thank you to Heera Sekhr and Jesse Ding for their help in the early stages of designing FRIDA's planning algorithms.  Thank you to Vihaan Misra for writing a sketch loss function.
