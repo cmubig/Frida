@@ -265,6 +265,30 @@ def save_painting_strokes(painting, opt):
             opt.writer.add_image('images/individual_strokes', individual_strokes[i], i)
 
 
+def create_tensorboard():
+    def new_tb_entry():
+        import datetime
+        date_and_time = datetime.datetime.now()
+        run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
+        return 'painting/{}_planner'.format(run_name)
+    try:
+        try:
+            import google.colab
+            IN_COLAB = True
+        except:
+            IN_COLAB = False
+        if IN_COLAB:
+            tensorboard_dir = new_tb_entry()
+        else:
+            b = './painting'
+            all_subdirs = [os.path.join(b, d) for d in os.listdir(b) if os.path.isdir(os.path.join(b, d))]
+            tensorboard_dir = max(all_subdirs, key=os.path.getmtime) # most recent tensorboard dir is right
+            if '_planner' not in tensorboard_dir:
+                tensorboard_dir += '_planner'
+    except:
+        tensorboard_dir = new_tb_entry()
+    return TensorBoard(tensorboard_dir)
+
 
 def parse_csv_line_continuous(line):
     toks = line.split(',')
@@ -508,30 +532,6 @@ def load_objectives_data(opt):
             objective_data.append(img)
             opt.writer.add_image('target/input{}'.format(i), format_img(img), 0)
 
-def create_tensorboard():
-    def new_tb_entry():
-        import datetime
-        date_and_time = datetime.datetime.now()
-        run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
-        return 'painting/{}_planner'.format(run_name)
-    try:
-        try:
-            import google.colab
-            IN_COLAB = True
-        except:
-            IN_COLAB = False
-        if IN_COLAB:
-            tensorboard_dir = new_tb_entry()
-        else:
-            b = './painting'
-            all_subdirs = [os.path.join(b, d) for d in os.listdir(b) if os.path.isdir(os.path.join(b, d))]
-            tensorboard_dir = max(all_subdirs, key=os.path.getmtime) # most recent tensorboard dir is right
-            if '_planner' not in tensorboard_dir:
-                tensorboard_dir += '_planner'
-    except:
-        tensorboard_dir = new_tb_entry()
-    return TensorBoard(tensorboard_dir)
-
 if __name__ == '__main__':
     global opt
     opt = Options()
@@ -555,8 +555,10 @@ if __name__ == '__main__':
         opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(colors), 0)
 
     # Get the background of painting to be the current canvas
-    current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg'), h=h, w=w).to(device)/255.
-
+    if False:#os.path.exists(os.path.join(opt.cache_dir, 'current_canvas.jpg')):
+        current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg'), h=h, w=w).to(device)/255.
+    else:
+        current_canvas = torch.ones(1,3,h,w).to(device)
     load_objectives_data(opt)
 
     # Start Planning
