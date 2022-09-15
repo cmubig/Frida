@@ -2,6 +2,8 @@
 
 Peter Schaldenbrand, Jean Oh, Jim McCann
 
+![Depiction of FRIDA's capabilities and embodiment](./sample/github_figure.png)
+
 # Installation
 
 ```
