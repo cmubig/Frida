@@ -1,4 +1,24 @@
-# SawyerPainter
+# FRIDA: A Collaborative Robot Painter with a Differentiable, Real2Sim2Real Simulated Planning Environment
+
+Peter Schaldenbrand, Jean Oh, Jim McCann
+
+
+# Run in Simulation
+
+```
+cd src/
+python3 plan.py --simulate [other args see below]
+```
+
+# Arguments
+
+# Run with a robot
+
+
+## Acknowledgements
+
+Thank you to Jia Chen Xu for writing FRIDA's perception code! Thank you to Heera Sekhr and Jesse Ding for their help in the early stages of designing FRIDA's planning algorithms.  Thank you to Vihaan Misra for writing a sketch loss function.
+
 
 ```
 # Run robot
