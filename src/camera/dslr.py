@@ -13,12 +13,12 @@ import pickle
 import os 
 
 import color_calib
-from harris import find_corners
-from intrinsic_calib import computeIntrinsic
+from .harris import find_corners
+from .intrinsic_calib import computeIntrinsic
 import glob
 
 try:
-    import dslr_gphoto as dslr
+    import .dslr_gphoto as dslr
 except:
     pass
 
