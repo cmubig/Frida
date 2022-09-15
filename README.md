@@ -1,6 +1,16 @@
 # FRIDA: A Collaborative Robot Painter with a Differentiable, Real2Sim2Real Simulated Planning Environment
 
-Peter Schaldenbrand, Jean Oh, Jim McCann
+FRIDA (a Framework and Robotics
+Initiative for Developing Arts) enables humans to
+produce paintings on canvases by collaborating with a painter
+robot using simple inputs such as language descriptions or
+images. FRIDA creates a fully differentiable simulation environment for
+painting using real data, adopting the idea of real to simulation to real
+(real2sim2real) in which it can plan and dynamically respond to stochasticity in the
+execution of that plan.
+
+####  [Peter Schaldenbrand](https://pschaldenbrand.github.io/#about.html), [Jean Oh](https://www.cs.cmu.edu/~./jeanoh/), [Jim McCann](http://www.cs.cmu.edu/~jmccann/)
+The Robotics Institute, Carnegie Mellon University
 
 ![Depiction of FRIDA's capabilities and embodiment](./sample/github_figure.png)
 
