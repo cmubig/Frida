@@ -58,61 +58,61 @@ def center_stroke(stroke):
     return imgP
 
 
-def export_strokes(opt):
-    strokes = pickle.load(gzip.open((os.path.join(opt.cache_dir, "strokes.pkl")),'rb'))
+# def export_strokes(opt):
+#     strokes = pickle.load(gzip.open((os.path.join(opt.cache_dir, "strokes.pkl")),'rb'))
 
-    strokes = [center_stroke(s) for s in strokes]
-    strokes_processed = []
+#     strokes = [center_stroke(s) for s in strokes]
+#     strokes_processed = []
 
-    w, h = opt.CANVAS_WIDTH_PIX, opt.CANVAS_HEIGHT_PIX
-    # print(opt.CANVAS_WIDTH_PIX, opt.CANVAS_HEIGHT_PIX)
-    for s in strokes:
-        #t = np.zeros((s.shape[0], s.shape[1], 4), dtype=np.uint8)
-        #t[:,:,3] = (s*255.).astype(np.uint8)
-        t = (s*255.).astype(np.uint8)
-        # plt.imshow(t)
-        # plt.scatter(t.shape[1]/2, t.shape[0]/2)
-        # plt.show()
+#     w, h = opt.CANVAS_WIDTH_PIX, opt.CANVAS_HEIGHT_PIX
+#     # print(opt.CANVAS_WIDTH_PIX, opt.CANVAS_HEIGHT_PIX)
+#     for s in strokes:
+#         #t = np.zeros((s.shape[0], s.shape[1], 4), dtype=np.uint8)
+#         #t[:,:,3] = (s*255.).astype(np.uint8)
+#         t = (s*255.).astype(np.uint8)
+#         # plt.imshow(t)
+#         # plt.scatter(t.shape[1]/2, t.shape[0]/2)
+#         # plt.show()
 
-        # Make the stroke centered on a full size canvas
-        padX = int((w - t.shape[1])/2)
-        padY = int((h - t.shape[0])/2)
+#         # Make the stroke centered on a full size canvas
+#         padX = int((w - t.shape[1])/2)
+#         padY = int((h - t.shape[0])/2)
 
-        # In case of odd numbers
-        xtra_x, xtra_y = w - (padX*2+t.shape[1]), h - (padY*2+t.shape[0])
-        #print(t.shape, padX, padY, xtra_x, xtra_y)
-        full_size = np.pad(t, [(padY,padY+xtra_y), (padX,padX+xtra_x)], 'constant')
-        t = np.zeros((full_size.shape[0], full_size.shape[1], 4), dtype=np.uint8)
-        t[:,:,3] = full_size.astype(np.uint8)
-        t[:,:,2] = 200 # Some color for fun
-        t[:,:,1] = 120
+#         # In case of odd numbers
+#         xtra_x, xtra_y = w - (padX*2+t.shape[1]), h - (padY*2+t.shape[0])
+#         #print(t.shape, padX, padY, xtra_x, xtra_y)
+#         full_size = np.pad(t, [(padY,padY+xtra_y), (padX,padX+xtra_x)], 'constant')
+#         t = np.zeros((full_size.shape[0], full_size.shape[1], 4), dtype=np.uint8)
+#         t[:,:,3] = full_size.astype(np.uint8)
+#         t[:,:,2] = 200 # Some color for fun
+#         t[:,:,1] = 120
 
-        strokes_processed.append(t)
-
-
-    # h, w = int(opt.CANVAS_HEIGHT_PIX/scale_factor), int(opt.CANVAS_WIDTH_PIX/scale_factor)
-    # canvas = torch.zeros((h, w, 3))
-
-    # strokes_processed = []
-    # for s in strokes:
-    #     s = cv2.resize(s[:,:,3], (int(s.shape[1]/scale_factor), int(s.shape[0]/scale_factor)))
-
-    #     padX = int((w - s.shape[1])/2)
-    #     padY = int((h - s.shape[0])/2)
-
-    #     # In case of odd numbers
-    #     xtra_x, xtra_y = w - (padX*2+s.shape[1]), h - (padY*2+s.shape[0])
-    #     s = np.pad(s, [(padY,padY+xtra_y), (padX,padX+xtra_x)], 'constant')
-    #     t = np.zeros((s.shape[0], s.shape[1], 4), dtype=np.uint8)
-    #     t[:,:,3] = s.astype(np.uint8)
-    #     t[:,:,2] = 200 # Some color for fun
-    #     t[:,:,1] = 120
-
-    #     strokes_processed.append(torch.from_numpy(t).float().to(device) / 255.)
-    # return strokes_processed
+#         strokes_processed.append(t)
 
 
+#     # h, w = int(opt.CANVAS_HEIGHT_PIX/scale_factor), int(opt.CANVAS_WIDTH_PIX/scale_factor)
+#     # canvas = torch.zeros((h, w, 3))
+
+#     # strokes_processed = []
+#     # for s in strokes:
+#     #     s = cv2.resize(s[:,:,3], (int(s.shape[1]/scale_factor), int(s.shape[0]/scale_factor)))
+
+#     #     padX = int((w - s.shape[1])/2)
+#     #     padY = int((h - s.shape[0])/2)
+
+#     #     # In case of odd numbers
+#     #     xtra_x, xtra_y = w - (padX*2+s.shape[1]), h - (padY*2+s.shape[0])
+#     #     s = np.pad(s, [(padY,padY+xtra_y), (padX,padX+xtra_x)], 'constant')
+#     #     t = np.zeros((s.shape[0], s.shape[1], 4), dtype=np.uint8)
+#     #     t[:,:,3] = s.astype(np.uint8)
+#     #     t[:,:,2] = 200 # Some color for fun
+#     #     t[:,:,1] = 120
+
+#     #     strokes_processed.append(torch.from_numpy(t).float().to(device) / 255.)
+#     # return strokes_processed
 
 
-    #np.save(open('strokes_numpy.npy', 'wb'), strokes_processed)
-    pickle.dump(strokes_processed, gzip.open(os.path.join(opt.cache_dir, 'strokes_centered.npy'), 'wb'))
+
+
+#     #np.save(open('strokes_numpy.npy', 'wb'), strokes_processed)
+#     pickle.dump(strokes_processed, gzip.open(os.path.join(opt.cache_dir, 'strokes_centered.npy'), 'wb'))

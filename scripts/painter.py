@@ -31,11 +31,6 @@ q = np.array([0.704020578925, 0.710172716916,0.00244101361829,0.00194372088834])
 # q = np.array([.9,.155,.127,.05])
 
 
-
-from stroke_calibration import process_stroke_library
-
-
-
 class Painter():
     '''
         Class that abstracts robot functionality for painting
@@ -139,34 +134,16 @@ class Painter():
         self.coordinate_calibration(use_cache=opt.use_cache)
 
         # Get brush strokes from stroke library
-        if self.opt.discrete:
-            if not os.path.exists(os.path.join(self.opt.cache_dir, 'strokes.pkl')) or not use_cache:
+        if not os.path.exists(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy')) or not use_cache:
+            if not opt.simulate:
                 try:
                     input('Need to create stroke library. Press enter to start.')
                 except SyntaxError:
                     pass
+                self.paint_extended_stroke_library()
+        # if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
+        # self.create_continuous_stroke_model()
 
-                self.paint_stroke_library()
-                self.to_neutral()
-                self.strokes = process_stroke_library(self.camera.get_canvas(), self.opt)
-                with gzip.open(os.path.join(self.opt.cache_dir, 'strokes.pkl'),'wb') as f:
-                    pickle.dump(self.strokes, f)
-            else:
-                self.strokes = pickle.load(gzip.open(os.path.join(self.opt.cache_dir, "strokes.pkl"),'rb'))
-        else:
-            if not os.path.exists(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy')) or not use_cache:
-                if not opt.simulate:
-                    try:
-                        input('Need to create stroke library. Press enter to start.')
-                    except SyntaxError:
-                        pass
-                    self.paint_extended_stroke_library()
-            # if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
-            # self.create_continuous_stroke_model()
-
-        # export the processed strokes for the python3 code
-        from export_strokes import export_strokes
-        export_strokes(self.opt)
 
 
     def to_neutral(self, speed=0.4):
@@ -413,7 +390,6 @@ class Painter():
 
     def coordinate_calibration(self, debug=True, use_cache=False):
         import matplotlib.pyplot as plt
-        from simulated_painting_environment import apply_stroke
         from scipy.ndimage import median_filter
         import cv2
         # If you run painter.paint on a given x,y it will be slightly off (both in real and simulation)
