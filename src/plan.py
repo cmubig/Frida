@@ -1,3 +1,9 @@
+
+try:
+    import google.colab
+    IN_COLAB = True
+except:
+    IN_COLAB = False
 import pickle
 import numpy as np
 import torch
@@ -10,7 +16,10 @@ import requests
 from PIL import Image
 import io
 import cv2
-from tqdm import tqdm
+if IN_COLAB:
+    from tqdm.notebook import trange, tqdm
+else:
+    from tqdm import tqdm
 import os
 import PIL.Image, PIL.ImageDraw
 from io import BytesIO
@@ -43,7 +52,6 @@ normalize_img = transforms.Compose([
 ])
 
 loss_l1 = torch.nn.L1Loss()
-
 
 # Utilities
 
@@ -272,11 +280,6 @@ def create_tensorboard():
         run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
         return 'painting/{}_planner'.format(run_name)
     try:
-        try:
-            import google.colab
-            IN_COLAB = True
-        except:
-            IN_COLAB = False
         if IN_COLAB:
             tensorboard_dir = new_tb_entry()
         else:
