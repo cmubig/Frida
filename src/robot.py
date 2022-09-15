@@ -397,7 +397,7 @@ class Sawyer(Robot, object):
         rospack = rospkg.RosPack()
         # get the file path for rospy_tutorials
         ros_dir = rospack.get_path('paint')
-        self.display_image(os.path.join(str(ros_dir), 'scripts', 'frida.jpg'))
+        self.display_image(os.path.join(str(ros_dir), 'src', 'frida.jpg'))
 
     def take_picture(self):
         import cv2

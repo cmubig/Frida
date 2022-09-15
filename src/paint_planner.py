@@ -149,8 +149,14 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
         # Plan the new strokes with SawyerPainter/src/plan.py
         if not painter.opt.dont_plan or (painter.opt.adaptive and it>0):
             add_adapt = ['--generate_whole_plan'] if painter.opt.adaptive and it==0 else []
+            
+            import rospkg
+            rospack = rospkg.RosPack()
+            # get the file path for painter code
+            ros_dir = rospack.get_path('paint')
+
             exit_code = subprocess.call(['python3', 
-                '/home/frida/ros_ws/src/intera_sdk/SawyerPainter/src/plan.py']+sys.argv[1:]+['--global_it', str(global_it)]+add_adapt)
+                os.path.join(ros_dir, '/src/plan.py')]+sys.argv[1:]+['--global_it', str(global_it)]+add_adapt)
             if exit_code != 0:
                 print('exit code', exit_code)
                 return
