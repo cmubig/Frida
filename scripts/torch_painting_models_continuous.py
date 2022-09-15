@@ -178,7 +178,7 @@ class BrushStroke(nn.Module):
         # stroke = T.Resize((h, w))(stroke)
 
         # x = self.transformation(strokes[self.stroke_ind].permute(2,0,1).unsqueeze(0))
-        from plan_all_strokes import show_img
+        from plan import show_img
         # show_img(stroke)
         x = self.transformation(stroke)
 
