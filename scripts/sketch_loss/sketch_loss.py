@@ -15,7 +15,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.parallel
-from pix2pix import ResnetGenerator
+from .pix2pix import ResnetGenerator
 from PIL import Image
 import torchvision.transforms as transforms
 
@@ -100,7 +100,7 @@ class OutputTransform(nn.Module):
 
 import pathlib
 working_dir = pathlib.Path().resolve()
-path = os.path.join(working_dir, 'pretrained/photosketch.pth')
+path = '/home/frida/ros_ws/src/intera_sdk/SawyerPainter/src/sketch_loss/pretrained/photosketch.pth'#os.path.join(working_dir, 'pretrained/photosketch.pth')
 t_real = 'toSketch'
 tf_real = OutputTransform(path, process=t_real).to(device)
 

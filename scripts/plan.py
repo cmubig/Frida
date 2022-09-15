@@ -27,8 +27,7 @@ from tensorboard import TensorBoard
 # from torch_painting_models import *
 from torch_painting_models_continuous import *
 from style_loss import compute_style_loss
-from sketch_loss import compute_sketch_loss
-from sketch_loss import compute_canny_loss
+from sketch_loss.sketch_loss import compute_sketch_loss, compute_canny_loss
 
 
 from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16, clip_fc_loss

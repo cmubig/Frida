@@ -25,8 +25,6 @@ robot_hostname="sawyerbot.local"
 # Set *Either* your computers ip address or hostname. Please note if using
 # your_hostname that this must be resolvable to the Robot.
 # your_ip="192.168.XXX.XXX"
-# your_ip="172.26.116.102"
-# your_ip="172.26.28.212"
 your_hostname="liquid.local"
 
 # Specify ROS distribution (e.g. kinetic, indigo, hydro, etc.)
