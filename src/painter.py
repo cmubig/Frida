@@ -802,5 +802,5 @@ class Painter():
         ros_dir = rospack.get_path('paint')
 
         exit_code = subprocess.call(['python3', 
-            os.path.join(ros_dir, 'src/continuous_brush_model.py')]\
+            os.path.join(ros_dir, 'src','continuous_brush_model.py')]\
             +sys.argv[1:])

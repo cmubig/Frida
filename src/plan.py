@@ -508,22 +508,19 @@ def load_objectives_data(opt):
             objective_data.append(img)
             opt.writer.add_image('target/input{}'.format(i), format_img(img), 0)
 
-
-if __name__ == '__main__':
-    global opt
-    opt = Options()
-    opt.gather_options()
-
-    # painting = calibrate(opt)
-
+def create_tensorboard():
     def new_tb_entry():
         import datetime
         date_and_time = datetime.datetime.now()
         run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
         return 'painting/{}_planner'.format(run_name)
     try:
-        from multiprocessing import current_process
-        if current_process().name == 'MainProcess' and False:
+        try:
+            import google.colab
+            IN_COLAB = True
+        except:
+            IN_COLAB = False
+        if IN_COLAB:
             tensorboard_dir = new_tb_entry()
         else:
             b = './painting'
@@ -533,10 +530,16 @@ if __name__ == '__main__':
                 tensorboard_dir += '_planner'
     except:
         tensorboard_dir = new_tb_entry()
+    return TensorBoard(tensorboard_dir)
 
-    writer = TensorBoard(tensorboard_dir)
-    opt.writer = writer
+if __name__ == '__main__':
+    global opt
+    opt = Options()
+    opt.gather_options()
 
+    # painting = calibrate(opt)
+
+    opt.writer = create_tensorboard()
 
     global h, w, colors, current_canvas, text_features, style_img, sketch
     stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
