@@ -73,7 +73,10 @@ class Painter():
                 else:
                     self.camera = SimulatedWebCam(opt)
                 break
-            except:
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                print(e)
                 try:
                     input('Could not connect camera. Try turning it off and on, then press start.')
                 except SyntaxError:
@@ -793,6 +796,11 @@ class Painter():
         # Call a script to take the stroke library and model it using a neural network
         # It will save the model to a file to be used later
         # must be run in python3
+        import rospkg
+        rospack = rospkg.RosPack()
+        # get the file path for painter code
+        ros_dir = rospack.get_path('paint')
+
         exit_code = subprocess.call(['python3', 
-            '/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/continuous_brush_model.py']\
+            os.path.join(ros_dir, 'src/continuous_brush_model.py')]\
             +sys.argv[1:])

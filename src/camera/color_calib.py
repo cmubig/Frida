@@ -3,7 +3,7 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import .macduff as macduff
+from .macduff import find_macbeth, expected_colors
 
 '''
 Code to correct color of photo based on results from a Macbeth color checker.
@@ -62,11 +62,11 @@ def color_calib(in_img, tmat, greyval):
 
 # color corrects image based on given color checker values
 def find_calib_params(img_path, disp_results=False):
-    out, colorchecker = macduff.find_macbeth(img_path)
+    out, colorchecker = find_macbeth(img_path)
     out = cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
 
     # get bgr version of expected values and actual checker values
-    ref = macduff.expected_colors
+    ref = expected_colors
     checkr_bgr = colorchecker.values.reshape(24, 3)
 
     checkr = checkr_bgr.copy()
@@ -104,7 +104,7 @@ def find_calib_params(img_path, disp_results=False):
         final = cv2.cvtColor(final, cv2.COLOR_BGR2RGB)
         plt.imsave('correct.jpg', final)
 
-        out, _ = macduff.find_macbeth('correct.jpg')
+        out, _ = find_macbeth('correct.jpg')
         out = cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
         fix, ax = plt.subplots(1,2)
         ax[0].imshow(original)

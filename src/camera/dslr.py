@@ -18,7 +18,8 @@ from .intrinsic_calib import computeIntrinsic
 import glob
 
 try:
-    import .dslr_gphoto as dslr
+    #import .dslr_gphoto as dslr
+    from .dslr_gphoto import *
 except:
     pass
 
@@ -26,7 +27,7 @@ except:
 
 class WebCam():
     def __init__(self, opt, debug=False):
-        self.camera = dslr.camera_init()
+        self.camera = camera_init()
         self.debug = debug
         self.H_canvas = None
 
@@ -39,15 +40,15 @@ class WebCam():
 
     def get_rgb_image(self, channels='rgb'):
         # while True:
-        #     targ, img = dslr.capture_image(self.camera, channels, self.debug)
+        #     targ, img = capture_image(self.camera, channels, self.debug)
         #     plt.imshow(img)
         #     plt.show()
 
-        return dslr.capture_image(self.camera, channels)
+        return capture_image(self.camera, channels)
         
         # Dirty fix for image delay
         # for i in range(4):
-        #     targ, img = dslr.capture_image(self.camera, channels)
+        #     targ, img = capture_image(self.camera, channels)
         # return targ, img
 
     # return RGB image, color corrected
