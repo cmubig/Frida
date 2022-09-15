@@ -555,7 +555,7 @@ if __name__ == '__main__':
         opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(colors), 0)
 
     # Get the background of painting to be the current canvas
-    if False:#os.path.exists(os.path.join(opt.cache_dir, 'current_canvas.jpg')):
+    if os.path.exists(os.path.join(opt.cache_dir, 'current_canvas.jpg')):
         current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg'), h=h, w=w).to(device)/255.
     else:
         current_canvas = torch.ones(1,3,h,w).to(device)
