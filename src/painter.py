@@ -21,7 +21,7 @@ from paint_utils import *
 from robot import *
 from painting_materials import *
 from strokes import all_strokes, get_base_strokes, get_random_stroke
-from dslr import WebCam, SimulatedWebCam
+from camera.dslr import WebCam, SimulatedWebCam
 
 try: import rospy
 except: pass

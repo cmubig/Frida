@@ -3,7 +3,7 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import macduff as macduff
+import .macduff as macduff
 
 '''
 Code to correct color of photo based on results from a Macbeth color checker.
