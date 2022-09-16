@@ -1,5 +1,4 @@
-# FRIDA: A Collaborative Robot Painter with a Differentiable, Real2Sim2Real Simulated Planning Environment <a href="https://twitter.com/FridaRobot" target="_blank"><img src="https://res.cloudinary.com/crunchbase-production/image/upload/c_lpad,h_256,w_256,f_auto,q_auto:eco,dpr_1/v1397180207/d242197edc3ff044620cf2d8ff39d6b3.jpg" height=32/></a>
-
+# FRIDA: A Collaborative Robot Painter with a Differentiable, Real2Sim2Real Simulated Planning Environment  <a href="https://twitter.com/FridaRobot" target="_blank"><img src="https://res.cloudinary.com/crunchbase-production/image/upload/c_lpad,h_256,w_256,f_auto,q_auto:eco,dpr_1/v1397180207/d242197edc3ff044620cf2d8ff39d6b3.jpg" height=32/></a><a href="https://colab.research.google.com/drive/1xM8v1d5I02CeAQ_rd1-vQH3jhG_X1TqB?usp=sharing" target="_blank"><img src="https://pbs.twimg.com/profile_images/1330956917951270912/DyIZtTA8_400x400.png" height=32/></a>
 
 [Peter Schaldenbrand](https://pschaldenbrand.github.io/#about.html), [Jean Oh](https://www.cs.cmu.edu/~./jeanoh/), [Jim McCann](http://www.cs.cmu.edu/~jmccann/)
 
@@ -16,6 +15,10 @@ execution of that plan.
 <a href="https://twitter.com/FridaRobot" target="_blank">
     <img src="https://res.cloudinary.com/crunchbase-production/image/upload/c_lpad,h_256,w_256,f_auto,q_auto:eco,dpr_1/v1397180207/d242197edc3ff044620cf2d8ff39d6b3.jpg" height=16/>
     Follow FRIDA's Paintings on Twitter!
+</a>
+<a href="https://colab.research.google.com/drive/1xM8v1d5I02CeAQ_rd1-vQH3jhG_X1TqB?usp=sharing" target="_blank">
+    <img src="https://pbs.twimg.com/profile_images/1330956917951270912/DyIZtTA8_400x400.png" height=16/>
+    Try our Colab Demo
 </a>
 
 ![Depiction of FRIDA's capabilities and embodiment](./sample/github_figure.png)
