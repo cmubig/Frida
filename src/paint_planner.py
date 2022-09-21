@@ -130,7 +130,6 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
     canvas_after = painter.camera.get_canvas()
     full_sim_canvas = canvas_after.copy()
     real_canvases = [canvas_after]
-    sim_canvases = [canvas_after]
     consecutive_paints = 0
     consecutive_strokes_no_clean = 0
     camera_capture_interval = 8
@@ -179,20 +178,16 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
 
         # Run Planned Strokes
         with open(os.path.join(painter.opt.cache_dir, "next_brush_strokes.csv"), 'r') as fp:
-            if painter.opt.discrete:
-                instructions = [parse_csv_line(line, painter, colors) for line in fp.readlines()] 
-            else:
-                instructions = [parse_csv_line_continuous(line, painter, colors) for line in fp.readlines()] 
+            instructions = [parse_csv_line_continuous(line, painter, colors) for line in fp.readlines()] 
             #max_instructions = 40
             n_instr = len(instructions)
             if painter.opt.adaptive:
                 instructions = instructions[:painter.opt.strokes_before_adapting]
             for instruction in tqdm(instructions[:], desc="Painting"):
                 canvas_before = canvas_after
-                if painter.opt.discrete:
-                    x, y, r, stroke_ind, color, color_ind, color_discrete = instruction
-                else:
-                    x, y, r, length, thickness, bend, color, color_ind, color_discrete = instruction
+                
+                x, y, r, length, thickness, bend, color, color_ind, color_discrete = instruction
+                
                 color = colors[color_ind].copy()
                 if painter.opt.simulate:
                     # Add some noise
@@ -200,14 +195,6 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
                     y = y + np.random.randint(10)-5
                     r = r + np.random.randn(1)*10
                     color += np.random.randn(3)*5
-
-                # Make the brush stroke on a simulated canvas
-                try:
-                    if painter.opt.discrete:
-                        full_sim_canvas, _, _ = apply_stroke(full_sim_canvas, painter.strokes[stroke_ind], stroke_ind,
-                            color, x, y, r)
-                except Exception as e:
-                    print('exception applying stroke', e)
 
                 # Clean paint brush and/or get more paint
                 new_paint_color = color_ind != curr_color
@@ -235,18 +222,14 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
                 x,y,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
                 # Paint the brush stroke
-                if painter.opt.discrete:
-                    all_strokes[stroke_ind]().paint(painter, x, y, r * (2*3.14/360))
-                else:
-                    s = simple_parameterization_to_real(length, bend, thickness)
-                    s.paint(painter, x, y, r * (2*3.14/360))
+                s = simple_parameterization_to_real(length, bend, thickness)
+                s.paint(painter, x, y, r * (2*3.14/360))
 
                 if global_it%camera_capture_interval == 0:
                     painter.to_neutral()
                     canvas_after = painter.camera.get_canvas() if not painter.opt.simulate else full_sim_canvas
                     
                     real_canvases.append(canvas_after)
-                    sim_canvases.append(full_sim_canvas.copy())
 
                     # # Update representation of paint color
                     # new_paint_color = extract_paint_color(canvas_before, canvas_after, None)
@@ -259,8 +242,6 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
                 if global_it%5==0: # loggin be sloggin
                     if not painter.opt.simulate:
                         painter.writer.add_image('images/canvas', canvas_after/255., global_it)
-                    if painter.opt.discrete:
-                        painter.writer.add_image('images/sim_canvas', full_sim_canvas/255., global_it)
                     all_colors = save_colors(colors)
                     painter.writer.add_image('paint_colors/are', all_colors/255., global_it)
                     # painter.writer.add_image('target/target_discrete', target/255., global_it)
@@ -271,7 +252,6 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
                 # if global_it % 100 == 0:
                 #     # to_gif(all_canvases)
                 #     to_video(real_canvases, fn='real_canvases.mp4')
-                #     to_video(sim_canvases, fn='sim_canvases.mp4')
             if painter.opt.adaptive:
                 if n_instr <= painter.opt.strokes_before_adapting:
                     break
@@ -281,8 +261,7 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
     painter.clean_paint_brush()
     painter.clean_paint_brush()
     painter.clean_paint_brush()
-    to_video(real_canvases, fn='/home/frida/Videos/frida/real_canvases{}.mp4'.format(str(time.time())))
-    to_video(sim_canvases, fn='/home/frida/Videos/frida/sim_canvases{}.mp4'.format(str(time.time())))
+    to_video(real_canvases, fn=os.path.join(painter.opt.plan_gif_dir,'real_canvases{}.mp4'.format(str(time.time()))))
 
     canvas_after = painter.camera.get_canvas() if not painter.opt.simulate else full_sim_canvas
     if not painter.opt.simulate:
