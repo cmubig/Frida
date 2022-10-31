@@ -27,6 +27,7 @@ from options import Options
 from torch_painting_models_continuous import *
 from style_loss import compute_style_loss
 from sketch_loss.sketch_loss import compute_sketch_loss, compute_canny_loss
+from audio_loss.audio_loss import compute_audio_loss
 
 from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16, clip_fc_loss
 import clip
@@ -86,6 +87,8 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
         #     return clip_conv_loss(K.color.grayscale_to_rgb(sketch), K.color.grayscale_to_rgb(p))
         # return compute_canny_loss(objective_data, p,
         #     comparator=clip_sketch_comparison, writer=writer, it=local_it) * weight
+    elif objective_type == 'audio':
+        return compute_audio_loss(opt, objective_data, p) * weight
 
 
     else:
