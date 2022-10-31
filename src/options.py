@@ -112,6 +112,15 @@ class Options(object):
         parser.add_argument('--plan_gif_dir', type=str, default='/home/frida/Videos/frida/')
         parser.add_argument('--log_frequency', type=int, default=5)
 
+        # For audio loss 
+        parser.add_argument("--audio_path", type=str, default="../audio/audiosample/giggling.wav")
+        parser.add_argument("--stylegan_size", type=int, default=256, help="StyleGAN resolution")
+        parser.add_argument("--lambda_similarity", type=float, default=0.008, help="weight of the latent distance (used for editing only)")
+        parser.add_argument("--lambda_identity", type=float, default=0.005, help="weight of the identity loss")
+        parser.add_argument("--truncation", type=float, default=0.7, help="used only for the initial latent vector, and only when a latent code path is"
+                                                                      "not provided")
+        parser.add_argument("--ckpt", type=str, default="../audio/pretrained_models/stylegan2-ffhq-config-f.pt", help="pretrained StyleGAN2 weights")
+
         return parser 
 
     def gather_options(self):
