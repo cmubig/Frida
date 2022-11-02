@@ -287,8 +287,8 @@ def train_param2stroke(opt):
     trajectories = np.load(os.path.join(opt.cache_dir, 'extended_stroke_library_trajectories.npy'), 
             allow_pickle=True, encoding='bytes') 
 
-    strokes = torch.from_numpy(strokes).to(device).float().nan_to_num()
-    trajectories = torch.from_numpy(trajectories.astype(np.float32)).to(device).float().nan_to_num()
+    strokes = torch.from_numpy(strokes).float().nan_to_num()
+    trajectories = torch.from_numpy(trajectories.astype(np.float32)).float().nan_to_num()
     
     n = len(strokes)
     
@@ -318,8 +318,12 @@ def train_param2stroke(opt):
     for i in range(len(strokes)):
         strokes[i] -= strokes[i].min()
         strokes[i] /= strokes[i].max()
+        strokes[i] *= 0.9
 
     h, w = strokes[0].shape[0], strokes[0].shape[1]
+
+    strokes = strokes.to(device)
+    trajectories = trajectories.to(device)
 
     for model_ind in range(opt.n_stroke_models):
         trans = StrokeParametersToImage(h,w).to(device)
@@ -329,7 +333,7 @@ def train_param2stroke(opt):
         best_val_loss = 999
         best_hasnt_changed_for = 0
 
-        val_prop = .3
+        val_prop = .2
 
         train_strokes = strokes[int(val_prop*n):]
         train_trajectories = trajectories[int(val_prop*n):]
@@ -337,8 +341,8 @@ def train_param2stroke(opt):
         val_trajectories = trajectories[:int(val_prop*n)]
         print('{} training strokes. {} validation strokes'.format(len(train_strokes), len(val_strokes)))
 
-        for it in tqdm(range(4000)):
-            if best_hasnt_changed_for >= 400:
+        for it in tqdm(range(2000)):
+            if best_hasnt_changed_for >= 200:
                 break # all done :)
             optim.zero_grad()
 

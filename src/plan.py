@@ -6,11 +6,6 @@
 ################ All rights reserved. ####################
 ##########################################################
 
-try:
-    import google.colab
-    IN_COLAB = True
-except:
-    IN_COLAB = False
 
 import numpy as np
 import torch
@@ -27,7 +22,7 @@ from options import Options
 from torch_painting_models_continuous import *
 from style_loss import compute_style_loss
 from sketch_loss.sketch_loss import compute_sketch_loss, compute_canny_loss
-from audio_loss.audio_loss import compute_audio_loss
+from audio_loss.audio_loss import compute_audio_loss, load_audio_file
 
 from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16, clip_fc_loss
 import clip
@@ -90,7 +85,7 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
         # return compute_canny_loss(objective_data, p,
         #     comparator=clip_sketch_comparison, writer=writer, it=local_it) * weight
     elif objective_type == 'audio':
-        return compute_audio_loss(opt, objective_data, p) * weight
+        return compute_audio_loss(opt, objective_data, p)[0] * weight
 
 
     else:
@@ -139,6 +134,7 @@ def plan(opt):
             for k in range(len(opt.objective)):
                 loss += parse_objective(opt.objective[k], 
                     objective_data[k], p[:,:3], weight=opt.objective_weight[k])
+
             loss.backward()
             # optim.step()
             for o in optims: o.step()
@@ -308,6 +304,9 @@ def load_objectives_data(opt):
             with torch.no_grad():
                 text_features = clip_model.encode_text(clip.tokenize(opt.init_objective_data[i]).to(device))
                 init_objective_data.append(text_features)
+        elif opt.init_objective[i] == 'audio':
+            with torch.no_grad():
+                init_objective_data.append(load_audio_file(opt.init_objective_data[i]))
         else:
             # Must be an image
             img = load_img(opt.init_objective_data[i],h=h, w=w).to(device)/255.
@@ -322,6 +321,9 @@ def load_objectives_data(opt):
             with torch.no_grad():
                 text_features = clip_model.encode_text(clip.tokenize(opt.objective_data[i]).to(device))
                 objective_data.append(text_features)
+        elif opt.objective[i] == 'audio':
+            with torch.no_grad():
+                objective_data.append(load_audio_file(opt.objective_data[i]))
         else:
             # Must be an image
             img = load_img(opt.objective_data[i],h=h, w=w).to(device)/255.

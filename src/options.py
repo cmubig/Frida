@@ -15,15 +15,17 @@ class Options(object):
         self.initialized = False
         self.opt = {}
 
-        self.INIT_TABLE_Z = 0.1
+        self.INIT_TABLE_Z = 0.15
 
         # Dimensions of canvas in meters
         # CANVAS_WIDTH  = 0.3047 # 12"
         # CANVAS_HEIGHT = 0.2285 # 9"
         # self.CANVAS_WIDTH  = 0.254 -0.005# 10"
         # self.CANVAS_HEIGHT = 0.2032 -0.005# 8"
-        self.CANVAS_WIDTH  = 0.3556 -0.005# 14"
-        self.CANVAS_HEIGHT = 0.2794 -0.005# 11"
+        # self.CANVAS_WIDTH  = 0.3556 -0.005# 14"
+        # self.CANVAS_HEIGHT = 0.2794 -0.005# 11"
+        self.CANVAS_WIDTH  = 0.5080 # 20"
+        self.CANVAS_HEIGHT = 0.4064 # 16"
 
 
         self.CANVAS_WIDTH_PIX  = None # set these after taking a picture
@@ -31,7 +33,7 @@ class Options(object):
 
         # X,Y of canvas wrt to robot center (global coordinates)
         # self.CANVAS_POSITION = (0,.5) 
-        self.CANVAS_POSITION = (0, .5-.04)
+        self.CANVAS_POSITION = (0+0.0762, .5-.04-0.0635-0.06)
 
         """ How many times in a row can you paint with the same color before needing more paint """
         self.GET_PAINT_FREQ = 3
@@ -111,6 +113,7 @@ class Options(object):
 
         parser.add_argument('--plan_gif_dir', type=str, default='/home/frida/Videos/frida/')
         parser.add_argument('--log_frequency', type=int, default=5)
+
         parser.add_argument("--output_dir", type=str, default="../outputs/", help='Where to write output to.')
 
         # For audio loss 
@@ -121,6 +124,7 @@ class Options(object):
         parser.add_argument("--truncation", type=float, default=0.7, help="used only for the initial latent vector, and only when a latent code path is"
                                                                       "not provided")
         parser.add_argument("--ckpt", type=str, default="../audio/pretrained_models/stylegan2-ffhq-config-f.pt", help="pretrained StyleGAN2 weights")
+        parser.add_argument('--dont_retrain_stroke_model', action='store_true')
 
         return parser 
 

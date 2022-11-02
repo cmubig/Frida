@@ -155,7 +155,7 @@ class Stroke(object):
 
         path = self.get_rotated_trajectory(rotation)
         # painter.hover_above(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS)
-        painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.04, speed=0.4)
+        painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.07, speed=0.4)
         painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.01, speed=0.1)
         p0 = path[0,0], path[0,1], path[0,2]
         p3 = None
@@ -189,7 +189,7 @@ class Stroke(object):
                 time.sleep(0.02)
             p0 = p3
         painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.01, speed=0.1)
-        painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.04, speed=0.3)
+        painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.07, speed=0.3)
         # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
 
     def get_rotated_trajectory(self, rotation):
@@ -208,8 +208,8 @@ class StrokeA(Stroke):
         super(Stroke, self).__init__()
         self.trajectory = [
             [-0.001,0,0.1], # [x,y,z]
-            [-0.001,0,.3],
-            [.000,0,.3],
+            [-0.001,0,.7],
+            [.000,0,.7],
             [.001,0,0.1]
         ]
 class StrokeB(Stroke):
