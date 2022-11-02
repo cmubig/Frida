@@ -84,7 +84,7 @@ class WebCam():
         # has to be done for some reason
         return cv2.cvtColor(color_calib.color_calib(img, self.color_tmat, self.greyval), cv2.COLOR_BGR2RGB)
 
-    def get_canvas(self, use_cache=False, max_height=1024):
+    def get_canvas(self, use_cache=False, max_height=2048):
         if self.H_canvas is None:
             self.calibrate_canvas(use_cache)
         

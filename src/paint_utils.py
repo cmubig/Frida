@@ -92,6 +92,7 @@ def to_gif(canvases, fn='animation.gif', duration=250):
     imgs[0].save(fn, save_all=True, append_images=imgs[1:], duration=duration, loop=0)
 
 def to_video(frames, fn='animation{}.mp4'.format(time.time()), frame_rate=10):
+    if len(frames) == 0: return
     h, w = frames[0].shape[0], frames[0].shape[1]
     # print(h,w)
     _fourcc = cv2.VideoWriter_fourcc(*'mp4v')

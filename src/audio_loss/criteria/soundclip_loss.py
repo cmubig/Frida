@@ -6,6 +6,7 @@ from torchvision import transforms as transforms
 from collections import OrderedDict
 import math
 import timm
+import os
 
 def copyStateDict(state_dict):
     if list(state_dict.keys())[0].startswith("module"):
@@ -40,7 +41,8 @@ class SoundCLIPLoss(torch.nn.Module):
 
         self.audio_encoder = AudioEncoder()
         
-        self.audio_encoder.load_state_dict(copyStateDict(torch.load("../audio/pretrained_models/resnet18.pth")))
+        root = os.path.dirname(os.path.realpath(__file__))
+        self.audio_encoder.load_state_dict(copyStateDict(torch.load(os.path.join(root,"../../../audio/pretrained_models/resnet18.pth"))))
         
         self.audio_encoder = self.audio_encoder.cuda()
         self.audio_encoder.eval()

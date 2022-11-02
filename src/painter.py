@@ -12,15 +12,16 @@ import time
 import sys
 import numpy as np
 from tqdm import tqdm
-import scipy.special
+# import scipy.special
 import pickle
+import math
 import gzip
 import subprocess
 
 from paint_utils import *
 from robot import *
 from painting_materials import *
-from strokes import all_strokes, get_base_strokes, get_random_stroke
+from strokes import all_strokes, get_base_strokes, get_random_stroke, simple_parameterization_to_real
 from camera.dslr import WebCam, SimulatedWebCam
 
 try: import rospy
@@ -123,6 +124,8 @@ class Painter():
         self.PALLETTE_POSITION = (-.3,.47,self.Z_CANVAS- 0.5*self.Z_RANGE)
         self.PAINT_DIFFERENCE = 0.03976
 
+
+        # self.locate_canvas()
         # self.calibrate_robot_tilt()
 
 
@@ -144,20 +147,23 @@ class Painter():
                 except SyntaxError:
                     pass
                 self.paint_extended_stroke_library()
-        # if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
-        # self.create_continuous_stroke_model()
+        if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
+            if not self.opt.dont_retrain_stroke_model:
+                self.create_continuous_stroke_model()
 
 
 
     def to_neutral(self, speed=0.4):
         # Initial spot
+        x, y, z = -0.18, 0.5, self.opt.INIT_TABLE_Z+0.05
         if self.og_neutral is None:
-            self.og_neutral = self._move(0.2,0.5,self.opt.INIT_TABLE_Z+0.05, timeout=20, method="direct", speed=speed)
+            self.og_neutral = self._move(x, y, z, timeout=20, method="direct", speed=speed)
         else:
             self.robot.move_to_joint_positions(self.og_neutral, timeout=20, speed=speed)
             self.seed_position = self.og_neutral
+        self.curr_position = [x, y, z]
 
-    def _move(self, x, y, z, timeout=20, method='direct', step_size=.02, speed=0.1):
+    def _move(self, x, y, z, timeout=20, method='direct', step_size=.1, speed=0.1):
         if self.opt.simulate: return
         '''
         Move to given x, y, z in global coordinates
@@ -171,6 +177,7 @@ class Painter():
         dist = ((x-self.curr_position[0])**2 + (y-self.curr_position[1])**2 + (z-self.curr_position[2])**2)**(0.5)
         n_steps = max(2, int(dist//step_size))
 
+        method = 'linear' ##############################################################################
         if method == 'linear':
             x_s = np.linspace(self.curr_position[0], x, n_steps)
             y_s = np.linspace(self.curr_position[1], y, n_steps)
@@ -367,29 +374,49 @@ class Painter():
     def calibrate_robot_tilt(self):
 
         while(True):
-            self._move(-.5,.5,self.Z_CANVAS,  speed=0.05)
+            self._move(-.6,.5,self.Z_CANVAS+.09,  speed=0.2)
+            self._move(-.6,.5,self.Z_CANVAS,  speed=0.2)
             try:
                 input('press enter to move to next position')
             except SyntaxError:
                 pass
-            self._move(.5,.5,self.Z_CANVAS,  speed=0.05)
+            self._move(-.6,.5,self.Z_CANVAS+.09,  speed=0.2)
+            self._move(.5,.5,self.Z_CANVAS+.09,  speed=0.2)
+            self._move(.5,.5,self.Z_CANVAS,  speed=0.2)
             try:
                 input('press enter to move to next position')
             except SyntaxError:
                 pass
 
-            self.to_neutral(speed=0.1)
-            self._move(0,.35,self.Z_CANVAS,  speed=0.05)
+            self._move(.5,.5,self.Z_CANVAS+.09,  speed=0.2)
+            self.to_neutral(speed=0.2)
+            self._move(0,.35,self.Z_CANVAS+.09,  speed=0.2)
+            self._move(0,.35,self.Z_CANVAS,  speed=0.2)
             try:
                 input('press enter to move to next position')
             except SyntaxError:
                 pass
-            self.to_neutral(speed=0.1)
-            self._move(0,.8,self.Z_CANVAS,  speed=0.05)
+            self._move(0,.35,self.Z_CANVAS+.09,  speed=0.2)
+            self.to_neutral(speed=0.2)
+            self._move(0,.8,self.Z_CANVAS+.09,  speed=0.2)
+            self._move(0,.8,self.Z_CANVAS,  speed=0.2)
             try:
                 input('press enter to move to next position')
             except SyntaxError:
                 pass
+            self._move(0,.8,self.Z_CANVAS+.09,  speed=0.2)
+
+    def locate_canvas(self):
+
+        while(True):
+
+            for x in [0.0, 1.0]:
+                for y in [0.0, 1.0]:
+                    x_glob,y_glob,_ = canvas_to_global_coordinates(x,y,None, self.opt) # Coord in meters from robot
+                    self._move(x_glob,y_glob,self.Z_CANVAS+.02,  speed=0.1)
+                    self._move(x_glob,y_glob,self.Z_CANVAS+.005,  speed=0.05)
+                    self._move(x_glob,y_glob,self.Z_CANVAS+.02,  speed=0.1)
+
 
     def coordinate_calibration(self, debug=True, use_cache=False):
         import matplotlib.pyplot as plt
@@ -431,7 +458,7 @@ class Painter():
             if i % 5 == 0: self.get_paint(0)
             i += 1
             x_prop, y_prop = canvas_coord # Coord in canvas proportions
-            x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix) #  Coord in canvas pixels
+            # x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix) #  Coord in canvas pixels
             x_glob,y_glob,_ = canvas_to_global_coordinates(x_prop,y_prop,None, self.opt) # Coord in meters from robot
 
             # Paint the point
@@ -446,47 +473,49 @@ class Painter():
         sim_coords_global = []
         real_coords_global = []
         for canvas_coord in homography_points:
-            x_prop, y_prop = canvas_coord 
-            x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix)
+            try:
+                x_prop, y_prop = canvas_coord 
+                x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix)
 
-            # Look in the region of the stroke and find the center of the stroke
-            w = int(.1 * canvas_height_pix)
-            window = canvas[y_pix-w:y_pix+w, x_pix-w:x_pix+w,:]
-            window = window.mean(axis=2)
-            window /= 255.
-            window = 1 - window
-            # plt.imshow(window, cmap='gray', vmin=0, vmax=1)
-            # plt.show()
-            window = window > 0.5
-            window[:int(0.05*window.shape[0])] = 0
-            window[int(0.95*window.shape[0]):] = 0
-            window[:,:int(0.05*window.shape[1])] = 0
-            window[:,int(0.95*window.shape[1]):] = 0
-            window = median_filter(window, size=(9,9))
-            dark_y, dark_x = window.nonzero()
-            # plt.matshow(window)
-            # plt.scatter(int(np.median(dark_x)), int(np.median(dark_y)))
-            # plt.show()
-            # fig, ax = plt.subplots(1)
-            fig = plt.figure()
-            ax = fig.gca()
-            ax.matshow(window)
-            ax.scatter(int(np.median(dark_x)), int(np.median(dark_y)))
-            self.writer.add_figure('coordinate_homography/{}'.format(len(real_coords_global)), fig, 0)
+                # Look in the region of the stroke and find the center of the stroke
+                w = int(.1 * canvas_height_pix)
+                window = canvas[y_pix-w:y_pix+w, x_pix-w:x_pix+w,:]
+                window = window.mean(axis=2)
+                window /= 255.
+                window = 1 - window
+                # plt.imshow(window, cmap='gray', vmin=0, vmax=1)
+                # plt.show()
+                window = window > 0.5
+                window[:int(0.05*window.shape[0])] = 0
+                window[int(0.95*window.shape[0]):] = 0
+                window[:,:int(0.05*window.shape[1])] = 0
+                window[:,int(0.95*window.shape[1]):] = 0
+                window = median_filter(window, size=(9,9))
+                dark_y, dark_x = window.nonzero()
+                # plt.matshow(window)
+                # plt.scatter(int(np.median(dark_x)), int(np.median(dark_y)))
+                # plt.show()
+                # fig, ax = plt.subplots(1)
+                fig = plt.figure()
+                ax = fig.gca()
+                ax.matshow(window)
+                ax.scatter(int(np.median(dark_x)), int(np.median(dark_y)))
+                self.writer.add_figure('coordinate_homography/{}'.format(len(real_coords_global)), fig, 0)
 
-            x_pix_real = int(np.median(dark_x)) + x_pix-w
-            y_pix_real = int(np.median(dark_y)) + y_pix-w
+                x_pix_real = int(np.median(dark_x)) + x_pix-w
+                y_pix_real = int(np.median(dark_y)) + y_pix-w
 
-            real_coords.append(np.array([x_pix_real, y_pix_real]))
-            sim_coords.append(np.array([x_pix, y_pix]))
+                real_coords.append(np.array([x_pix_real, y_pix_real]))
+                sim_coords.append(np.array([x_pix, y_pix]))
 
-            # Coord in meters from robot
-            x_sim_glob,y_sim_glob,_ = canvas_to_global_coordinates(x_prop,y_prop,None, self.opt) 
-            sim_coords_global.append(np.array([x_sim_glob, y_sim_glob]))
-            x_real_glob,y_real_glob,_ = canvas_to_global_coordinates(1.*x_pix_real/canvas_width_pix,\
-                    1-(1.*y_pix_real/canvas_height_pix),None, self.opt) 
-            real_coords_global.append(np.array([x_real_glob, y_real_glob]))
-
+                # Coord in meters from robot
+                x_sim_glob,y_sim_glob,_ = canvas_to_global_coordinates(x_prop,y_prop,None, self.opt) 
+                sim_coords_global.append(np.array([x_sim_glob, y_sim_glob]))
+                x_real_glob,y_real_glob,_ = canvas_to_global_coordinates(1.*x_pix_real/canvas_width_pix,\
+                        1-(1.*y_pix_real/canvas_height_pix),None, self.opt) 
+                real_coords_global.append(np.array([x_real_glob, y_real_glob]))
+            except Exception as e:
+                print(e)
         real_coords, sim_coords = np.array(real_coords), np.array(sim_coords)
         real_coords_global, sim_coords_global = np.array(real_coords_global), np.array(sim_coords_global)
         
@@ -551,101 +580,8 @@ class Painter():
 
                 stroke_ind += 1
 
-    def paint_continuous_stroke_library(self):
-        import math
-        from export_strokes import center_stroke
-        strokes = all_strokes
-        stroke_ind = 0
 
-        blank_canvas = self.camera.get_canvas()
-        prev_canvas = blank_canvas.copy()
-        
-        rotation = 0
-        y_diff = 0.02
-
-        x_pix, y_pix = blank_canvas.shape[1], blank_canvas.shape[0]
-
-        strokes = get_base_strokes()
-
-        w = self.opt.CANVAS_WIDTH
-        x_rels = [0, .1*w, 0.3*w, 0.5*w, 0.7*w, w]
-        for i in range(len(x_rels)-1):
-            x_rel_meters = x_rels[i]
-            x_rel_end_meters = x_rels[i+1]
-
-            j = 0
-            for y_rel_meters in np.arange(0, self.opt.CANVAS_HEIGHT - y_diff, y_diff):
-                # if stroke_ind >= len(strokes): 
-                #     # stroke_ind=0
-                #     break
-                #     # rotation += 3.14*.25
-                if stroke_ind % 4 == 0:
-                    # self.clean_paint_brush()
-                    self.get_paint(0)
-
-                # Get the position of the start of the stroke
-                x = self.opt.CANVAS_POSITION[0] - 0.5*self.opt.CANVAS_WIDTH + x_rel_meters + .2*(x_rel_end_meters-x_rel_meters)
-                y = self.opt.CANVAS_POSITION[1] + self.opt.CANVAS_HEIGHT - y_rel_meters - .5*y_diff
-                
-                stroke = strokes[stroke_ind]#()
-                #print(stroke)
-
-                stroke.paint(self, x, y, rotation)
-
-                stroke_ind += 1
-
-                # self.to_neutral()
-                canvas = self.camera.get_canvas()
-
-                changed_inds = np.abs(canvas - prev_canvas) > 5
-                changed_inds = changed_inds.astype(np.float32)
-                canvas = blank_canvas*(1-changed_inds) + canvas * changed_inds
-
-                # Bounding box indices of the stroke in the picture of stroke library
-                x_start_pix = int(math.floor((x_rel_meters/self.opt.CANVAS_WIDTH)*x_pix))
-                x_end_pix = int(math.floor(((x_rel_end_meters)/self.opt.CANVAS_WIDTH)*x_pix))
-                y_start_pix = int(math.floor((y_rel_meters/self.opt.CANVAS_HEIGHT)*y_pix))
-                y_end_pix = int(math.floor(((y_rel_meters + y_diff)/self.opt.CANVAS_HEIGHT)*y_pix))
-
-                # Get just the single stroke
-                single_strk_img = canvas[y_start_pix:y_end_pix,x_start_pix:x_end_pix]
-                
-                # Make the background purely white
-                stroke = single_strk_img.copy()
-                stroke[stroke > 170] = 255
-
-                # Convert to 0-1 where 1 is the stroke
-                stroke = stroke/255.
-                stroke = 1 - stroke # background 0, paint 1-ish
-                # stroke = stroke**.5 # Make big values bigger. Makes paint more opaque
-                stroke /= stroke.max() # Max should be 1.0
-
-                stroke = stroke[:,:,0]
-
-                print(stroke.shape)
-                stroke = center_stroke(stroke)
-                # show_img(stroke)
-
-                t = (stroke*255.).astype(np.uint8)
-
-                # Make the stroke centered on a full size canvas
-                padX = int((self.opt.CANVAS_WIDTH_PIX  - t.shape[1])/2)
-                padY = int((self.opt.CANVAS_HEIGHT_PIX - t.shape[0])/2)
-
-                # In case of odd numbers
-                xtra_x, xtra_y = self.opt.CANVAS_WIDTH_PIX - (padX*2+t.shape[1]), self.opt.CANVAS_HEIGHT_PIX - (padY*2+t.shape[0])
-                #print(t.shape, padX, padY, xtra_x, xtra_y)
-                full_size = np.pad(t, [(padY,padY+xtra_y), (padX,padX+xtra_x)], 'constant')
-                t = np.zeros((full_size.shape[0], full_size.shape[1], 4), dtype=np.uint8)
-                t[:,:,3] = full_size.astype(np.uint8)
-                t[:,:,2] = 200 # Some color for fun
-                t[:,:,1] = 120
-                # show_img(t)
-
-                j+=1
-                prev_canvas = canvas
-
-    def paint_extended_stroke_library(self):
+    def paint_extended_stroke_library(self, max_stroke_meters=0.05):
         w = self.opt.CANVAS_WIDTH_PIX
         h = self.opt.CANVAS_HEIGHT_PIX
 
@@ -671,9 +607,9 @@ class Painter():
         random_strokes = []
         random_strokes.append(simple_parameterization_to_real(.04, .02, 0.5))
         r = 5
-        lengths = torch.arange(r)/(r-1)*(0.05-0.01) + 0.01
-        bends = torch.arange(r)/(r-1)*0.04 - 0.02
-        zs = torch.arange(r)/(r-1)
+        lengths = np.arange(r, dtype=np.float32)/(r-1)*(0.05-0.01) + 0.01
+        bends = np.arange(r, dtype=np.float32)/(r-1)*0.04 - 0.02
+        zs = np.arange(r, dtype=np.float32)/(r-1)
         for i in range(r):
             random_strokes.append(simple_parameterization_to_real(lengths[i], .02, 0.5))
         for i in range(r):
@@ -681,11 +617,21 @@ class Painter():
         for i in range(r):
             random_strokes.append(simple_parameterization_to_real(.04, .02, zs[i]))
 
+        # Figure out how many strokes can be made on the given canvas size
+        n_strokes_x = int(math.floor(self.opt.CANVAS_WIDTH/(max_stroke_meters)))
+        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT/0.04))
+
         stroke_trajectories = [] # Flatten so it's just twelve values x0,y0,z0,x1,y1,...
         stroke_intensities = [] # list of 2D numpy arrays 0-1 where 1 is paint
         for paper_it in range(self.opt.num_papers):
-            for y_offset_pix in np.linspace(0.1, 0.9, 6)*h:
-                for x_offset_pix in np.linspace(0.05, 0.8, 5)*w:
+            for y_offset_pix_og in np.linspace(0.1, 0.9, n_strokes_y)*h:
+                for x_offset_pix in np.linspace(0.05, 0.9, n_strokes_x)*w:
+
+                    if len(stroke_trajectories) % 2 == 0:
+                        y_offset_pix = y_offset_pix_og + 0.01 * (h/self.opt.CANVAS_HEIGHT) # Offset y by 1cm every other stroke
+                    else:
+                        y_offset_pix = y_offset_pix_og
+
                     x, y = x_offset_pix / w, 1 - (y_offset_pix / h)
                     x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
                     x,y,_ = canvas_to_global_coordinates(x,y,None,self.opt)
