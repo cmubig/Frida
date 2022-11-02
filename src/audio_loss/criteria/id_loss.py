@@ -9,7 +9,7 @@ class IDLoss(nn.Module):
         super(IDLoss, self).__init__()
         print('Loading ResNet ArcFace')
         self.facenet = Backbone(input_size=112, num_layers=50, drop_ratio=0.6, mode='ir_se')
-        self.facenet.load_state_dict(torch.load("/mnt/Data1/vmisra/Frida/audio/pretrained_models/model_ir_se50.pth"))
+        self.facenet.load_state_dict(torch.load("../audio/pretrained_models/model_ir_se50.pth"))
         self.pool = torch.nn.AdaptiveAvgPool2d((256, 256))
         self.face_pool = torch.nn.AdaptiveAvgPool2d((112, 112))
         self.facenet.cuda()

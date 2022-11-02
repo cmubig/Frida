@@ -17,7 +17,7 @@ import cv2
 
 from audio_loss.criteria.id_loss import IDLoss
 from audio_loss.models.stylegan2.model import Generator
-from audio_loss.criteria.soundclip_loss import SoundCLIPLoss
+from audio_loss.criteria.soundclip_loss import audio_loss
 
 def get_lr(t, initial_lr, rampdown=0.25, rampup=0.05):
     lr_ramp = min(1, (1 - t) / rampdown)
@@ -73,8 +73,8 @@ def compute_audio_loss(args, img_orig, img_gen):
     # latent = latent_code_init.detach().clone()
     # latent.requires_grad = True
 
-    soundclip_loss = SoundCLIPLoss(args)
-    id_loss = IDLoss(args)
+    # soundclip_loss = SoundCLIPLoss(args)
+    # id_loss = IDLoss(args)
 
     # img_gen, _ = g_ema([latent], input_is_latent=True, randomize_noise=False)
 
@@ -95,7 +95,7 @@ def compute_audio_loss(args, img_orig, img_gen):
     # print(audio_inputs.shape)
 
 
-    cosine_distance_loss = soundclip_loss(img_gen, audio_inputs)
+    cosine_distance_loss = audio_loss(img_gen, audio_inputs, args)
 
     
 

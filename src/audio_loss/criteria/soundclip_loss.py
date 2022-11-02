@@ -2,6 +2,7 @@
 import torch
 import clip
 import torch 
+from torchvision import transforms as transforms
 from collections import OrderedDict
 import math
 import timm
@@ -39,10 +40,11 @@ class SoundCLIPLoss(torch.nn.Module):
 
         self.audio_encoder = AudioEncoder()
         
-        self.audio_encoder.load_state_dict(copyStateDict(torch.load("/mnt/Data1/vmisra/Frida/audio/pretrained_models/resnet18.pth")))
+        self.audio_encoder.load_state_dict(copyStateDict(torch.load("../audio/pretrained_models/resnet18.pth")))
         
         self.audio_encoder = self.audio_encoder.cuda()
         self.audio_encoder.eval()
+
 
     def forward(self, image, audio):
         image = self.avg_pool(self.upsample(image))
@@ -54,3 +56,24 @@ class SoundCLIPLoss(torch.nn.Module):
         sim = (image_features @ audio_features.T)[0] * math.exp(0.07)
         loss = 1 - sim
         return loss
+
+
+def get_image_augmentation():
+    augment_trans = transforms.Compose([
+        transforms.RandomPerspective(fill=1, p=1, distortion_scale=0.5),
+        transforms.RandomResizedCrop(256, scale=(0.7,0.9)),
+    ])
+
+    return augment_trans
+
+augment_trans = get_image_augmentation()
+num_augs = 10
+
+def audio_loss(img, audio, args):
+    img_batch = torch.cat([augment_trans(img) for n in range(num_augs)])
+    loss = 0
+    clip_audio_loss = SoundCLIPLoss(args)
+    for n in range(num_augs):
+        loss += clip_audio_loss(img_batch[n:n+1], audio)
+    
+    return loss / num_augs

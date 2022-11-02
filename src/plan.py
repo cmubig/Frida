@@ -35,6 +35,8 @@ import kornia as K
 
 from paint_utils import to_video
 from paint_utils3 import *
+from torchvision.utils import save_image
+
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 if not torch.cuda.is_available():
@@ -198,6 +200,14 @@ def plan(opt):
 
             discretize_colors(painting, colors)
         log_progress(painting, log_freq=opt.log_frequency)#, force_log=True)
+
+        # Save paintings every 150 steps 
+        if i % 150 == 0:
+            if not os.path.exists(opt.output_dir):
+                os.makedirs(opt.output_dir)
+            save_image(p, os.path.join(opt.output_dir, 'painting_{}.png'.format(i)))
+
+
 
     if opt.use_colors_from is None:
         colors = painting.cluster_colors(opt.n_colors)
