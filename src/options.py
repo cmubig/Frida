@@ -111,9 +111,10 @@ class Options(object):
 
         parser.add_argument('--plan_gif_dir', type=str, default='/home/frida/Videos/frida/')
         parser.add_argument('--log_frequency', type=int, default=5)
+        parser.add_argument("--output_dir", type=str, default="../outputs/", help='Where to write output to.')
 
         # For audio loss 
-        parser.add_argument("--audio_path", type=str, default="../audio/audiosample/giggling.wav")
+        parser.add_argument("--audio_path", type=str, default="../audio/audiosample/thunderstorm.wav")
         parser.add_argument("--stylegan_size", type=int, default=256, help="StyleGAN resolution")
         parser.add_argument("--lambda_similarity", type=float, default=0.008, help="weight of the latent distance (used for editing only)")
         parser.add_argument("--lambda_identity", type=float, default=0.005, help="weight of the identity loss")
