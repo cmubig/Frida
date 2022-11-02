@@ -27,6 +27,7 @@ from options import Options
 from torch_painting_models_continuous import *
 from style_loss import compute_style_loss
 from sketch_loss.sketch_loss import compute_sketch_loss, compute_canny_loss
+from audio_loss.audio_loss import compute_audio_loss
 
 from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16, clip_fc_loss
 import clip
@@ -34,6 +35,8 @@ import kornia as K
 
 from paint_utils import to_video
 from paint_utils3 import *
+from torchvision.utils import save_image
+
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 if not torch.cuda.is_available():
@@ -86,6 +89,8 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
         #     return clip_conv_loss(K.color.grayscale_to_rgb(sketch), K.color.grayscale_to_rgb(p))
         # return compute_canny_loss(objective_data, p,
         #     comparator=clip_sketch_comparison, writer=writer, it=local_it) * weight
+    elif objective_type == 'audio':
+        return compute_audio_loss(opt, objective_data, p) * weight
 
 
     else:
@@ -195,6 +200,14 @@ def plan(opt):
 
             discretize_colors(painting, colors)
         log_progress(painting, log_freq=opt.log_frequency)#, force_log=True)
+
+        # Save paintings every 150 steps 
+        if i % 150 == 0:
+            if not os.path.exists(opt.output_dir):
+                os.makedirs(opt.output_dir)
+            save_image(p, os.path.join(opt.output_dir, 'painting_{}.png'.format(i)))
+
+
 
     if opt.use_colors_from is None:
         colors = painting.cluster_colors(opt.n_colors)
