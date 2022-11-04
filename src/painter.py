@@ -619,13 +619,13 @@ class Painter():
 
         # Figure out how many strokes can be made on the given canvas size
         n_strokes_x = int(math.floor(self.opt.CANVAS_WIDTH/(max_stroke_meters)))
-        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT/0.04))
+        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT/0.03))
 
         stroke_trajectories = [] # Flatten so it's just twelve values x0,y0,z0,x1,y1,...
         stroke_intensities = [] # list of 2D numpy arrays 0-1 where 1 is paint
         for paper_it in range(self.opt.num_papers):
-            for y_offset_pix_og in np.linspace(0.1, 0.9, n_strokes_y)*h:
-                for x_offset_pix in np.linspace(0.05, 0.9, n_strokes_x)*w:
+            for y_offset_pix_og in np.linspace((.03/self.opt.CANVAS_HEIGHT), 0.99-(.02/self.opt.CANVAS_HEIGHT), n_strokes_y)*h:
+                for x_offset_pix in np.linspace(0.02, 0.99-(max_stroke_meters/self.opt.CANVAS_WIDTH), n_strokes_x)*w:
 
                     if len(stroke_trajectories) % 2 == 0:
                         y_offset_pix = y_offset_pix_og + 0.01 * (h/self.opt.CANVAS_HEIGHT) # Offset y by 1cm every other stroke

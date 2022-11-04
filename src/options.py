@@ -20,12 +20,12 @@ class Options(object):
         # Dimensions of canvas in meters
         # CANVAS_WIDTH  = 0.3047 # 12"
         # CANVAS_HEIGHT = 0.2285 # 9"
-        # self.CANVAS_WIDTH  = 0.254 -0.005# 10"
-        # self.CANVAS_HEIGHT = 0.2032 -0.005# 8"
+        self.CANVAS_WIDTH  = 0.254 -0.005# 10"
+        self.CANVAS_HEIGHT = 0.2032 -0.005# 8"
         # self.CANVAS_WIDTH  = 0.3556 -0.005# 14"
         # self.CANVAS_HEIGHT = 0.2794 -0.005# 11"
-        self.CANVAS_WIDTH  = 0.5080 # 20"
-        self.CANVAS_HEIGHT = 0.4064 # 16"
+        # self.CANVAS_WIDTH  = 0.5080 # 20"
+        # self.CANVAS_HEIGHT = 0.4064 # 16"
 
 
         self.CANVAS_WIDTH_PIX  = None # set these after taking a picture
@@ -33,7 +33,8 @@ class Options(object):
 
         # X,Y of canvas wrt to robot center (global coordinates)
         # self.CANVAS_POSITION = (0,.5) 
-        self.CANVAS_POSITION = (0+0.0762, .5-.04-0.0635-0.06)
+        # self.CANVAS_POSITION = (0+0.0762, .5-.04-0.0635-0.06) # 20x16"
+        self.CANVAS_POSITION = (0+0.0762-0.12, .5-.04-0.0635-0.06+.202)# 10x8"
 
         """ How many times in a row can you paint with the same color before needing more paint """
         self.GET_PAINT_FREQ = 3
@@ -77,6 +78,7 @@ class Options(object):
 
         parser.add_argument('--num_strokes', type=int, default=400)
         parser.add_argument('--n_stroke_models', type=int, default=5)
+        parser.add_argument('--fill_weight', type=float, default=0.5)
 
         parser.add_argument('--adaptive', action='store_true')
         parser.add_argument('--generate_whole_plan', action='store_true')
