@@ -294,7 +294,7 @@ class Painting(nn.Module):
                 canvas = canvas[:,:3] * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke[:,:3]
         
         if return_alphas: 
-            alphas = torch.concat(stroke_alphas, dim=1)
+            alphas = torch.cat(stroke_alphas, dim=1)
             alphas, _ = torch.max(alphas, dim=1)
             return canvas, alphas
         
@@ -309,7 +309,7 @@ class Painting(nn.Module):
 
             stroke_alphas.append(single_stroke[:,3:])
 
-        alphas = torch.concat(stroke_alphas, dim=1)
+        alphas = torch.cat(stroke_alphas, dim=1)
         alphas, _ = torch.max(alphas, dim=1)#alphas.max(dim=1)
         return alphas
 
