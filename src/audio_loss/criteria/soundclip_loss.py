@@ -70,11 +70,16 @@ def get_image_augmentation():
 
 augment_trans = get_image_augmentation()
 num_augs = 10
+clip_audio_loss = None
 
 def audio_loss(img, audio, args):
+    global clip_audio_loss
+    if clip_audio_loss is None:
+        clip_audio_loss = SoundCLIPLoss(args)
+
     img_batch = torch.cat([augment_trans(img) for n in range(num_augs)])
     loss = 0
-    clip_audio_loss = SoundCLIPLoss(args)
+
     for n in range(num_augs):
         loss += clip_audio_loss(img_batch[n:n+1], audio)
     
