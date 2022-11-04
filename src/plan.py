@@ -103,11 +103,13 @@ def plan(opt):
         optim = torch.optim.RMSprop(painting.parameters(), lr=opt.init_lr) # Coarse optimization
         for j in tqdm(range(opt.init_optim_iter), desc="Initializing"):
             optim.zero_grad()
-            p = painting(h, w, use_alpha=False)
+            p, alphas = painting(h, w, use_alpha=False, return_alphas=True)
             loss = 0
             for k in range(len(opt.init_objective)):
                 loss += parse_objective(opt.init_objective[k], 
                     init_objective_data[k], p[:,:3], weight=opt.init_objective_weight[k])
+
+            loss += (1-alphas).mean() * opt.fill_weight
 
             loss.backward()
             optim.step()
@@ -129,11 +131,13 @@ def plan(opt):
         for j in tqdm(range(opt.intermediate_optim_iter), desc="Intermediate Optimization"):
             #optim.zero_grad()
             for o in optims: o.zero_grad()
-            p = painting(h, w, use_alpha=False)
+            p, alphas = painting(h, w, use_alpha=False, return_alphas=True)
             loss = 0
             for k in range(len(opt.objective)):
                 loss += parse_objective(opt.objective[k], 
                     objective_data[k], p[:,:3], weight=opt.objective_weight[k])
+
+            loss += (1-alphas).mean() * opt.fill_weight
 
             loss.backward()
             # optim.step()
@@ -159,12 +163,13 @@ def plan(opt):
     for i in tqdm(range(opt.optim_iter), desc='Optimizing {} Strokes'.format(str(len(painting.brush_strokes)))):
         for o in optims: o.zero_grad()
 
-        p = painting(h, w, use_alpha=False)
+        p, alphas = painting(h, w, use_alpha=False, return_alphas=True)
         
         loss = 0
         for k in range(len(opt.objective)):
             loss += parse_objective(opt.objective[k], 
                 objective_data[k], p[:,:3], weight=opt.objective_weight[k])
+        loss += (1-alphas).mean() * opt.fill_weight
         loss.backward()
 
         position_opt.step()

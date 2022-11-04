@@ -271,7 +271,7 @@ class Painting(nn.Module):
         return position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt
 
 
-    def forward(self, h, w, use_alpha=True, strokes=None):
+    def forward(self, h, w, use_alpha=True, return_alphas=False):
         if self.background_img is None:
             canvas = torch.ones((1,4,h,w)).to(device)
         else:
@@ -280,18 +280,38 @@ class Painting(nn.Module):
         canvas[:,3] = 1 # alpha channel
 
         mostly_opaque = False#True
+        if return_alphas: stroke_alphas = []
 
         for brush_stroke in self.brush_strokes:
             single_stroke = brush_stroke(h,w)
 
             if mostly_opaque: single_stroke[:,3][single_stroke[:,3] > 0.5] = 1.
+            if return_alphas: stroke_alphas.append(single_stroke[:,3:])
             
             if use_alpha:
                 canvas = canvas * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke
             else:
                 canvas = canvas[:,:3] * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke[:,:3]
+        
+        if return_alphas: 
+            alphas = torch.concat(stroke_alphas, dim=1)
+            alphas, _ = torch.max(alphas, dim=1)
+            return canvas, alphas
+        
         return canvas
 
+    def get_alpha(self, h, w):
+        # return the alpha values of the strokes of the painting
+
+        stroke_alphas = []
+        for brush_stroke in self.brush_strokes:
+            single_stroke = brush_stroke(h,w)
+
+            stroke_alphas.append(single_stroke[:,3:])
+
+        alphas = torch.concat(stroke_alphas, dim=1)
+        alphas, _ = torch.max(alphas, dim=1)#alphas.max(dim=1)
+        return alphas
 
     def to_csv(self):
         ''' To csv string '''
