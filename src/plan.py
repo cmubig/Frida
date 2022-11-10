@@ -311,7 +311,7 @@ def parse_emotion_data(s):
 
     weights = [float(i) for i in weights_str]
     weights = torch.tensor(weights).float().to(device)
-    return weights
+    return weights.unsqueeze(0)
 
 def load_objectives_data(opt):
     # Load Initial objective data
