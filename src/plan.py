@@ -23,6 +23,7 @@ from torch_painting_models_continuous import *
 from style_loss import compute_style_loss
 from sketch_loss.sketch_loss import compute_sketch_loss, compute_canny_loss
 from audio_loss.audio_loss import compute_audio_loss, load_audio_file
+from emotion_loss.emotion_loss import emotion_loss
 
 from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16, clip_fc_loss
 import clip
@@ -69,6 +70,8 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
         return ((p - objective_data)**2).mean() * weight
     elif objective_type == 'clip_fc_loss':
         return clip_fc_loss(p, objective_data, opt.num_augs)[0] * weight
+    elif objective_type == 'emotion':
+        return emotion_loss(p, objective_data, opt.num_augs)[0] * weight
     elif objective_type == 'sketch':
         local_it += 1
         return compute_sketch_loss(objective_data, p, writer=writer, it=local_it) * weight
@@ -300,6 +303,16 @@ def adapt(opt):
 
     return painting 
 
+def parse_emotion_data(s):
+    weights_str = s.split(',')
+    if len(weights_str) != 9:
+        print('you must specify weights for the 9 emotions. You did:', len(weights_str))
+        1/0
+
+    weights = [float(i) for i in weights_str]
+    weights = torch.tensor(weights).float().to(device)
+    return weights
+
 def load_objectives_data(opt):
     # Load Initial objective data
     global init_objective_data
@@ -312,6 +325,9 @@ def load_objectives_data(opt):
         elif opt.init_objective[i] == 'audio':
             with torch.no_grad():
                 init_objective_data.append(load_audio_file(opt.init_objective_data[i]))
+        elif opt.init_objective[i] == 'emotion':
+            with torch.no_grad():
+                init_objective_data.append(parse_emotion_data(opt.init_objective_data[i]))
         else:
             # Must be an image
             img = load_img(opt.init_objective_data[i],h=h, w=w).to(device)/255.
@@ -329,6 +345,9 @@ def load_objectives_data(opt):
         elif opt.objective[i] == 'audio':
             with torch.no_grad():
                 objective_data.append(load_audio_file(opt.objective_data[i]))
+        elif opt.objective[i] == 'emotion':
+            with torch.no_grad():
+                objective_data.append(parse_emotion_data(opt.objective_data[i]))
         else:
             # Must be an image
             img = load_img(opt.objective_data[i],h=h, w=w).to(device)/255.
@@ -349,7 +368,6 @@ if __name__ == '__main__':
     h, w = stroke_shape[0], stroke_shape[1]
     w = int((opt.max_height/h)*w)
     h = int(opt.max_height)
-    # print('hw', h, w)
 
     colors = None
     if opt.use_colors_from is not None:
@@ -371,6 +389,8 @@ if __name__ == '__main__':
         painting = adapt(opt)
 
     to_video(plans, fn=os.path.join(opt.plan_gif_dir,'sim_canvases{}.mp4'.format(str(time.time()))))
+    with torch.no_grad():
+        save_image(painting(h*4,w*4, use_alpha=False), os.path.join(opt.plan_gif_dir, 'init_painting_plan{}.png'.format(str(time.time()))))
 
     # Export the strokes
     f = open(os.path.join(opt.cache_dir, "next_brush_strokes.csv"), "w")

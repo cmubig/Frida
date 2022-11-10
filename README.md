@@ -95,6 +95,7 @@ Frida can paint with a number of different objectives that can be used singularl
 - `text` - Compare the CLIP embeddings of the paiting and the input text description
 - `style` - Compares style features from the painting and the target image
 - `sketch` - [Use `clip_conv_loss` instead right now] Converts the painting and target sketch into sketches then compares them
+- `emotion` - Guide the painting towards the following emotions: amusement, awe, contentment, excitement, anger, disgust, fear, sadness, something else. Specified in comma-sparated list of weights. e.g., half anger and fear: `--[init_]objective_data 0,0,0,0,.5,0,.5,0,0`
 
 Each objective specified must have a specified data file and weight given to it. Objectives can be specified for the initial optimization pass and for the full, final optimization. Here is an example of how to specify objectives where we have an initial objetive to make the painting look like `style_img.jpg` and then a final objective to have the style of `style_img.jpg` with the text description `"a frog ballerina"`:
 ```
