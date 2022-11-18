@@ -175,7 +175,8 @@ class BrushStroke(nn.Module):
 
         # Pad 1 or two to make it fit
         # print('ffff', stroke.shape, h, w)
-        # stroke = T.Resize((h, w))(stroke)
+        if stroke.shape[2] != h or stroke.shape[3] != w:
+            stroke = T.Resize((h, w))(stroke)
 
         # x = self.transformation(strokes[self.stroke_ind].permute(2,0,1).unsqueeze(0))
         from plan import show_img
