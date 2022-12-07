@@ -134,7 +134,8 @@ def plan(opt):
         for j in tqdm(range(opt.intermediate_optim_iter), desc="Intermediate Optimization"):
             #optim.zero_grad()
             for o in optims: o.zero_grad()
-            p, alphas = painting(h, w, use_alpha=False, return_alphas=True)
+            p, alphas = painting(h, w, use_alpha=True, return_alphas=True,
+                opacity_factor=1.0)
             loss = 0
             for k in range(len(opt.objective)):
                 loss += parse_objective(opt.objective[k], 
@@ -166,7 +167,8 @@ def plan(opt):
     for i in tqdm(range(opt.optim_iter), desc='Optimizing {} Strokes'.format(str(len(painting.brush_strokes)))):
         for o in optims: o.zero_grad()
 
-        p, alphas = painting(h, w, use_alpha=False, return_alphas=True)
+        p, alphas = painting(h, w, use_alpha=False, return_alphas=True,
+                opacity_factor=1.0)
         
         loss = 0
         for k in range(len(opt.objective)):

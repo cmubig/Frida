@@ -1,5 +1,6 @@
 #! /usr/bin/env python
 import os
+import numpy as np
 
 ##########################################################
 #################### Copyright 2022 ######################
@@ -43,6 +44,8 @@ class SimulatedRobot(Robot, object):
 
     def move_to_joint_positions(self, position):
         pass
+    def go_to_cartesian_pose(self, position, orientation):
+        pass
     def inverse_kinematics(self, position, orientation, seed_position=None, debug=False):
         pass
     def move_to_joint_positions(self, position, timeout=3, speed=0.1):
@@ -67,6 +70,7 @@ class Sawyer(Robot, object):
         from tf_conversions import posemath
 
         self.limb = intera_interface.Limb(synchronous_pub=False)
+        # print(self.limb)
 
         self.ns = "ExternalTools/right/PositionKinematicsNode/IKService"
         self.iksvc = rospy.ServiceProxy(self.ns, SolvePositionIK, persistent=True)
@@ -89,6 +93,7 @@ class Sawyer(Robot, object):
             self.debug("\nExiting example...")
             limb = intera_interface.Limb(synchronous_pub=True)
             limb.move_to_neutral(speed=.2)
+            # 1/0
 
         rospy.on_shutdown(clean_shutdown)
         self.debug("Excecuting... ")
@@ -106,6 +111,73 @@ class Sawyer(Robot, object):
         """ Tuck it in, read it a story """
         rospy.signal_shutdown("Example finished.")
         self.debug("Done")
+
+    def go_to_cartesian_pose(self, position, orientation):
+        #if len(position)
+        position, orientation = np.array(position), np.array(orientation)
+        if len(position.shape) == 1:
+            position = position[None,:]
+            orientation = orientation[None,:]
+
+        # import rospy
+        # import argparse
+        from intera_motion_interface import (
+            MotionTrajectory,
+            MotionWaypoint,
+            MotionWaypointOptions
+        )
+        from intera_motion_msgs.msg import TrajectoryOptions
+        from geometry_msgs.msg import PoseStamped
+        import PyKDL
+        # from tf_conversions import posemath
+        # from intera_interface import Limb
+
+        limb = self.limb#Limb()
+
+        traj_options = TrajectoryOptions()
+        traj_options.interpolation_type = TrajectoryOptions.CARTESIAN
+        traj = MotionTrajectory(trajectory_options = traj_options, limb = limb)
+
+        wpt_opts = MotionWaypointOptions(max_linear_speed=0.8,
+                                         max_linear_accel=0.8,
+                                         # joint_tolerances=0.05,
+                                         # corner_distance=0.02,
+                                         max_rotational_speed=1.57,
+                                         max_rotational_accel=1.57,
+                                         max_joint_speed_ratio=1.0)
+
+        for i in range(len(position)):
+            waypoint = MotionWaypoint(options = wpt_opts.to_msg(), limb = limb)
+
+            joint_names = limb.joint_names()
+
+            endpoint_state = limb.tip_state("right_hand")
+            pose = endpoint_state.pose
+
+            pose.position.x = position[i,0]
+            pose.position.y = position[i,1]
+            pose.position.z = position[i,2]
+
+            pose.orientation.x = orientation[i,0]
+            pose.orientation.y = orientation[i,1]
+            pose.orientation.z = orientation[i,2]
+            pose.orientation.w = orientation[i,3]
+
+            poseStamped = PoseStamped()
+            poseStamped.pose = pose
+
+            joint_angles = limb.joint_ordered_angles()
+            waypoint.set_cartesian_pose(poseStamped, "right_hand", joint_angles)
+
+            traj.append_waypoint(waypoint.to_msg())
+
+        result = traj.send_trajectory(timeout=None)
+        # print(result.result)
+        success = result.result
+        if not success:
+            # Go to neutral and try again
+            limb.move_to_neutral(speed=.2)
+            traj.send_trajectory(timeout=None)
 
     # def inverse_kinematics(self, position, orientation, seed_position=None, debug=False):
     #     """

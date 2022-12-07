@@ -7,6 +7,7 @@
 ##########################################################
 
 import argparse 
+import math
 
 # Based off of Jun-Yan Zhu's Cyclegan implementation's options
 
@@ -20,10 +21,10 @@ class Options(object):
         # Dimensions of canvas in meters
         # CANVAS_WIDTH  = 0.3047 # 12"
         # CANVAS_HEIGHT = 0.2285 # 9"
-        self.CANVAS_WIDTH  = 0.254 -0.005# 10"
-        self.CANVAS_HEIGHT = 0.2032 -0.005# 8"
-        # self.CANVAS_WIDTH  = 0.3556 -0.005# 14"
-        # self.CANVAS_HEIGHT = 0.2794 -0.005# 11"
+        # self.CANVAS_WIDTH  = 0.254 -0.005# 10"
+        # self.CANVAS_HEIGHT = 0.2032 -0.005# 8"
+        self.CANVAS_WIDTH  = 0.3556 -0.001# 14"
+        self.CANVAS_HEIGHT = 0.2794 -0.001# 11"
         # self.CANVAS_WIDTH  = 0.5080 # 20"
         # self.CANVAS_HEIGHT = 0.4064 # 16"
 
@@ -33,8 +34,9 @@ class Options(object):
 
         # X,Y of canvas wrt to robot center (global coordinates)
         # self.CANVAS_POSITION = (0,.5) 
+        self.CANVAS_POSITION = (0, .5-.04+0.06) # 14x11"
         # self.CANVAS_POSITION = (0+0.0762, .5-.04-0.0635-0.06) # 20x16"
-        self.CANVAS_POSITION = (0+0.0762-0.12, .5-.04-0.0635-0.06+.202)# 10x8"
+        # self.CANVAS_POSITION = (0+0.0762-0.12, .5-.04-0.0635-0.06+.202)# 10x8"
 
         """ How many times in a row can you paint with the same color before needing more paint """
         self.GET_PAINT_FREQ = 3
@@ -52,6 +54,9 @@ class Options(object):
         # The brush stroke starts halfway down and 20% over from left edge of cell
         self.down = 0.5 * self.cell_dim_y
         self.over = 0.2 * self.cell_dim_x
+
+
+        self.MAX_ALPHA = math.pi / 9.
 
     def initialize(self, parser):
         parser.add_argument('--use_cache', action='store_true')
@@ -74,6 +79,8 @@ class Options(object):
             default='./log', help='Where to write tensorboard log to.')
         parser.add_argument("--global_it", type=int,
             default=0, help='Picking up where it left off.')
+
+        parser.add_argument('--brush_length', type=float, default=None)
 
 
         parser.add_argument('--num_strokes', type=int, default=400)
@@ -118,14 +125,6 @@ class Options(object):
 
         parser.add_argument("--output_dir", type=str, default="../outputs/", help='Where to write output to.')
 
-        # For audio loss 
-        parser.add_argument("--audio_path", type=str, default="../audio/audiosample/thunderstorm.wav")
-        parser.add_argument("--stylegan_size", type=int, default=256, help="StyleGAN resolution")
-        parser.add_argument("--lambda_similarity", type=float, default=0.008, help="weight of the latent distance (used for editing only)")
-        parser.add_argument("--lambda_identity", type=float, default=0.005, help="weight of the identity loss")
-        parser.add_argument("--truncation", type=float, default=0.7, help="used only for the initial latent vector, and only when a latent code path is"
-                                                                      "not provided")
-        parser.add_argument("--ckpt", type=str, default="../audio/pretrained_models/stylegan2-ffhq-config-f.pt", help="pretrained StyleGAN2 weights")
         parser.add_argument('--dont_retrain_stroke_model', action='store_true')
 
         return parser 
@@ -136,6 +135,9 @@ class Options(object):
             parser = self.initialize(parser)
 
         self.opt = vars(parser.parse_args())
+
+        if not self.simulate and self.brush_length is None:
+            print('Must specify --brush_length cmd line param. Measure the brush length.')
 
 
     def __getattr__(self, attr_name):

@@ -14,7 +14,6 @@ import numpy as np
 import argparse
 import datetime
 
-from paint_utils import *
 from painter import Painter
 from options import Options
 from paint_planner import paint_planner_new#, paint_planner_diffvg
