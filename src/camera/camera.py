@@ -1,7 +1,6 @@
 #! /usr/bin/env python3
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
 import pyrealsense2 as rs
 # https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/opencv_viewer_example.py
 
@@ -43,6 +42,7 @@ class WebCam():
         return canvas
 
     def calibrate_canvas(self):
+        import matplotlib.pyplot as plt
         img = self.get_rgb_image()
         h,w = img.shape[0], img.shape[1]
         plt.imshow(img)

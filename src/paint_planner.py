@@ -7,7 +7,6 @@
 ##########################################################
 
 import numpy as np
-import cv2
 import math
 import copy
 import pickle
@@ -16,12 +15,11 @@ import time
 import sys
 import subprocess
 from tqdm import tqdm
-from scipy.ndimage import median_filter
 from PIL import Image
 
 from simulated_painting_environment import apply_stroke
 from painter import canvas_to_global_coordinates
-from strokes import all_strokes, paint_diffvg, simple_parameterization_to_real, StrokeBD
+from strokes import all_strokes, simple_parameterization_to_real, StrokeBD
 from paint_utils import *
 
 def parse_csv_line(line, painter, colors):
@@ -41,7 +39,7 @@ def parse_csv_line(line, painter, colors):
 
 def parse_csv_line_continuous(line, painter, colors):
     toks = line.split(',')
-    if len(toks) != 9:
+    if len(toks) != 10:
         return None
     x = int(float(toks[0])*painter.opt.CANVAS_WIDTH_PIX)
     y = int(float(toks[1])*painter.opt.CANVAS_HEIGHT_PIX)
@@ -50,11 +48,12 @@ def parse_csv_line_continuous(line, painter, colors):
     length = float(toks[3])
     thickness = float(toks[4])
     bend = float(toks[5])
-    color = np.array([float(toks[6]), float(toks[7]), float(toks[8])])*255.
+    alpha = float(toks[6])
+    color = np.array([float(toks[7]), float(toks[8]), float(toks[9])])*255.
     color_ind, color_discrete = nearest_color(color, colors)
 
 
-    return x, y, r, length, thickness, bend, color, color_ind, color_discrete
+    return x, y, r, length, thickness, bend, alpha, color, color_ind, color_discrete
 
 def get_real_colors(painter, colors):
     painter.to_neutral()
@@ -124,7 +123,7 @@ def paint_color_calibration(painter, colors):
     return colors
 
 global_it = 0
-def paint_planner_new(painter, how_often_to_get_paint=5):
+def paint_planner_new(painter, how_often_to_get_paint=4):
     global global_it
     painter.to_neutral()
     canvas_after = painter.camera.get_canvas()
@@ -181,12 +180,14 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
             instructions = [parse_csv_line_continuous(line, painter, colors) for line in fp.readlines()] 
             #max_instructions = 40
             n_instr = len(instructions)
+
             if painter.opt.adaptive:
                 instructions = instructions[:painter.opt.strokes_before_adapting]
+
             for instruction in tqdm(instructions[:], desc="Painting"):
                 canvas_before = canvas_after
                 
-                x, y, r, length, thickness, bend, color, color_ind, color_discrete = instruction
+                x, y, r, length, thickness, bend, alpha, color, color_ind, color_discrete = instruction
                 
                 color = colors[color_ind].copy()
                 if painter.opt.simulate:
@@ -222,8 +223,9 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
                 x,y,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
                 # Paint the brush stroke
-                s = simple_parameterization_to_real(length, bend, thickness)
-                s.paint(painter, x, y, r * (2*3.14/360))
+                s = simple_parameterization_to_real(length, bend, thickness, alpha=alpha)
+                # s.paint(painter, x, y, r * (2*3.14/360))
+                s.angled_paint(painter, x, y, r * (2*3.14/360))
 
                 if global_it%camera_capture_interval == 0:
                     painter.to_neutral()

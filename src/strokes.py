@@ -13,6 +13,7 @@ import copy
 import numpy as np
 import time
 from paint_utils import canvas_to_global_coordinates
+from options import Options
 
 # from painter import *
 
@@ -26,111 +27,55 @@ Z is a proportion where 1=max push down and 0 is barely touching the canvas
     this is Painter.Z_MAX_CANVAS and Painter.Z_CANVAS respectively.
 '''
 
-def paint_diffvg(painter, xs, ys, z, step_size=.005):
-    # xs and ys in canvas coordinates
-    p0 = canvas_to_global_coordinates(xs[0], ys[0], painter.Z_CANVAS, painter.opt)
 
-    z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
-    if z < 0 or z > 1:
-        print('z in dangerous range: ', z)
-    z = max(0, min(z, 1.)) # safety
+def get_quaternion_from_euler(roll, pitch, yaw):
+    """
+    Convert an Euler angle to a quaternion.
+        https://automaticaddison.com/how-to-convert-euler-angles-to-quaternions-using-python/
+    Input
+        :param roll: The roll (rotation around x-axis) angle in radians.
+        :param pitch: The pitch (rotation around y-axis) angle in radians.
+        :param yaw: The yaw (rotation around z-axis) angle in radians.
 
-    z = 0.05 ###################################################
+    Output
+        :return qx, qy, qz, qw: The orientation in quaternion [x,y,z,w] format
+    """
+    # roll = (roll/360.)*2.*math.pi
+    # pitch = (pitch/360.)*2.*math.pi
+    # yaw = (yaw/360.)*2.*math.pi
+    qx = np.sin(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) - np.cos(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
+    qy = np.cos(roll/2) * np.sin(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.cos(pitch/2) * np.sin(yaw/2)
+    qz = np.cos(roll/2) * np.cos(pitch/2) * np.sin(yaw/2) - np.sin(roll/2) * np.sin(pitch/2) * np.cos(yaw/2)
+    qw = np.cos(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
 
-    z = painter.Z_CANVAS - z * z_range
+    return [qx, qy, qz, qw]
 
-    # path = self.get_rotated_trajectory(rotation)
-    painter.hover_above(p0[0], p0[1], painter.Z_CANVAS)
-    painter.move_to(p0[0], p0[1], painter.Z_CANVAS + 0.02, speed=0.2)
-    p3 = None
+def euler_from_quaternion(x, y, z, w):
+    """
+    Convert a quaternion into euler angles (roll, pitch, yaw)
+    roll is rotation around x in radians (counterclockwise)
+    pitch is rotation around y in radians (counterclockwise)
+    yaw is rotation around z in radians (counterclockwise)
+    """
+    t0 = +2.0 * (w * x + y * z)
+    t1 = +1.0 - 2.0 * (x * x + y * y)
+    roll_x = math.atan2(t0, t1)
+ 
+    t2 = +2.0 * (w * y - z * x)
+    t2 = +1.0 if t2 > +1.0 else t2
+    t2 = -1.0 if t2 < -1.0 else t2
+    pitch_y = math.asin(t2)
+ 
+    t3 = +2.0 * (w * z + x * y)
+    t4 = +1.0 - 2.0 * (y * y + z * z)
+    yaw_z = math.atan2(t3, t4)
+ 
+    return roll_x, pitch_y, yaw_z # in radians
 
-    for i in range(1, len(xs)-1, 3):
-        p1 = canvas_to_global_coordinates(xs[i+0], ys[i+0], painter.Z_CANVAS, painter.opt)
-        p2 = canvas_to_global_coordinates(xs[i+1], ys[i+1], painter.Z_CANVAS, painter.opt)
-        p3 = canvas_to_global_coordinates(xs[i+2], ys[i+2], painter.Z_CANVAS, painter.opt)
-
-        stroke_length = ((p3[0]-p0[0])**2 + (p3[1] - p0[1])**2)**.5
-        n = max(2, int(stroke_length/step_size))
-        n=100 # TODO: something more than this? see previous line
-        for t in np.linspace(0,1,n):
-            x = (1-t)**3 * p0[0] \
-                  + 3*(1-t)**2*t*p1[0] \
-                  + 3*(1-t)*t**2*p2[0] \
-                  + t**3*p3[0]
-            y = (1-t)**3 * p0[1] \
-                  + 3*(1-t)**2*t*p1[1] \
-                  + 3*(1-t)*t**2*p2[1] \
-                  + t**3*p3[1]
-            
-            # Need to translate x,y a bit to be accurate according to camera
-            if painter.H_coord is not None:
-                # Translate the coordinates so they're similar. see coordinate_calibration
-                sim_coords = np.array([x, y, 1.])
-                real_coords = painter.H_coord.dot(sim_coords)
-                x, y = real_coords[0]/real_coords[2], real_coords[1]/real_coords[2]
-            painter.move_to(x, y, z, method='direct', speed=0.03)
-            time.sleep(0.02)
-        p0 = p3
-    painter.move_to(p3[0], p3[1], painter.Z_CANVAS + 0.02, speed=0.2)
-    painter.hover_above(p3[0], p3[1], painter.Z_CANVAS)
-
-
-def paint_diffvg_quadratic(painter, xs, ys, z, step_size=.005):
-    # xs and ys in canvas coordinates
-    p0 = canvas_to_global_coordinates(xs[0], ys[0], painter.Z_CANVAS, painter.opt)
-    print(xs, ys)
-
-    z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
-    if z < 0 or z > 1:
-        print('z in dangerous range: ', z)
-    z = max(0, min(z, 1.)) # safety
-
-    z = 0.05 ###################################################
-
-    z = painter.Z_CANVAS - z * z_range
-
-    # path = self.get_rotated_trajectory(rotation)
-    painter.hover_above(p0[0], p0[1], painter.Z_CANVAS)
-    painter.move_to(p0[0], p0[1], painter.Z_CANVAS + 0.02, speed=0.2)
-    p3 = None
-
-    # import matplotlib.pyplot as plt
-    for i in range(1, len(xs)-1, 3):
-        p1 = canvas_to_global_coordinates(xs[i+0], ys[i+0], painter.Z_CANVAS, painter.opt)
-        p2 = canvas_to_global_coordinates(xs[i+1], ys[i+1], painter.Z_CANVAS, painter.opt)
-        # p3 = canvas_to_global_coordinates(xs[i+2], ys[i+2], painter.Z_CANVAS, painter.opt)
-
-        # stroke_length = ((p3[0]-p0[0])**2 + (p3[1] - p0[1])**2)**.5
-        stroke_length = ((p2[0]-p0[0])**2 + (p2[1] - p0[1])**2)**.5
-        n = max(2, int(stroke_length/step_size))
-        n=100 # TODO: something more than this? see previous line
-        for t in np.linspace(0,1,n):
-            # x = (1-t)**3 * p0[0] \
-            #       + 3*(1-t)**2*t*p1[0] \
-            #       + 3*(1-t)*t**2*p2[0] \
-            #       + t**3*p3[0]
-            # y = (1-t)**3 * p0[1] \
-            #       + 3*(1-t)**2*t*p1[1] \
-            #       + 3*(1-t)*t**2*p2[1] \
-            #       + t**3*p3[1]
-            x = (1-t)**2*p0[0] + 2*(1-t)*t*p1[0] + t**2*p2[0]
-            y = (1-t)**2*p0[1] + 2*(1-t)*t*p1[1] + t**2*p2[1]
-            
-            # Need to translate x,y a bit to be accurate according to camera
-            if painter.H_coord is not None:
-                # Translate the coordinates so they're similar. see coordinate_calibration
-                sim_coords = np.array([x, y, 1.])
-                real_coords = painter.H_coord.dot(sim_coords)
-                x, y = real_coords[0]/real_coords[2], real_coords[1]/real_coords[2]
-            # plt.scatter(x,y)
-            painter.move_to(x, y, z, method='direct', speed=0.03)
-            time.sleep(0.02)
-        # p0 = p3
-    # plt.show()
-    # painter.move_to(p3[0], p3[1], painter.Z_CANVAS + 0.02, speed=0.2)
-    # painter.hover_above(p3[0], p3[1], painter.Z_CANVAS)
-    painter.move_to(p2[0], p2[1], painter.Z_CANVAS + 0.02, speed=0.2)
-    painter.hover_above(p2[0], p2[1], painter.Z_CANVAS)
+def spherical_to_quaternion(theta, phi):
+    return np.cos(theta)*np.sin(phi), \
+            np.sin(theta)*np.sin(phi), \
+            np.cos(phi)
 
 class Stroke(object):
     '''
@@ -191,6 +136,151 @@ class Stroke(object):
         painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.01, speed=0.1)
         painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.07, speed=0.3)
         # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
+
+    def angled_paint(self, painter, x_start, y_start, rotation, step_size=.005):
+        # x_start, y_start in global coordinates. rotation in radians
+
+        smooth = True
+        if smooth:
+            all_positions = []
+            all_orientations = []
+
+        # Need to translate x,y a bit to be accurate according to camera
+        if painter.H_coord is not None:
+            # Translate the coordinates so they're similar. see coordinate_calibration
+            sim_coords = np.array([x_start, y_start, 1.])
+            real_coords = painter.H_coord.dot(sim_coords)
+            x_start, y_start = real_coords[0]/real_coords[2], real_coords[1]/real_coords[2]
+
+        z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
+
+        path = self.get_rotated_trajectory(rotation)
+        
+        if smooth:
+            all_positions.append([x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.07])
+            all_orientations.append(None)
+            all_positions.append([x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.02])
+            all_orientations.append(None)
+        else:
+            painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.07, speed=0.4)
+            painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.02, speed=0.1)
+
+        p0 = path[0,0], path[0,1], path[0,2]
+        p3 = None
+
+        alpha = self.trajectory[-1][-1] # Same alpha throughout stroke, for now.
+        # print('alpha', alpha)
+
+        for i in range(1, len(path)-1, 3):
+            p1 = path[i+0,0], path[i+0,1], path[i+0,2]
+            p2 = path[i+1,0], path[i+1,1], path[i+1,2]
+            p3 = path[i+2,0], path[i+2,1], path[i+2,2]
+
+            stroke_length = ((p3[0]-p0[0])**2 + (p3[1] - p0[1])**2)**.5
+            n = max(2, int(stroke_length/step_size))
+            n=5#30 # TODO: something more than this? see previous line
+            for t in np.linspace(0,1,n):
+                x = (1-t)**3 * p0[0] \
+                      + 3*(1-t)**2*t*p1[0] \
+                      + 3*(1-t)*t**2*p2[0] \
+                      + t**3*p3[0]
+                y = (1-t)**3 * p0[1] \
+                      + 3*(1-t)**2*t*p1[1] \
+                      + 3*(1-t)*t**2*p2[1] \
+                      + t**3*p3[1]
+                if t < 0.333:
+                    z = (1 - t/.333) * p0[2] + (t/.333)*p1[2]
+                elif t < 0.666:
+                    z = (1 - (t-.333)/.333) * p1[2] + ((t-.333)/.333)*p2[2]
+                else:
+                    z = (1 - (t-.666)/.333) * p2[2] + ((t-.666)/.333)*p3[2]
+
+                def deriv_cubic_bez(p0,p1,p2,p3,t):
+                    return -3*(1-t)**2*p0 \
+                            + 3*(1-t)**2*p1 \
+                            - 6*t*(1-t)*p1 \
+                            - 3*t**2*p2 \
+                            + 6*t*(1-t)*p2 \
+                            + 3*t**2*p3
+                dx_dt = deriv_cubic_bez(p0[0], p1[0], p2[0], p3[0], t)
+                dy_dt = deriv_cubic_bez(p0[1], p1[1], p2[1], p3[1], t)
+                dy_dx = dy_dt / dx_dt
+                curve_angle = np.arctan(dy_dx)
+                # print('curve_angle', curve_angle)
+
+                def rad_to_deg(rad):
+                    return 1.0*rad/math.pi * 180
+                def deg_to_rad(deg):
+                    return 1.0*deg/180*math.pi
+
+                theta_sphere = np.arctan2(dy_dt, dx_dt) + np.pi/2 # the pi makes it perpendicular to trajectory
+
+                phi_sphere = alpha
+                # print(theta_sphere, phi_sphere)
+                roll = np.cos(theta_sphere)*np.sin(phi_sphere)
+                # pitch =  np.pi - np.sin(theta_sphere)*np.cos(phi_sphere)*np.sin(phi_sphere)
+                pitch =  np.pi - np.sin(theta_sphere)*np.sin(phi_sphere)
+                yaw = deg_to_rad(270.) # Constant yaw
+                q = get_quaternion_from_euler(roll,pitch,yaw)
+
+                #brush_length = 0.095
+                l = painter.opt.brush_length
+                if l is None:
+                    print("must specify --brush_length")
+                r = l * np.sin(phi_sphere)
+                dx = r * np.cos(theta_sphere)
+                dy = r * np.sin(theta_sphere)
+                dz = l - l * np.cos(phi_sphere)
+                # print('dx dy', dx, dy)
+                x += dx
+                y += dy
+                #z -= dz
+                # print('dz', dz)
+                new_z_range = z_range * np.abs(np.cos(phi_sphere))
+                # print('z range', z_range, new_z_range)
+                # print('dz', dz)
+                # print('painter.Z_CANVAS', painter.Z_CANVAS)
+                # print('painter.Z_MAX_CANVAS', painter.Z_MAX_CANVAS)
+
+                z = painter.Z_CANVAS - z * new_z_range - dz #+ 0.07
+                # print(x,y,z)
+
+                if smooth:
+                    if t == 0:
+                        all_positions.append([x_start+x, y_start+y, z+0.02])
+                        all_orientations.append(q)
+                        all_positions.append([x_start+x, y_start+y, z+0.005])
+                        all_orientations.append(q)
+                    all_positions.append([x_start+x, y_start+y, z])
+                    all_orientations.append(q)
+                    if t == 1:
+                        all_positions.append([x_start+x, y_start+y, z+0.01])
+                        all_orientations.append(q)
+                        all_positions.append([x_start+x, y_start+y, z+0.02])
+                        all_orientations.append(q)
+                else:
+                    if t == 0:
+                        painter.move_to(x_start+x, y_start+y, z+0.02, q=q, method='direct', speed=0.1)
+                        painter.move_to(x_start+x, y_start+y, z+0.005, q=q, method='direct', speed=0.03)
+                    painter.move_to(x_start+x, y_start+y, z, q=q, method='direct', speed=0.05)
+                    if t == 1:
+                        painter.move_to(x_start+x, y_start+y, z+0.01, q=q, method='direct', speed=0.03)
+                        painter.move_to(x_start+x, y_start+y, z+0.02, q=q, method='direct', speed=0.1)
+                # time.sleep(0.02)
+            p0 = p3
+
+        if smooth:
+            all_positions.append([x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.02])
+            all_orientations.append(None)
+            all_positions.append([x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.07])
+            all_orientations.append(None)
+        else:
+            painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.02, speed=0.1)
+            painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.07, speed=0.3)
+        # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
+
+        if smooth:
+            painter.move_to_trajectories(all_positions, all_orientations)
 
     def get_rotated_trajectory(self, rotation):
         # Rotation in radians
@@ -472,27 +562,30 @@ def get_base_strokes():
     print(len(strokes))
     return strokes
 
-def simple_parameterization_to_real(stroke_length, bend, z):
+def simple_parameterization_to_real(stroke_length, bend, z, alpha=0):
     xs = (np.arange(4)/3.) * stroke_length
 
     stroke = Stroke(trajectory=[
-        [xs[0], 0, .2],
-        [xs[1], bend, z],
-        [xs[2], bend, z],
-        [xs[3], 0, .2],
+        [xs[0], 0, .2, alpha],
+        [xs[1], bend, z, alpha],
+        [xs[2], bend, z, alpha],
+        [xs[3], 0, .2, alpha],
     ])
     return stroke
 
 
-def get_random_stroke(max_length=0.05, min_length=0.01):
+def get_random_stroke(max_length=0.05, min_length=0.01, max_alpha=Options().MAX_ALPHA):
     stroke_length = np.random.rand(1)[0]*(max_length-min_length) + min_length
     
     bend = np.random.rand(1)[0]*.04 - .02 
     bend = min(bend, stroke_length) if bend > 0 else max(bend, -1*stroke_length)
+
+
+    alpha = (np.random.rand(1)[0]*2-1) * max_alpha
     
     z = np.random.rand(1)[0]
 
-    return simple_parameterization_to_real(stroke_length, bend, z)
+    return simple_parameterization_to_real(stroke_length, bend, z, alpha)
 
 # def get_random_stroke(max_length=0.05, min_length=0.015):
 #     stroke_length = np.random.rand(1)*(max_length-min_length) + min_length

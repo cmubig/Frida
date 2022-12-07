@@ -9,8 +9,6 @@
 
 import cv2 
 import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
 import PIL.Image
 from scipy.ndimage import median_filter
 import time
@@ -56,12 +54,15 @@ def canvas_to_global_coordinates(x,y,z, opt):
 #     return x_new, y_new, z_new
 
 def show_img(img, title=''):
+    import matplotlib
+    import matplotlib.pyplot as plt
     # Display at actual size: https://stackoverflow.com/questions/60144693/show-image-in-its-original-resolution-in-jupyter-notebook
     # Acquire default dots per inch value of matplotlib
     dpi = matplotlib.rcParams['figure.dpi']
     # Determine the figures size in inches to fit your image
     height, width = img.shape[0], img.shape[1]
     figsize = width / float(dpi), height / float(dpi)
+
 
     plt.figure(figsize=figsize)
     plt.title(title)
@@ -279,6 +280,8 @@ def nearest_color(color, discrete_colors):
     return color_ind, discrete_colors[color_ind]
 
 def get_mixed_paint_colors(table_photo, n_colors, use_cache=False, cache_dir=None):
+    import matplotlib
+    import matplotlib.pyplot as plt
     plt.imshow(table_photo)
     plt.title("Click paints. Bottom left then up then right and up.")
     if use_cache and os.path.exists(os.path.join(cache_dir, 'palette_points.pkl')):

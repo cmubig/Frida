@@ -14,6 +14,8 @@ from continuous_brush_model import StrokeParametersToImage, special_sigmoid
 opt = Options()
 opt.gather_options()
 
+max_alpha = Options().MAX_ALPHA
+
 # strokes = np.load('/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/extended_stroke_library_intensities.npy') 
 stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
 h, w = stroke_shape[0], stroke_shape[1]
@@ -114,7 +116,7 @@ class RigidBodyTransformation(nn.Module):
 
 class BrushStroke(nn.Module):
     def __init__(self, 
-                stroke_length=None, stroke_z=None, stroke_bend=None,
+                stroke_length=None, stroke_z=None, stroke_bend=None, stroke_alpha=None,
                 color=None, 
                 a=None, xt=None, yt=None):
         super(BrushStroke, self).__init__()
@@ -129,6 +131,7 @@ class BrushStroke(nn.Module):
 
         if stroke_length is None: stroke_length=torch.rand(1)*(.05-.01) + .01
         if stroke_z is None: stroke_z = torch.rand(1)
+        if stroke_alpha is None: stroke_alpha=(torch.rand(1)*2-1)*Options().MAX_ALPHA
         if stroke_bend is None: stroke_bend = torch.rand(1)*.04 - .02 
         stroke_bend = min(stroke_bend, stroke_length) if stroke_bend > 0 else max(stroke_bend, -1*stroke_length)
 
@@ -137,36 +140,44 @@ class BrushStroke(nn.Module):
         self.stroke_length = stroke_length
         self.stroke_z = stroke_z
         self.stroke_bend = stroke_bend
+        self.stroke_alpha = stroke_alpha
 
         self.stroke_length.requires_grad = True
         self.stroke_z.requires_grad = True
         self.stroke_bend.requires_grad = True
+        self.stroke_alpha.requires_grad = True
 
         self.stroke_length = nn.Parameter(self.stroke_length)
         self.stroke_z = nn.Parameter(self.stroke_z)
         self.stroke_bend = nn.Parameter(self.stroke_bend)
+        self.stroke_alpha = nn.Parameter(self.stroke_alpha)
 
         self.color_transform = nn.Parameter(color)
 
     def forward(self, h, w):
         # Do rigid body transformation
-        full_param = torch.zeros((1,12)).to(device)
+        full_param = torch.zeros((1,16)).to(device)
         
         # X
         full_param[0,0] = 0
-        full_param[0,3] = self.stroke_length/3 
-        full_param[0,6] = 2*self.stroke_length/3
-        full_param[0,9] = self.stroke_length
+        full_param[0,4] = self.stroke_length/3 
+        full_param[0,8] = 2*self.stroke_length/3
+        full_param[0,12] = self.stroke_length
         # Y
         full_param[0,1] = 0
-        full_param[0,4] = self.stroke_bend
-        full_param[0,7] = self.stroke_bend
-        full_param[0,10] = 0
+        full_param[0,5] = self.stroke_bend
+        full_param[0,9] = self.stroke_bend
+        full_param[0,13] = 0
         # Z
         full_param[0,2] = 0.2
-        full_param[0,5] = self.stroke_z
-        full_param[0,8] = self.stroke_z
-        full_param[0,11] = 0.2
+        full_param[0,6] = self.stroke_z
+        full_param[0,10] = self.stroke_z
+        full_param[0,14] = 0.2
+        # alpha
+        full_param[0,3] = self.stroke_alpha
+        full_param[0,7] = self.stroke_alpha
+        full_param[0,11] = self.stroke_alpha
+        full_param[0,15] = self.stroke_alpha
 
         model_ind = np.random.randint(len(param2imgs))
         # print(model_ind)
@@ -179,7 +190,7 @@ class BrushStroke(nn.Module):
             stroke = T.Resize((h, w))(stroke)
 
         # x = self.transformation(strokes[self.stroke_ind].permute(2,0,1).unsqueeze(0))
-        from plan import show_img
+        # from plan import show_img
         # show_img(stroke)
         x = self.transformation(stroke)
 
@@ -209,6 +220,8 @@ class BrushStroke(nn.Module):
             stroke.stroke_bend.data.clamp_(-1*stroke.stroke_length, stroke.stroke_length)
             stroke.stroke_bend.data.clamp_(-.02,.02)
 
+            stroke.stroke_alpha.data.clamp_(-1.0*max_alpha, max_alpha)
+
             stroke.stroke_z.data.clamp_(0.1,1.0)
 
             # stroke.transformation.weights[1:3].data.clamp_(-1.,1.)
@@ -216,7 +229,13 @@ class BrushStroke(nn.Module):
             stroke.transformation.yt.data.clamp_(-1.,1.)
 
 
-            stroke.color_transform.data.clamp_(0.02,0.98)
+            #stroke.color_transform.data.clamp_(0.02,0.75)
+            if stroke.color_transform.min() < 0.35:
+                # If it's a colored stroke, don't let it go to a flourescent color
+                stroke.color_transform.data.clamp_(0.02,0.70)
+            else:
+                # Well balanced RGB, less constraint
+                stroke.color_transform.data.clamp_(0.02,0.85)
 
 class Painting(nn.Module):
     def __init__(self, n_strokes, background_img=None, brush_strokes=None):
@@ -272,7 +291,7 @@ class Painting(nn.Module):
         return position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt
 
 
-    def forward(self, h, w, use_alpha=True, return_alphas=False):
+    def forward(self, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0):
         if self.background_img is None:
             canvas = torch.ones((1,4,h,w)).to(device)
         else:
@@ -288,11 +307,10 @@ class Painting(nn.Module):
 
             if mostly_opaque: single_stroke[:,3][single_stroke[:,3] > 0.5] = 1.
             if return_alphas: stroke_alphas.append(single_stroke[:,3:])
-            
             if use_alpha:
-                canvas = canvas * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke
+                canvas = canvas * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke
             else:
-                canvas = canvas[:,:3] * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke[:,:3]
+                canvas = canvas[:,:3] * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke[:,:3]
         
         if return_alphas: 
             alphas = torch.cat(stroke_alphas, dim=1)
@@ -328,8 +346,9 @@ class Painting(nn.Module):
             length = str(bs.stroke_length.detach().cpu().item())
             thickness = str(bs.stroke_z.detach().cpu().item())
             bend = str(bs.stroke_bend.detach().cpu().item())
+            alpha = str(bs.stroke_alpha.detach().cpu().item())
             color = bs.color_transform.detach().cpu().numpy()
-            csv += ','.join([x,y,r,length,thickness,bend,str(color[0]),str(color[1]),str(color[2])])
+            csv += ','.join([x,y,r,length,thickness,bend,alpha,str(color[0]),str(color[1]),str(color[2])])
             csv += '\n'
         csv = csv[:-1] # remove training newline
         return csv

@@ -37,7 +37,7 @@ class SoundCLIPLoss(torch.nn.Module):
         super(SoundCLIPLoss, self).__init__()
         self.model, self.preprocess = clip.load("ViT-B/32", device="cuda")
         self.upsample = torch.nn.Upsample(scale_factor=7)
-        self.avg_pool = torch.nn.AvgPool2d(kernel_size=opts.stylegan_size // 32)
+        self.avg_pool = torch.nn.AvgPool2d(kernel_size=256 // 32)
 
         self.audio_encoder = AudioEncoder()
         
