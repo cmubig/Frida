@@ -1,4 +1,4 @@
-# FRIDA: A Collaborative Robot Painter with a Differentiable, Real2Sim2Real Simulated Planning Environment  <a href="https://twitter.com/FridaRobot" target="_blank"><img src="https://res.cloudinary.com/crunchbase-production/image/upload/c_lpad,h_256,w_256,f_auto,q_auto:eco,dpr_1/v1397180207/d242197edc3ff044620cf2d8ff39d6b3.jpg" height=32/></a> <a href="https://colab.research.google.com/drive/1xM8v1d5I02CeAQ_rd1-vQH3jhG_X1TqB?usp=sharing" target="_blank"><img src="https://pbs.twimg.com/profile_images/1330956917951270912/DyIZtTA8_400x400.png" height=32/></a> <a href="https://arxiv.org/abs/2210.00664" target="_blank"><img src="https://pbs.twimg.com/media/EcglfCHU4AA6-yj.png" height=32/></a>
+# FRIDA: A Collaborative Robot Painter with a Differentiable, Real2Sim2Real Simulated Planning Environment  <a href="https://twitter.com/FridaRobot" target="_blank"><img src="https://res.cloudinary.com/crunchbase-production/image/upload/c_lpad,h_256,w_256,f_auto,q_auto:eco,dpr_1/v1397180207/d242197edc3ff044620cf2d8ff39d6b3.jpg" height=32/></a> <a href="https://colab.research.google.com/github/pschaldenbrand/Frida/blob/master/Frida.ipynb" target="_blank"><img src="https://pbs.twimg.com/profile_images/1330956917951270912/DyIZtTA8_400x400.png" height=32/></a> <a href="https://arxiv.org/abs/2210.00664" target="_blank"><img src="https://pbs.twimg.com/media/EcglfCHU4AA6-yj.png" height=32/></a><a href="https://www.tiktok.com/@frida_robot?lang=en" target="_blank"><img src="https://sf-tb-sg.ibytedtos.com/obj/eden-sg/uhtyvueh7nulogpoguhm/tiktok-icon2.png" height=32/></a>
 
 [Peter Schaldenbrand](https://pschaldenbrand.github.io/#about.html), [Jean Oh](https://www.cs.cmu.edu/~./jeanoh/), [Jim McCann](http://www.cs.cmu.edu/~jmccann/)
 
@@ -16,7 +16,7 @@ execution of that plan.
     <img src="https://res.cloudinary.com/crunchbase-production/image/upload/c_lpad,h_256,w_256,f_auto,q_auto:eco,dpr_1/v1397180207/d242197edc3ff044620cf2d8ff39d6b3.jpg" height=16/>
     Follow FRIDA's Paintings on Twitter!
 </a>
-<a href="https://colab.research.google.com/drive/1xM8v1d5I02CeAQ_rd1-vQH3jhG_X1TqB?usp=sharing" target="_blank">
+<a href="https://colab.research.google.com/github/pschaldenbrand/Frida/blob/master/Frida.ipynb" target="_blank">
     <img src="https://pbs.twimg.com/profile_images/1330956917951270912/DyIZtTA8_400x400.png" height=16/>
     Try our Colab Demo
 </a>
@@ -121,5 +121,5 @@ rosrun paint paint.py [args]
 Thank you to: 
 - [Jia Chen Xu](https://github.com/jxu12345) for writing FRIDA's perception code
 - Heera Sekhr and Jesse Ding for their help in the early stages of designing FRIDA's planning algorithms
-- [Vihaan Misra](https://github.com/convexalpha) for writing a sketch loss function.
+- [Vihaan Misra](https://github.com/convexalpha) for writing a sketch and audio loss functions.
 - Tanmay Shankar for his help with initial installation and fixing the Sawyer robot
