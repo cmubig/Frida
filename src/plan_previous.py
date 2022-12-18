@@ -15,6 +15,7 @@ from tqdm import tqdm
 import os
 import time
 import copy
+import json
 # from paint_utils import save_colors
 
 from options import Options
@@ -32,8 +33,6 @@ import kornia as K
 from paint_utils import to_video
 from paint_utils3 import *
 from torchvision.utils import save_image
-
-import json
 from extract_weights import *
 from Extract_PD_layers import *
 
@@ -56,10 +55,11 @@ def log_progress(painting, log_freq=5, force_log=False, title='plan'):
             #np_painting = painting(h,w, use_alpha=False).detach().cpu().numpy()[0].transpose(1,2,0)
             #opt.writer.add_image('images/{}'.format(title), np.clip(np_painting, a_min=0, a_max=1), local_it)
             p = painting(h,w, use_alpha=False)
-            p = format_img(p)
-            opt.writer.add_image('images/{}'.format(title), p, local_it)
+            print('p.shape',p.shape)
+            # p = format_img(p)
+            # opt.writer.add_image('images/{}'.format(title), p, local_it)
             
-            plans.append((p*255.).astype(np.uint8))
+            # plans.append((p*255.).astype(np.uint8))
 
 def parse_objective(objective_type, objective_data, p, weight=1.0):
     ''' p is the rendered painting '''
@@ -67,9 +67,6 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
     if objective_type == 'text':
         return clip_text_loss(p, objective_data, opt.num_augs)[0] * weight
     elif objective_type == 'style':
-        print("parsing...")
-        print("p", p.shape)
-        print("objective_data", objective_data.shape)
         return compute_style_loss(p, objective_data) * weight
     elif objective_type == 'clip_conv_loss':
         return clip_conv_loss(p, objective_data) * weight
@@ -105,7 +102,6 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
 def plan(opt):
     global colors
     painting = random_init_painting(current_canvas, opt.num_strokes)
-    pigments = np.asarray(json.load(open('8-PD_palettes.js'))['vs'])
 
     # Do initilization objective(s)
     painting.to(device)
@@ -115,13 +111,10 @@ def plan(opt):
         for j in tqdm(range(opt.init_optim_iter), desc="Initializing"):
             optim.zero_grad()
             p, alphas = painting(h, w, use_alpha=False, return_alphas=True)
-            print("initializing:p.shape",p.shape)
-            # print("initializing:alphas.shape", alphas.shape)
             loss = 0
             for k in range(len(opt.init_objective)):
                 loss += parse_objective(opt.init_objective[k], 
                     init_objective_data[k], p[:,:8], weight=opt.init_objective_weight[k])
-            print(j,"loss:",loss)
 
             loss += (1-alphas).mean() * opt.fill_weight
 
@@ -131,20 +124,25 @@ def plan(opt):
             optim.param_groups[0]['lr'] = optim.param_groups[0]['lr'] * 0.95
             # painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
             painting = randomize_brush_stroke_order(painting)
-            # log_progress(painting, title='init_optimization', log_freq=opt.log_frequency)#, force_log=True)
-            if j //20 == 0: 
-                # print(pigments)
-                oobw = np.reshape(p.detach().numpy(),(h,w,8))
-                Y = reconstruct_img_from_weights(oobw)
-                composited = save_results( Y, pigments, str(j)+'init_iter' )
-        # save_image(composited, os.path.join(opt.output_dir, 'initialization.png'))
-    import copy
-    # Intermediate optimization. Do it a few times, and pick the best
+            log_progress(painting, title='init_optimization', log_freq=opt.log_frequency)#, force_log=True)
+    print("p:", p.shape)
+    print("alphas:",alphas.shape)
+    color = np.asarray(json.load(open('8-PD_palettes.js'))['vs'])
+    color = color/255
+    print(color)
+    Y = np.reshape(p.detach().numpy(),(h,w,8))
+    composited = save_results( Y, color, (h,w), 'test', 'test' )
+    # save_image(composited, os.path.join(opt.output_dir, 'initialization.png'))
+    outpath = 'reconstructed.png'
+    Image.fromarray( composited ).save( outpath )
+            
+
+    # 2. Intermediate optimization. Do it a few times, and pick the best
     init_painting = copy.deepcopy(painting.cpu())
     best_init_painting, best_init_loss = init_painting, 999999999
     painting.to(device)
     for attempt in range(opt.n_inits):
-        painting = copy.deepcopy(init_painting)
+        painting = copy.deepcopy(init_painting).to(device)
         # optim = torch.optim.RMSprop(painting.parameters(), lr=5e-3) # Coarse optimization
         optims = painting.get_optimizers(multiplier=opt.lr_multiplier)
         for j in tqdm(range(opt.intermediate_optim_iter), desc="Intermediate Optimization"):
@@ -153,8 +151,6 @@ def plan(opt):
             p, alphas = painting(h, w, use_alpha=False, return_alphas=True)
             loss = 0
             for k in range(len(opt.objective)):
-                print("objective_data[k].shape",objective_data[k].shape)
-                print("p[:,:8]",p[:,:8].shape)
                 loss += parse_objective(opt.objective[k], 
                     objective_data[k], p[:,:8], weight=opt.objective_weight[k])
 
@@ -168,7 +164,7 @@ def plan(opt):
             painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
             # make sure hidden strokes get some attention
             # painting = randomize_brush_stroke_order(painting)
-            # log_progress(painting, title='int_optimization_{}'.format(attempt), log_freq=opt.log_frequency)#, force_log=True)
+            log_progress(painting, title='int_optimization_{}'.format(attempt), log_freq=opt.log_frequency)#, force_log=True)
             
         if loss.item() < best_init_loss:
             best_init_loss = loss.item()
@@ -176,6 +172,7 @@ def plan(opt):
             painting.to(device)
             print('best_painting {}'.format(attempt))
     painting = best_init_painting.to(device)
+    save_image(p, os.path.join(opt.output_dir, 'optimization.png'))
 
     # Create the plan
     position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
@@ -185,11 +182,12 @@ def plan(opt):
         for o in optims: o.zero_grad()
 
         p, alphas = painting(h, w, use_alpha=False, return_alphas=True)
+        print(p.shape, alphas.shape)
         
         loss = 0
         for k in range(len(opt.objective)):
             loss += parse_objective(opt.objective[k], 
-                objective_data[k], p[:,:8], weight=opt.objective_weight[k])
+                objective_data[k], p[:,:3], weight=opt.objective_weight[k])
         loss += (1-alphas).mean() * opt.fill_weight
         loss.backward()
 
@@ -215,24 +213,25 @@ def plan(opt):
             # make sure hidden strokes get some attention
             painting = randomize_brush_stroke_order(painting)
 
+
+        #insert color unmixing here
         if (i % 10 == 0 and i > (0.5*opt.optim_iter)) or i > 0.9*opt.optim_iter:
             if opt.use_colors_from is None:
                 # Cluster the colors from the existing painting
+                #re-extract weights
                 colors = painting.cluster_colors(opt.n_colors)
 
-            #color updates  rgb to weights
-
             discretize_colors(painting, colors)
-        # log_progress(painting, log_freq=opt.log_frequency)#, force_log=True)
+        log_progress(painting, log_freq=opt.log_frequency)#, force_log=True)
 
         # Save paintings every 150 steps 
-        if i % 150 == 0:
+        if i % 50 == 0:
             if not os.path.exists(opt.output_dir):
                 os.makedirs(opt.output_dir)
-            save_image(p, os.path.join(opt.output_dir, '{}painting_{}.png'.format(opt.num_strokes, i)))
+            save_image(p, os.path.join(opt.output_dir, 'painting_{}.png'.format(i)))
 
 
-
+    #extract rgb colors into weights
     if opt.use_colors_from is None:
         colors = painting.cluster_colors(opt.n_colors)
     with open(os.path.join(opt.cache_dir, 'colors_updated.npy'), 'wb') as f:
@@ -241,11 +240,10 @@ def plan(opt):
 
     discretize_colors(painting, colors)
     painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
-    # log_progress(painting, force_log=True, log_freq=opt.log_frequency)
+    log_progress(painting, force_log=True, log_freq=opt.log_frequency)
     # save_painting_strokes(painting, opt)
     return painting
 
-#this is proabably not in use yet
 def adapt(opt):
     # Load available colors
     with open(os.path.join(opt.cache_dir, 'colors_updated.npy'), 'rb') as f:
@@ -351,16 +349,14 @@ def load_objectives_data(opt):
                 init_objective_data.append(parse_emotion_data(opt.init_objective_data[i]))
         else:
             # Must be an image
-            img = load_img(opt.init_objective_data[i],h=h, w=w).to(device)/255.
-            #convert image to weight
+            img = load_img(opt.init_objective_data[i],h=h, w=w).to(device)
             img_color = np.reshape(img.detach().numpy(),(h,w,3))
             print('init_objective_data{i} is',img_color.shape)
             Y, oobw = compute_weight(img_color)
             print("extract initial weights from objective image:",oobw.shape)
-            oobw = oobw.reshape((1,oobw.shape[2], oobw.shape[0], oobw.shape[1]))
-            print("oobw after reshape:", oobw.shape)
-            oobw = torch.from_numpy(oobw)
-            print("oobw after converting from np to torch",oobw.shape)
+            # img = np.reshape(img,(1,3,h,w))
+            # print('init_objective_data{i} is',img.shape)
+            # img = torch.from_numpy(img)
             init_objective_data.append(oobw)
             # opt.writer.add_image('target/init_input{}'.format(i), format_img(img), 0)
 
@@ -380,19 +376,19 @@ def load_objectives_data(opt):
                 objective_data.append(parse_emotion_data(opt.objective_data[i]))
         else:
             # Must be an image
-            img = load_img(opt.objective_data[i],h=h, w=w).to(device)/255
-            #convert image to weight
+            img = load_img(opt.objective_data[i],h=h, w=w).to(device)
             img_color = np.reshape(img.detach().numpy(),(h,w,3))
-            print('objective_data is', img_color.shape)
+            print('init_objective_data{i} is',img_color.shape)
+            #convert the image from (h,w,3) to weight(8, h, w)
             Y, oobw = compute_weight(img_color)
-            print("extract initial weights from objective image:",oobw.shape)
-            oobw = oobw.reshape((1,oobw.shape[2], oobw.shape[0], oobw.shape[1]))
-            print("oobw after reshape:", oobw.shape)
-            oobw = torch.from_numpy(oobw)
-            print("oobw after converting from np to torch",oobw.shape)
+            
+
+
+            # img = np.reshape(img,(1,3,h,w))
+            # print('objective_data{i} is',img.shape)
+            # img = torch.from_numpy(img)
             objective_data.append(oobw)
-
-
+            print("oobw of objective_Data image is ", oobw.shape)
             # opt.writer.add_image('target/input{}'.format(i), format_img(img), 0)
 
 if __name__ == '__main__':
@@ -412,32 +408,39 @@ if __name__ == '__main__':
 
     colors = None
     if opt.use_colors_from is not None:
-        print("opt.use_colors_from is not None, get color from a image")
+        #get palette color or image color?
+        #try to set to yes and get colors from the init_objective_image
+        #set n_colors to be really high(40?)
+        # then decompose the colors into weights
+        print("chose color from a image!!!")
         colors = get_colors(cv2.resize(cv2.imread(opt.use_colors_from)[:,:,::-1], (256, 256)), 
                 n_colors=opt.n_colors)
+        print(colors.shape)
+
         opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(colors), 0)
 
     # Get the background of painting to be the current canvas
     if os.path.exists(os.path.join(opt.cache_dir, 'current_canvas.jpg')):
-        print("There is a current canvas")
+        print("There is a canvas!!!")
         current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg'), h=h, w=w).to(device)/255.
+        (unit,c,h,w) = current_canvas.shape
+        print('current_canvas.shape',current_canvas.shape)
+        current_canvas.reshape(w,h,c)
+        print('current_canvas.shape',current_canvas.shape)
     else:
+        print("there is no canvas")
         current_canvas = torch.ones(1,8,h,w).to(device)
-        print("creating a new current_canvas")
-        # current_canvas = torch.ones(1,3,h,w).to(device)
     load_objectives_data(opt)
 
     # Start Planning
     if opt.generate_whole_plan or not opt.adaptive:
-        print(" painting is planning")
         painting = plan(opt)
     else:
-        print(" painting is adapting")
         painting = adapt(opt)
 
     # to_video(plans, fn=os.path.join(opt.plan_gif_dir,'sim_canvases{}.mp4'.format(str(time.time()))))
     # with torch.no_grad():
-    #     save_image(painting(h*4,w*4, use_alpha=False), os.path.join(opt.plan_gif_dir, 'init_painting_plan{}.png'.format(str(time.time()))))
+    #     save_image(painting(h,w, use_alpha=False), os.path.join(opt.plan_gif_dir, 'init_painting_plan{}.png'.format(str(time.time()))))
 
     # Export the strokes
     f = open(os.path.join(opt.cache_dir, "next_brush_strokes.csv"), "w")

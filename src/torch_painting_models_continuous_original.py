@@ -46,8 +46,6 @@ def get_param2img(h_full, w_full, n_stroke_models=1):
         param2img.eval()
         param2img.to(device)
         param2imgs.append(param2img)
-    print('param2imgs',np.array(param2imgs).shape)
-    print('pad_for_full',np.array(pad_for_full).shape)
 
     return param2imgs, pad_for_full
 
@@ -125,9 +123,7 @@ class BrushStroke(nn.Module):
 
         # if color is None: color=torch.rand(3).to(device)
         # if color is None: color=(torch.rand(3).to(device)/10)+0.45
-        if color is None: 
-            color = np.random.dirichlet(np.ones(8),size=1)
-            color = torch.from_numpy(color[0])
+        if color is None: color=(torch.rand(3).to(device)*.4)+0.3
         if a is None: a=(torch.rand(1)*2-1)*3.14
         if xt is None: xt=(torch.rand(1)*2-1)
         if yt is None: yt=(torch.rand(1)*2-1)
@@ -153,7 +149,6 @@ class BrushStroke(nn.Module):
         self.stroke_bend = nn.Parameter(self.stroke_bend)
 
         self.color_transform = nn.Parameter(color)
-        # print("color_vector_length", len(self.color_transform))
 
     def forward(self, h, w):
         # Do rigid body transformation
@@ -188,7 +183,6 @@ class BrushStroke(nn.Module):
         from plan import show_img
         # show_img(stroke)
         x = self.transformation(stroke)
-        # print('x.shape', x)
 
         # Remove stray color from the neural network being sloppy
         # x[x < 0.1] = 0
@@ -200,16 +194,10 @@ class BrushStroke(nn.Module):
         
 
         # show_img(x)
-        # x = torch.cat([x,x,x,x], dim=1)
-        x = torch.cat([x,x,x,x,x,x,x,x,x], dim=1)
+        x = torch.cat([x,x,x,x], dim=1)
         # print('forawrd brush', x.shape)
         # Color change
-        # print("self.color_transform",self.color_transform[None,:,None,None])
-        # print("color_weight of this stroke:", self.color_transform[0])
-        x = torch.cat((x[:,:8]*0 + self.color_transform[None,:,None,None], x[:,8:]), dim=1)
-        # x = x[:,:]*0 + self.color_transform[None,:,None,None]
-        # print('x shape after color change',x[:,0,:,:])
-
+        x = torch.cat((x[:,:3]*0 + self.color_transform[None,:,None,None], x[:,3:]), dim=1)
         return x
 
     def make_valid(stroke):
@@ -238,9 +226,8 @@ class Painting(nn.Module):
         self.n_strokes = n_strokes
 
         self.background_img = background_img
-        print('background_img.shape',background_img.shape)
 
-        if self.background_img.shape[1] == 8: # add alpha channel
+        if self.background_img.shape[1] == 3: # add alpha channel
             t =  torch.zeros((1,1,self.background_img.shape[2],self.background_img.shape[3])).to(device)
             # t[:,:3] = self.background_img
             self.background_img = torch.cat((self.background_img, t), dim=1)
@@ -286,33 +273,27 @@ class Painting(nn.Module):
         return position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt
 
 
-    def forward(self, h, w, use_alpha=False, return_alphas=False):
+    def forward(self, h, w, use_alpha=True, return_alphas=False):
         if self.background_img is None:
-            print("self.background_img is None")
-            canvas = torch.ones((1,9,h,w)).to(device)
+            canvas = torch.ones((1,4,h,w)).to(device)
         else:
             canvas = T.Resize(size=(h,w))(self.background_img).detach()
 
-        canvas[:,8] = 1 # alpha channel
-        
+        canvas[:,3] = 1 # alpha channel
 
         mostly_opaque = False#True
         if return_alphas: stroke_alphas = []
 
         for brush_stroke in self.brush_strokes:
-            #brush_stroke.forward(h,w)
             single_stroke = brush_stroke(h,w)
-            # print('single_stroke.shape',single_stroke.shape)
 
-            if mostly_opaque: single_stroke[:,8][single_stroke[:,8] > 0.5] = 1.
-            #return alpha is true so therefore it should always be 1
-            if return_alphas: stroke_alphas.append(single_stroke[:,8:])
-            #use alpha == false
+            if mostly_opaque: single_stroke[:,3][single_stroke[:,3] > 0.5] = 1.
+            if return_alphas: stroke_alphas.append(single_stroke[:,3:])
+            
             if use_alpha:
-                canvas = canvas * (1 - single_stroke[:,8:]) + single_stroke[:,8:] * single_stroke
+                canvas = canvas * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke
             else:
-                # print("canvas",canvas.shape) review this one
-                canvas = canvas[:,:8] * (1 - single_stroke[:,8:]) + single_stroke[:,8:] * single_stroke[:,:8]
+                canvas = canvas[:,:3] * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke[:,:3]
         
         if return_alphas: 
             alphas = torch.cat(stroke_alphas, dim=1)
@@ -328,7 +309,7 @@ class Painting(nn.Module):
         for brush_stroke in self.brush_strokes:
             single_stroke = brush_stroke(h,w)
 
-            stroke_alphas.append(single_stroke[:,8:])
+            stroke_alphas.append(single_stroke[:,3:])
 
         alphas = torch.cat(stroke_alphas, dim=1)
         alphas, _ = torch.max(alphas, dim=1)#alphas.max(dim=1)
@@ -359,14 +340,15 @@ class Painting(nn.Module):
         for s in self.brush_strokes:
             BrushStroke.make_valid(s)
 
-    #cluster the colors weights in the images and get new ones
+    #might be the function to incorporate unmixing
     def cluster_colors(self, n_colors):
-        colors = [b.color_transform[:8].detach().cpu().numpy() for b in self.brush_strokes]
+        colors = [b.color_transform[:3].detach().cpu().numpy() for b in self.brush_strokes]
         colors = np.stack(colors)[None,:,:]
 
         pigment = np.asarray(json.load(open('8-PD_palettes.js'))['vs'])
         composited = save_results( colors, pigment, (h,w), 'test', 'test' )
         composited.reshape(1,3,h,w)
+
 
         from sklearn.cluster import KMeans
         from paint_utils import rgb2lab, lab2rgb
@@ -380,7 +362,6 @@ class Painting(nn.Module):
 
         # Back to rgb
         colors = lab2rgb(colors[None,:,:])[0]
-        print(colors.shape)
-        #donot decomposite colors yet
         # colors = compute_weight(colors)
+        print(colors.shape)
         return torch.from_numpy(colors).to(device)# *255., labels

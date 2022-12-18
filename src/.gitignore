@@ -1,0 +1,11 @@
+*.key
+*.png
+*.jpg
+*.txt
+*.a
+*.o
+*.pyc
+*.jpeg
+*.js
+.DS_Store
+*~

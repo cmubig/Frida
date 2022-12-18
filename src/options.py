@@ -62,7 +62,7 @@ class Options(object):
         parser.add_argument('--num_papers', default=4, type=int, help='How papers of strokes to paint for stroke modelling data.')
         # parser.add_argument('--just_fine', action='store_true', help="Only plan for smallest strokes")
         # parser.add_argument('--use_cached_colors', action='store_true')
-        parser.add_argument('--n_colors', default=12, type=int, help='Number of colors of paint to use')
+        parser.add_argument('--n_colors', default=30, type=int, help='Number of colors of paint to use')
         # parser.add_argument("--file", type=str,
         #     default='/home/peterschaldenbrand/Downloads/david_lynch.csv',
         #     help='Path CSV instructions.')
@@ -76,7 +76,7 @@ class Options(object):
             default=0, help='Picking up where it left off.')
 
 
-        parser.add_argument('--num_strokes', type=int, default=400)
+        parser.add_argument('--num_strokes', type=int, default=10)
         parser.add_argument('--n_stroke_models', type=int, default=5)
         parser.add_argument('--fill_weight', type=float, default=0.5)
 
@@ -98,13 +98,13 @@ class Options(object):
         parser.add_argument('--objective_weight', nargs='*', type=float, default=1.0)
         parser.add_argument('--optim_iter', type=int, default=150)
         parser.add_argument('--lr_multiplier', type=float, default=0.2)
-        parser.add_argument('--init_lr', type=float, default=3e-2, help="learning rate for initial objective")
+        parser.add_argument('--init_lr', type=float, default=3e-5, help="learning rate for initial objective")
 
         parser.add_argument('--init_objective', nargs='*', type=str, help='text|style|clip_conv_loss|l2|clip_fc_loss')
         parser.add_argument('--init_objective_data', nargs='*', type=str)
         parser.add_argument('--init_objective_weight', nargs='*', type=float, default=1.0)
         parser.add_argument('--init_optim_iter', type=int, default=40)
-        parser.add_argument('--n_inits', type=int, default=5, help='Number of times to try different initializations')
+        parser.add_argument('--n_inits', type=int, default=3, help='Number of times to try different initializations')
 
         parser.add_argument('--intermediate_optim_iter', type=int, default=40)
         parser.add_argument('--use_colors_from', type=str, default=None, help="Get the colors from this image. \

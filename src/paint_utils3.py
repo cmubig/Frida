@@ -94,10 +94,17 @@ def randomize_brush_stroke_order(painting):
 def discretize_colors(painting, discrete_colors):
     # pass
     with torch.no_grad():
+        color_list = []
         for brush_stroke in painting.brush_strokes:
             new_color = discretize_color(brush_stroke, discrete_colors)
-            brush_stroke.color_transform.data *= 0
-            brush_stroke.color_transform.data += new_color
+            new_color.tolist()
+            color_list.append(new_color)
+            color_list = [color_list]
+            #decomposite here
+        new_color_weights = compute_weight(color_list)
+        for i in range(len(painting.brush_strokes)):
+            painting.brush_strokes[i].color_transform.data *= 0
+            painting.brush_strokes[i].color_transform.data += new_color_weights[i]
 
 def discretize_color(brush_stroke, discrete_colors):
     dc = discrete_colors.cpu().detach().numpy()
