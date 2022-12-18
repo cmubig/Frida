@@ -113,6 +113,7 @@ def plan(opt):
                     init_objective_data[k], p[:,:3], weight=opt.init_objective_weight[k])
 
             loss += (1-alphas).mean() * opt.fill_weight
+            print(j,"loss:",loss)
 
             loss.backward()
             optim.step()
@@ -121,7 +122,10 @@ def plan(opt):
             # painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
             painting = randomize_brush_stroke_order(painting)
             log_progress(painting, title='init_optimization', log_freq=opt.log_frequency)#, force_log=True)
-            
+
+        # opt.writer.add_image('images_init', p, local_it)
+
+    import copy
 
     # Intermediate optimization. Do it a few times, and pick the best
     init_painting = copy.deepcopy(painting.cpu())
@@ -148,6 +152,12 @@ def plan(opt):
             painting.validate()
             for o in optims: o.param_groups[0]['lr'] = o.param_groups[0]['lr'] * 0.95
             painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
+            if j % 50 == 0 :
+                if opt.use_colors_from is None:
+                    # Cluster the colors from the existing painting
+                    colors = painting.cluster_colors(opt.n_colors)
+
+                discretize_colors(painting, colors)
             # make sure hidden strokes get some attention
             # painting = randomize_brush_stroke_order(painting)
             log_progress(painting, title='int_optimization_{}'.format(attempt), log_freq=opt.log_frequency)#, force_log=True)
@@ -197,7 +207,8 @@ def plan(opt):
             # make sure hidden strokes get some attention
             painting = randomize_brush_stroke_order(painting)
 
-        if (i % 10 == 0 and i > (0.5*opt.optim_iter)) or i > 0.9*opt.optim_iter:
+        # if (i % 10 == 0 and i > (0.5*opt.optim_iter)) or i > 0.9*opt.optim_iter:
+        if i % 10 == 0 :
             if opt.use_colors_from is None:
                 # Cluster the colors from the existing painting
                 colors = painting.cluster_colors(opt.n_colors)
@@ -206,7 +217,7 @@ def plan(opt):
         log_progress(painting, log_freq=opt.log_frequency)#, force_log=True)
 
         # Save paintings every 150 steps 
-        if i % 150 == 0:
+        if i % 30 == 0:
             if not os.path.exists(opt.output_dir):
                 os.makedirs(opt.output_dir)
             save_image(p, os.path.join(opt.output_dir, 'painting_{}.png'.format(i)))
@@ -388,9 +399,9 @@ if __name__ == '__main__':
     else:
         painting = adapt(opt)
 
-    to_video(plans, fn=os.path.join(opt.plan_gif_dir,'sim_canvases{}.mp4'.format(str(time.time()))))
-    with torch.no_grad():
-        save_image(painting(h*4,w*4, use_alpha=False), os.path.join(opt.plan_gif_dir, 'init_painting_plan{}.png'.format(str(time.time()))))
+    # to_video(plans, fn=os.path.join(opt.plan_gif_dir,'sim_canvases{}.mp4'.format(str(time.time()))))
+    # with torch.no_grad():
+    #     save_image(painting(h,w, use_alpha=False), os.path.join(opt.plan_gif_dir, 'init_painting_plan{}.png'.format(str(time.time()))))
 
     # Export the strokes
     f = open(os.path.join(opt.cache_dir, "next_brush_strokes.csv"), "w")

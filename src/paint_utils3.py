@@ -18,6 +18,8 @@ import os
 import colour
 import random
 # import gzip
+from extract_weights import*
+from Extract_PD_layers import *
 
 from torch_painting_models_continuous import *
 
@@ -94,10 +96,41 @@ def randomize_brush_stroke_order(painting):
 def discretize_colors(painting, discrete_colors):
     # pass
     with torch.no_grad():
+        
+        color_list = []
         for brush_stroke in painting.brush_strokes:
             new_color = discretize_color(brush_stroke, discrete_colors)
-            brush_stroke.color_transform.data *= 0
-            brush_stroke.color_transform.data += new_color
+            # print("(original new color",new_color)
+            new_color  = (new_color* 255).round()
+            # print("(newcolor",new_color)
+            new_color = new_color.tolist()
+            color_list.append(new_color)
+            # brush_stroke.color_transform.data *= 0
+            # brush_stroke.color_transform.data += new_color
+
+
+        #group processing
+        
+        color_weight = np.array([color_list])
+        #from ideal rgb to weight
+        Y, weights = compute_weight(color_weight)
+        # print("color_weight", weights)
+        #reconstruct from weight to rgb
+        Y, composite_color = reconstruct_img_from_weights(weights)
+        # print("composite_color.shape",composite_color)
+        composite_color =composite_color[0]
+        # print("composite_color after simplification", composite_color)
+
+        for br in range(len(painting.brush_strokes)):
+            painting.brush_strokes[br].color_transform.data *=0
+            # new_color = torch.from_numpy(color_fr_bw[br])
+            color_update = torch.tensor((composite_color[br]/255),dtype=torch.float)
+            painting.brush_strokes[br].color_transform.data += (color_update)
+            # print("painting.brush_strokes[br].color_transform.data", painting.brush_strokes[br].color_transform.data)
+        
+            
+
+
 
 def discretize_color(brush_stroke, discrete_colors):
     dc = discrete_colors.cpu().detach().numpy()

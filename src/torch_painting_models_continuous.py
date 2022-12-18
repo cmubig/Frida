@@ -197,6 +197,7 @@ class BrushStroke(nn.Module):
         # print('forawrd brush', x.shape)
         # Color change
         x = torch.cat((x[:,:3]*0 + self.color_transform[None,:,None,None], x[:,3:]), dim=1)
+        # print(x[:,0])
         return x
 
     def make_valid(stroke):
