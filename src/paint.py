@@ -18,7 +18,7 @@ from painter import Painter
 from options import Options
 from paint_planner import paint_planner_new#, paint_planner_diffvg
 
-from tensorboard import TensorBoard
+from my_tensorboard import TensorBoard
 date_and_time = datetime.datetime.now()
 run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
 writer = TensorBoard('painting/{}'.format(run_name))

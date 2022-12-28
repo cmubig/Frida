@@ -2,7 +2,7 @@ tqdm
 scipy
 pyrealsense2
 tensorboardX==2.1
-tensorboard
+tensorboard==2.9.0
 torch
 torchvision
 lpips

@@ -24,8 +24,11 @@ import gzip
 # import datetime
 
 from options import Options
-from tensorboard import TensorBoard
+from my_tensorboard import TensorBoard
 
+
+opt = Options()
+opt.gather_options()
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 if not torch.cuda.is_available():
@@ -80,11 +83,10 @@ def process_img(img):
 def log_all_permutations(model, writer):
     # Length v Bend
     n_img = 5
-    lengths = torch.arange(n_img)/(n_img-1)*(0.05-0.01) + 0.01
-    bends = torch.arange(n_img)/(n_img-1)*0.04 - 0.02
-    zs = torch.arange(n_img)/(n_img-1)
-    alphas = torch.linspace(-1.*Options().MAX_ALPHA, Options().MAX_ALPHA, steps=n_img)
-    print('alphas', alphas)
+    lengths = torch.linspace(opt.MIN_STROKE_LENGTH, opt.MAX_STROKE_LENGTH, steps=n_img)#torch.arange(n_img)/(n_img-1)*(opt.MAX_STROKE_LENGTH-opt.MIN_STROKE_LENGTH) + opt.MIN_STROKE_LENGTH
+    bends = torch.linspace(-1.0*opt.MAX_BEND, opt.MAX_BEND, steps=n_img)#torch.arange(n_img)/(n_img-1)*(2*opt.MAX_BEND) - opt.MAX_BEND
+    zs = torch.linspace(opt.MIN_STROKE_Z, 1.0, steps=n_img)#torch.arange(n_img)/(n_img-1)
+    alphas = torch.linspace(-1.*opt.MAX_ALPHA, opt.MAX_ALPHA, steps=n_img)
 
     fig, ax = plt.subplots(n_img, n_img, figsize=(10,12))
 
@@ -311,8 +313,10 @@ def custom_loss(pred, real):
     # Guides model to make bigger strokes because it cares less about non-stroke regions
     diff = torch.abs(pred - real)
     # loss = (torch.abs(real)+1e-2) * diff
-    loss = (torch.abs(real)+.2) * diff
-    return loss.mean() # + (pred.mean() - real.mean())**2
+    #loss = (torch.abs(real)+.4) * diff
+    loss = diff
+    weight_loss = (pred.mean(dim=[1,2]) - real.mean(dim=[1,2])).abs().mean()
+    return loss.mean() + weight_loss# + (pred.mean() - real.mean())**2
 loss_fcn = custom_loss
 
 def train_param2stroke(opt):
@@ -354,7 +358,7 @@ def train_param2stroke(opt):
         strokes[i] -= strokes[i].min()
         if strokes[i].max() > 0.01:
             strokes[i] /= strokes[i].max()
-        strokes[i] *= 0.95
+        # strokes[i] *= 0.95
 
     h, w = strokes[0].shape[0], strokes[0].shape[1]
     ##########FOR SPEED#########################################
@@ -649,7 +653,7 @@ def n_stroke_test(opt):
     return h_og, w_og
 
 if __name__ == '__main__':
-    global opt, strokes
+    # global opt, strokes
     opt = Options()
     opt.gather_options()
 

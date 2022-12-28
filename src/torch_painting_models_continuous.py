@@ -213,16 +213,16 @@ class BrushStroke(nn.Module):
     def make_valid(stroke):
         with torch.no_grad():
             og_len = stroke.stroke_length.item()
-            stroke.stroke_length.data.clamp_(0.01,0.05)
+            stroke.stroke_length.data.clamp_(opt.MIN_STROKE_LENGTH, opt.MAX_STROKE_LENGTH)
             # if stroke.stroke_length.item() != og_len:
             #     print('length constrained')
             
             stroke.stroke_bend.data.clamp_(-1*stroke.stroke_length, stroke.stroke_length)
-            stroke.stroke_bend.data.clamp_(-.02,.02)
+            stroke.stroke_bend.data.clamp_(-1.0*opt.MAX_BEND, opt.MAX_BEND)
 
             stroke.stroke_alpha.data.clamp_(-1.0*max_alpha, max_alpha)
 
-            stroke.stroke_z.data.clamp_(0.1,1.0)
+            stroke.stroke_z.data.clamp_(opt.MIN_STROKE_Z,1.0)
 
             # stroke.transformation.weights[1:3].data.clamp_(-1.,1.)
             stroke.transformation.xt.data.clamp_(-1.,1.)
@@ -314,7 +314,8 @@ class Painting(nn.Module):
         
         if return_alphas: 
             alphas = torch.cat(stroke_alphas, dim=1)
-            alphas, _ = torch.max(alphas, dim=1)
+            # alphas, _ = torch.mean(alphas, dim=1) ###################################################
+            alphas = torch.sum(alphas, dim=1) ###################################################
             return canvas, alphas
         
         return canvas

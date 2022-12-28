@@ -16,17 +16,17 @@ class Options(object):
         self.initialized = False
         self.opt = {}
 
-        self.INIT_TABLE_Z = 0.15
+        self.INIT_TABLE_Z = 0.17
 
         # Dimensions of canvas in meters
         # CANVAS_WIDTH  = 0.3047 # 12"
         # CANVAS_HEIGHT = 0.2285 # 9"
         # self.CANVAS_WIDTH  = 0.254 -0.005# 10"
         # self.CANVAS_HEIGHT = 0.2032 -0.005# 8"
-        self.CANVAS_WIDTH  = 0.3556 -0.001# 14"
-        self.CANVAS_HEIGHT = 0.2794 -0.001# 11"
-        # self.CANVAS_WIDTH  = 0.5080 # 20"
-        # self.CANVAS_HEIGHT = 0.4064 # 16"
+        # self.CANVAS_WIDTH  = 0.3556 -0.001# 14"
+        # self.CANVAS_HEIGHT = 0.2794 -0.001# 11"
+        self.CANVAS_WIDTH  = 0.5080 # 20"
+        self.CANVAS_HEIGHT = 0.4064 # 16"
 
 
         self.CANVAS_WIDTH_PIX  = None # set these after taking a picture
@@ -34,8 +34,8 @@ class Options(object):
 
         # X,Y of canvas wrt to robot center (global coordinates)
         # self.CANVAS_POSITION = (0,.5) 
-        self.CANVAS_POSITION = (0, .5-.04+0.06) # 14x11"
-        # self.CANVAS_POSITION = (0+0.0762, .5-.04-0.0635-0.06) # 20x16"
+        # self.CANVAS_POSITION = (0, .5-.04+0.06) # 14x11"
+        self.CANVAS_POSITION = (0+0.0762, .5-.04) # 20x16"
         # self.CANVAS_POSITION = (0+0.0762-0.12, .5-.04-0.0635-0.06+.202)# 10x8"
 
         """ How many times in a row can you paint with the same color before needing more paint """
@@ -56,7 +56,12 @@ class Options(object):
         self.over = 0.2 * self.cell_dim_x
 
 
-        self.MAX_ALPHA = math.pi / 9.
+        self.MAX_ALPHA = math.pi / 36.
+
+        self.MIN_STROKE_LENGTH = 0.001
+        self.MAX_STROKE_LENGTH = 0.06
+        self.MIN_STROKE_Z = 0.05
+        self.MAX_BEND = 0.02 #2cm
 
     def initialize(self, parser):
         parser.add_argument('--use_cache', action='store_true')
@@ -126,6 +131,8 @@ class Options(object):
         parser.add_argument("--output_dir", type=str, default="../outputs/", help='Where to write output to.')
 
         parser.add_argument('--dont_retrain_stroke_model', action='store_true')
+
+        # parser.add_argument('--sd_version', type=str, default='2.0', choices=['1.5', '2.0'], help="stable diffusion version")
 
         return parser 
 
