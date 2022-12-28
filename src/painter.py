@@ -23,7 +23,7 @@ import subprocess
 from paint_utils import canvas_to_global_coordinates#*
 from robot import *
 from painting_materials import *
-from strokes import all_strokes, get_base_strokes, get_random_stroke, simple_parameterization_to_real
+from strokes import all_strokes, get_random_stroke, simple_parameterization_to_real
 from camera.dslr import WebCam, SimulatedWebCam
 
 try: import rospy
@@ -124,7 +124,7 @@ class Painter():
         self.WATER_POSITION = (-.4,.58+0.06,self.Z_CANVAS)
         self.RAG_POSTITION = (-.42,.41+0.06,self.Z_CANVAS)
 
-        self.PALLETTE_POSITION = (-.3,.47+0.06,self.Z_CANVAS- 0.5*self.Z_RANGE)
+        self.PALLETTE_POSITION = (-.3,.47+0.06,self.Z_CANVAS- 0.2*self.Z_RANGE)
         self.PAINT_DIFFERENCE = 0.03976
 
 
@@ -205,22 +205,26 @@ class Painter():
         self._move(x,y,z, q=q, method=method, speed=speed)
 
     def dip_brush_in_water(self):
-        self.hover_above(self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2])
-        self.move_to(self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2], speed=0.2)
-        rate = rospy.Rate(100)
+        positions = []
+        positions.append([self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
+        positions.append([self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]])
         for i in range(5):
             noise = np.clip(np.random.randn(2)*0.01, a_min=-.02, a_max=0.02)
-            self.move_to(self.WATER_POSITION[0]+noise[0],self.WATER_POSITION[1]+noise[1],self.WATER_POSITION[2], method='direct')
-            rate.sleep()
-        self.hover_above(self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2])
+            positions.append([self.WATER_POSITION[0]+noise[0],self.WATER_POSITION[1]+noise[1],self.WATER_POSITION[2]])
+        positions.append([self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
+        orientations = [None]*len(positions)
+        self.move_to_trajectories(positions, orientations)
 
     def rub_brush_on_rag(self):
-        self.hover_above(self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2])
-        self.move_to(self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2], speed=0.2)
+        positions = []
+        positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
+        positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]])
         for i in range(5):
             noise = np.clip(np.random.randn(2)*0.04, a_min=-.04, a_max=0.04)
-            self.move_to(self.RAG_POSTITION[0]+noise[0],self.RAG_POSTITION[1]+noise[1],self.RAG_POSTITION[2], method='linear')
-        self.hover_above(self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2])
+            positions.append([self.RAG_POSTITION[0]+noise[0],self.RAG_POSTITION[1]+noise[1],self.RAG_POSTITION[2]])
+        positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
+        orientations = [None]*len(positions)
+        self.move_to_trajectories(positions, orientations)
 
     def clean_paint_brush(self):
         if self.opt.simulate: return
@@ -237,15 +241,16 @@ class Painter():
         y = self.PALLETTE_POSITION[1] + y_offset
         z = self.PALLETTE_POSITION[2] 
 
-        self.hover_above(x,y,z)
-        self.move_to(x,y,z + 0.02, speed=0.2)
+        positions, orientations = [], []
+        positions.append([x,y,z+self.opt.HOVER_FACTOR])
+        positions.append([x,y,z+0.02])
         for i in range(3):
-            noise = np.clip(np.random.randn(2)*0.0025, a_min=-.008, a_max=0.008)
-            self.move_to(x+noise[0],y+noise[1],z, method='direct')
-            rate = rospy.Rate(100)
-            rate.sleep()
-        self.move_to(x,y,z + 0.02, speed=0.2)
-        self.hover_above(x,y,z)
+            noise = np.clip(np.random.randn(2)*0.004, a_min=-.009, a_max=0.009)
+            positions.append([x+noise[0],y+noise[1],z])
+        positions.append([x,y,z + 0.02])
+        positions.append([x,y,z+self.opt.HOVER_FACTOR])
+        orientations = [None]*len(positions)
+        self.move_to_trajectories(positions, orientations)
 
     def paint_cubic_bezier(self, path, step_size=.005):
         """
@@ -454,7 +459,7 @@ class Painter():
             x_glob,y_glob,_ = canvas_to_global_coordinates(x_prop,y_prop,None, self.opt) # Coord in meters from robot
 
             # Paint the point
-            all_strokes[stroke_ind]().paint(self, x_glob, y_glob, 0)
+            all_strokes[stroke_ind]().angled_paint(self, x_glob, y_glob, 0)
 
         # Picture of the new strokes
         self.to_neutral()
@@ -544,33 +549,6 @@ class Painter():
             pickle.dump(self.H_coord, f)
         return H
 
-    def paint_stroke_library(self):
-        strokes = all_strokes
-        stroke_ind = 0
-        
-        rotation = 0
-        forbidden = ((0,0), (0,self.opt.cells_x-1), (self.opt.cells_y-1,0), (self.opt.cells_y-1, self.opt.cells_x-1))
-        for i in range(self.opt.cells_x):
-            for j in range(self.opt.cells_y):
-                if (j,i) in forbidden: continue
-                if stroke_ind >= len(strokes): 
-                    # stroke_ind=0
-                    break
-                    # rotation += 3.14*.25
-                if stroke_ind % 6 == 0:
-                    self.clean_paint_brush()
-                if stroke_ind % 3 == 0:
-                    self.get_paint(0)
-
-                # Get the position of the start of the stroke
-                x = self.opt.CANVAS_POSITION[0] - 0.5*self.opt.CANVAS_WIDTH + i * self.opt.cell_dim_x + self.opt.over
-                y = self.opt.CANVAS_POSITION[1] + self.opt.CANVAS_HEIGHT - j*self.opt.cell_dim_y - self.opt.down
-                
-                stroke = strokes[stroke_ind]()
-                #print(stroke)
-                stroke.paint(self, x, y, rotation)
-
-                stroke_ind += 1
 
 
     def paint_extended_stroke_library(self, max_stroke_meters=0.05):
@@ -610,14 +588,14 @@ class Painter():
             random_strokes.append(simple_parameterization_to_real(.04, .02, zs[i]))
 
         # Figure out how many strokes can be made on the given canvas size
-        n_strokes_x = int(math.floor(self.opt.CANVAS_WIDTH/(max_stroke_meters+0.005)))
-        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT/0.035))
+        n_strokes_x = int(math.floor(self.opt.CANVAS_WIDTH/(self.opt.MAX_STROKE_LENGTH+0.005)))
+        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT/(self.opt.MAX_BEND+0.01)))
 
         stroke_trajectories = [] # Flatten so it's just twelve values x0,y0,z0,x1,y1,...
         stroke_intensities = [] # list of 2D numpy arrays 0-1 where 1 is paint
         for paper_it in range(self.opt.num_papers):
             for y_offset_pix_og in np.linspace((.03/self.opt.CANVAS_HEIGHT), 0.99-(.02/self.opt.CANVAS_HEIGHT), n_strokes_y)*h:
-                for x_offset_pix in np.linspace(0.02, 0.99-(max_stroke_meters/self.opt.CANVAS_WIDTH), n_strokes_x)*w:
+                for x_offset_pix in np.linspace(0.02, 0.99-(self.opt.MAX_STROKE_LENGTH/self.opt.CANVAS_WIDTH), n_strokes_x)*w:
 
                     if len(stroke_trajectories) % 2 == 0:
                         y_offset_pix = y_offset_pix_og + 0.005 * (h/self.opt.CANVAS_HEIGHT) # Offset y by 1cm every other stroke

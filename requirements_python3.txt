@@ -8,6 +8,9 @@ regex
 git+https://github.com/openai/CLIP.git
 colour-science
 tensorboardX
-kornia
+kornia==0.6.5
 librosa
 timm
+transformers
+diffusers
+accelerate

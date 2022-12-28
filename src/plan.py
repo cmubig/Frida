@@ -19,11 +19,14 @@ import copy
 
 from options import Options
 
+# from torch_painting_models_continuous_concerted import *
 from torch_painting_models_continuous import *
 from style_loss import compute_style_loss
 from sketch_loss.sketch_loss import compute_sketch_loss, compute_canny_loss
 from audio_loss.audio_loss import compute_audio_loss, load_audio_file
 from emotion_loss.emotion_loss import emotion_loss
+from face.face_loss import face_loss, parse_face_data
+from stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
 
 from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16, clip_fc_loss
 import clip
@@ -72,6 +75,11 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
         return clip_fc_loss(p, objective_data, opt.num_augs)[0] * weight
     elif objective_type == 'emotion':
         return emotion_loss(p, objective_data, opt.num_augs)[0] * weight
+    elif objective_type == 'face':
+        return face_loss(p, objective_data, opt.num_augs) * weight
+    elif objective_type == 'stable_diffusion':
+        # return sd_loss.stable_diffusion_loss(p, objective_data) * weight
+        return stable_diffusion_loss(p, objective_data) * weight
     elif objective_type == 'sketch':
         local_it += 1
         return compute_sketch_loss(objective_data, p, writer=writer, it=local_it) * weight
@@ -97,7 +105,8 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
 
 def plan(opt):
     global colors
-    painting = random_init_painting(current_canvas, opt.num_strokes)
+    #painting = random_init_painting(current_canvas, opt.num_strokes)
+    painting = Painting(opt.num_strokes, background_img=current_canvas)
 
     # Do initilization objective(s)
     painting.to(device)
@@ -134,8 +143,7 @@ def plan(opt):
         for j in tqdm(range(opt.intermediate_optim_iter), desc="Intermediate Optimization"):
             #optim.zero_grad()
             for o in optims: o.zero_grad()
-            p, alphas = painting(h, w, use_alpha=True, return_alphas=True,
-                opacity_factor=1.0)
+            p, alphas = painting(h, w, use_alpha=True, return_alphas=True)
             loss = 0
             for k in range(len(opt.objective)):
                 loss += parse_objective(opt.objective[k], 
@@ -167,14 +175,14 @@ def plan(opt):
     for i in tqdm(range(opt.optim_iter), desc='Optimizing {} Strokes'.format(str(len(painting.brush_strokes)))):
         for o in optims: o.zero_grad()
 
-        p, alphas = painting(h, w, use_alpha=False, return_alphas=True,
-                opacity_factor=1.0)
+        p, alphas = painting(h, w, use_alpha=False, return_alphas=True)
         
         loss = 0
         for k in range(len(opt.objective)):
             loss += parse_objective(opt.objective[k], 
                 objective_data[k], p[:,:3], weight=opt.objective_weight[k])
-        loss += (1-alphas).mean() * opt.fill_weight
+        #loss += (1-alphas).mean() * opt.fill_weight
+        loss += torch.abs(1-alphas).mean() * opt.fill_weight
         loss.backward()
 
         position_opt.step()
@@ -316,6 +324,11 @@ def parse_emotion_data(s):
     return weights.unsqueeze(0)
 
 def load_objectives_data(opt):
+    # if 'stable_diffusion' in opt.init_objective if opt.init_objective is not None else [] or 'stable_diffusion' in opt.objective if opt.objective is not None else []:
+    #     global sd_loss
+    #     from stable_diffusion.stable_diffusion_loss import StableDiffusionLoss
+    #     sd_loss = StableDiffusionLoss()
+
     # Load Initial objective data
     global init_objective_data
     init_objective_data = [] 
@@ -330,6 +343,13 @@ def load_objectives_data(opt):
         elif opt.init_objective[i] == 'emotion':
             with torch.no_grad():
                 init_objective_data.append(parse_emotion_data(opt.init_objective_data[i]))
+        elif opt.init_objective[i] == 'face':
+            with torch.no_grad():
+                img = load_img(opt.init_objective_data[i],h=h, w=w).to(device)/255.
+                init_objective_data.append(parse_face_data(img))
+        elif opt.init_objective[i] == 'stable_diffusion':
+            with torch.no_grad():
+                init_objective_data.append(encode_text_stable_diffusion(opt.init_objective_data[i]))
         else:
             # Must be an image
             img = load_img(opt.init_objective_data[i],h=h, w=w).to(device)/255.
@@ -350,6 +370,13 @@ def load_objectives_data(opt):
         elif opt.objective[i] == 'emotion':
             with torch.no_grad():
                 objective_data.append(parse_emotion_data(opt.objective_data[i]))
+        elif opt.objective[i] == 'face':
+            with torch.no_grad():
+                img = load_img(opt.objective_data[i],h=h, w=w).to(device)/255.
+                objective_data.append(parse_face_data(img))
+        elif opt.objective[i] == 'stable_diffusion':
+            with torch.no_grad():
+                objective_data.append(encode_text_stable_diffusion(opt.objective_data[i]))
         else:
             # Must be an image
             img = load_img(opt.objective_data[i],h=h, w=w).to(device)/255.

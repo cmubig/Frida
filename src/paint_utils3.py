@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from torchvision import transforms
 import matplotlib
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from PIL import Image
 import cv2
@@ -19,9 +19,10 @@ import colour
 import random
 # import gzip
 
+# from torch_painting_models_continuous_concerted import *
 from torch_painting_models_continuous import *
 
-from tensorboard import TensorBoard
+from my_tensorboard import TensorBoard
 
 def load_img(path, h=None, w=None):
     im = Image.open(path)
@@ -212,6 +213,7 @@ def create_tensorboard():
                 tensorboard_dir += '_planner'
     except:
         tensorboard_dir = new_tb_entry()
+    tensorboard_dir = new_tb_entry()
     return TensorBoard(tensorboard_dir)
 
 

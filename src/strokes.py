@@ -15,6 +15,10 @@ import time
 from paint_utils import canvas_to_global_coordinates
 from options import Options
 
+
+opt = Options()
+opt.gather_options()
+
 # from painter import *
 
 '''
@@ -157,7 +161,7 @@ class Stroke(object):
         path = self.get_rotated_trajectory(rotation)
         
         if smooth:
-            all_positions.append([x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.07])
+            all_positions.append([x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.05])
             all_orientations.append(None)
             all_positions.append([x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.02])
             all_orientations.append(None)
@@ -270,9 +274,9 @@ class Stroke(object):
             p0 = p3
 
         if smooth:
-            all_positions.append([x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.02])
-            all_orientations.append(None)
-            all_positions.append([x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.07])
+            # all_positions.append([x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.02])
+            # all_orientations.append(None)
+            all_positions.append([x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.05])
             all_orientations.append(None)
         else:
             painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.02, speed=0.1)
@@ -297,49 +301,12 @@ class StrokeA(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
         self.trajectory = [
-            [-0.001,0,0.1], # [x,y,z]
-            [-0.001,0,.7],
-            [.000,0,.7],
-            [.001,0,0.1]
-        ]
-class StrokeB(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.1],
-            [.005,0,.1],
-            [.01,0,.1],
-            [.02,0,0.1]
+            [-0.00012,0.00002,0.1,0], # [x,y,z,alpha]
+            [-0.0001,0.00001,.3,0],
+            [.0001,-0.00001,.3,0],
+            [.00012,-0.00002,0.1,0]
         ]
 
-class StrokeBA(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.1],
-            [.005,0,.7],
-            [.01,0,.7],
-            [.02,0,0.1]
-        ]
-
-class StrokeBB(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.1],
-            [.005,0.01,.3],
-            [.01,0.01,.3],
-            [.02,0,0.1]
-        ]
-class StrokeBC(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.1],
-            [.01,0,.3],
-            [.02,0,.3],
-            [.03,0,0.1]
-        ]
 class StrokeBD(Stroke):
     def __init__(self):
         super(Stroke, self).__init__()
@@ -350,217 +317,8 @@ class StrokeBD(Stroke):
             [.05,0,1.]
         ]
 
-class StrokeC(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.3],
-            [.008,.01,.5],
-            [.016,0.01,.5],
-            [.025,0,.5]
-        ]
-class StrokeD(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.5],
-            [.01,-0.02,.6],
-            [.02,-0.02,.5],
-            [.04,0,0.3]
-        ]
-class StrokeE(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.4],
-            [.01,0.02,.6],
-            [.02,0.02,.5],
-            [.04,0,0.3]
-        ]
-class StrokeF(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.1],
-            [.006,0,.1],
-            [.013,0,.1],
-            [.02,0,0.1]
-        ]
-class StrokeG(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.7],
-            [.02,0,1.],
-            [.03,0,1.],
-            [.05,0,1.]
-        ]
-class StrokeH(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.1],
-            [.003,0,.2],
-            [.006,0,.2],
-            [.01,0,0.1]
-        ]
-class StrokeI(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.7],
-            [.01,-0.01,1.],
-            [.03,.01,1.],
-            [.04,0,1.]
-        ]
-
-class StrokeJ(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.1],
-            [.005,0.01,.1],
-            [.01,0.01,.1],
-            [.02,0,0.1]
-        ]
-class StrokeK(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.5],
-            [.01,-0.01,.6],
-            [.02,-0.01,.5],
-            [.03,0,0.3]
-        ]
-class StrokeL(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.4],
-            [.01,0.01,.6],
-            [.02,0.01,.5],
-            [.03,0,0.3]
-        ]
-
-class StrokeM(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.5],
-            [.006,-0.005,.3],
-            [.01,-0.005,.3],
-            [.02,0,0.3]
-        ]
-class StrokeN(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.4],
-            [.006,0.005,.3],
-            [.012,0.005,.3],
-            [.02,0,0.3]
-        ]
-        
-class StrokeO(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.2],
-            [.005,-0.01,.3],
-            [.01,0.01,.3],
-            [.015,0,0.1]
-        ]
-class StrokeP(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.2],
-            [.005,0.01,.3],
-            [.01,-0.01,.3],
-            [.015,0,0.1]
-        ]
-class StrokeQ(Stroke):
-    def __init__(self):
-        super(Stroke, self).__init__()
-        self.trajectory = [
-            [0,0,0.1],
-            [.002,0.001,.2],
-            [.004,0.001,.2],
-            [.005,0,0.1]
-        ]
 all_strokes = sorted(Stroke.__subclasses__(), key=lambda x : x.__class__.__name__)
 
-def get_base_strokes():
-
-    strokes = []
-
-    # Dabs
-    for z in np.linspace(0, 1, 3, endpoint=True):
-        strokes.append(Stroke(trajectory=[
-                [0,0,z],
-                [.001,0,z],
-                [.001,0,z],
-                [.002,0,z]
-            ]))
-
-    # Very Short Strokes
-    for z in np.linspace(0, 1, 3, endpoint=True):
-        strokes.append(Stroke(trajectory=[
-                [0,0,z],
-                [.003,0,z],
-                [.007,0,1-z],
-                [.01,0,1-z]
-            ]))
-    for z in np.linspace(0, 1, 3, endpoint=True):
-        strokes.append(Stroke(trajectory=[
-                [0,0,1-z],
-                [.003,0,1-z],
-                [.007,0,z],
-                [.01,0,z]
-            ]))
-
-    # Short-Medium Curved Strokes
-    for z in np.linspace(0.3, .8, 2, endpoint=True):
-        for y in np.linspace(-.02, 0.02, 4, endpoint=True):
-            strokes.append(Stroke(trajectory=[
-                    [0,0,z],
-                    [.01,y,z],
-                    [.015,y,z],
-                    [.025,0,z]
-                ]))
-            strokes.append(Stroke(trajectory=[
-                    [0,0,z],
-                    [.005,y,z],
-                    [.01,y,1-z],
-                    [.02,0,1-z]
-                ]))
-            strokes.append(Stroke(trajectory=[
-                    [0,0,z],
-                    [.02,y,z],
-                    [.03,y,1-z],
-                    [.04,0,1-z]
-                ]))
-
-    # Long Strokes
-    for z in np.linspace(0.3, .8, 2, endpoint=True):
-        for y0 in np.linspace(-.03, 0.03, 4, endpoint=True):
-            for y1 in np.linspace(-.03, 0.03, 4, endpoint=True):
-                if y0 == y1: continue
-
-                strokes.append(Stroke(trajectory=[
-                        [0,0,z],
-                        [.02,y0,z],
-                        [.04,y1,1-z],
-                        [.05,0,1-z]
-                    ]))
-                # strokes.append(Stroke(trajectory=[
-                #         [0,0,z],
-                #         [.02,y0,z],
-                #         [.04,y1,z],
-                #         [.06,0,z]
-                #     ]))
-    print(len(strokes))
-    return strokes
 
 def simple_parameterization_to_real(stroke_length, bend, z, alpha=0):
     xs = (np.arange(4)/3.) * stroke_length
@@ -574,14 +332,14 @@ def simple_parameterization_to_real(stroke_length, bend, z, alpha=0):
     return stroke
 
 
-def get_random_stroke(max_length=0.05, min_length=0.01, max_alpha=Options().MAX_ALPHA):
-    stroke_length = np.random.rand(1)[0]*(max_length-min_length) + min_length
+def get_random_stroke():
+    stroke_length = np.random.rand(1)[0]*(opt.MAX_STROKE_LENGTH-opt.MIN_STROKE_LENGTH) + opt.MIN_STROKE_LENGTH
     
-    bend = np.random.rand(1)[0]*.04 - .02 
+    bend = (2*np.random.rand(1)[0]-1) * opt.MAX_BEND
     bend = min(bend, stroke_length) if bend > 0 else max(bend, -1*stroke_length)
 
 
-    alpha = (np.random.rand(1)[0]*2-1) * max_alpha
+    alpha = (np.random.rand(1)[0]*2-1) * opt.MAX_ALPHA
     
     z = np.random.rand(1)[0]
 
