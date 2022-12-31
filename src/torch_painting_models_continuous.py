@@ -291,7 +291,7 @@ class Painting(nn.Module):
         return position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt
 
 
-    def forward(self, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0):
+    def forward(self, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0, efficient=True):
         if self.background_img is None:
             canvas = torch.ones((1,4,h,w)).to(device)
         else:
@@ -307,10 +307,18 @@ class Painting(nn.Module):
 
             if mostly_opaque: single_stroke[:,3][single_stroke[:,3] > 0.5] = 1.
             if return_alphas: stroke_alphas.append(single_stroke[:,3:])
-            if use_alpha:
-                canvas = canvas * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke
+            
+            if efficient:
+                mask = single_stroke[:,3:].detach()>0.5
+                mask = torch.cat([mask,]*4, dim=1)
+                canvas[mask] *= 0
+                canvas[mask] += 1
+                canvas[:,:3][mask[:,:3]] *= single_stroke[:,:3][mask[:,:3]]
             else:
-                canvas = canvas[:,:3] * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke[:,:3]
+                if use_alpha:
+                    canvas = canvas * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke
+                else:
+                    canvas = canvas[:,:3] * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke[:,:3]
         
         if return_alphas: 
             alphas = torch.cat(stroke_alphas, dim=1)
