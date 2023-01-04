@@ -19,14 +19,16 @@ from options import Options
 from paint_planner import paint_planner_new#, paint_planner_diffvg
 
 from my_tensorboard import TensorBoard
-date_and_time = datetime.datetime.now()
-run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
-writer = TensorBoard('painting/{}'.format(run_name))
-writer.add_text('args', str(sys.argv), 0)
+
 
 if __name__ == '__main__':
     opt = Options()
     opt.gather_options()
+
+    date_and_time = datetime.datetime.now()
+    run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
+    writer = TensorBoard('{}/{}'.format(opt.tensorboard_dir, run_name))
+    writer.add_text('args', str(sys.argv), 0)
 
     painter = Painter(opt, robot=None if opt.simulate else "sawyer", 
         use_cache=opt.use_cache, writer=writer)

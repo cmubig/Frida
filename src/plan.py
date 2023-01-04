@@ -390,7 +390,7 @@ if __name__ == '__main__':
 
     # painting = calibrate(opt)
 
-    opt.writer = create_tensorboard()
+    opt.writer = create_tensorboard(log_dir=opt.tensorboard_dir)
 
     global h, w, colors, current_canvas, text_features, style_img, sketch
     stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
