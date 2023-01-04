@@ -196,17 +196,17 @@ def random_init_painting(background_img, n_strokes):
     return painting
 
 
-def create_tensorboard():
+def create_tensorboard(log_dir='painting'):
     def new_tb_entry():
         import datetime
         date_and_time = datetime.datetime.now()
         run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
-        return 'painting/{}_planner'.format(run_name)
+        return '{}/{}_planner'.format(log_dir, run_name)
     try:
         if IN_COLAB:
             tensorboard_dir = new_tb_entry()
         else:
-            b = './painting'
+            b = log_dir
             all_subdirs = [os.path.join(b, d) for d in os.listdir(b) if os.path.isdir(os.path.join(b, d))]
             tensorboard_dir = max(all_subdirs, key=os.path.getmtime) # most recent tensorboard dir is right
             if '_planner' not in tensorboard_dir:

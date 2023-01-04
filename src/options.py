@@ -81,7 +81,7 @@ class Options(object):
         parser.add_argument("--cache_dir", type=str,
             default='/tmp', help='Where to store cached files.')
         parser.add_argument("--tensorboard_dir", type=str,
-            default='./log', help='Where to write tensorboard log to.')
+            default='./painting', help='Where to write tensorboard log to.')
         parser.add_argument("--global_it", type=int,
             default=0, help='Picking up where it left off.')
 

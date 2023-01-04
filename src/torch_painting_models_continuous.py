@@ -291,7 +291,7 @@ class Painting(nn.Module):
         return position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt
 
 
-    def forward(self, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0, efficient=True):
+    def forward(self, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0, efficient=False):
         if self.background_img is None:
             canvas = torch.ones((1,4,h,w)).to(device)
         else:
