@@ -181,14 +181,14 @@ def save_painting_strokes(painting, opt):
 
 
 
-def random_init_painting(background_img, n_strokes):
+def random_init_painting(background_img, n_strokes, ink=False):
     gridded_brush_strokes = []
     xys = [(x,y) for x in torch.linspace(-.95,.95,int(n_strokes**0.5)) \
                  for y in torch.linspace(-.95,.95,int(n_strokes**0.5))]
     random.shuffle(xys)
     for x,y in xys:
         # Random brush stroke
-        brush_stroke = BrushStroke(xt=x, yt=y)
+        brush_stroke = BrushStroke(xt=x, yt=y, ink=ink)
         gridded_brush_strokes.append(brush_stroke)
 
     painting = Painting(0, background_img=background_img, 

@@ -49,7 +49,10 @@ def get_param2img(h_full, w_full, n_stroke_models=1):
 
     return param2imgs, pad_for_full
 
-param2imgs, pad_for_full = get_param2img(h_og, w_og)
+try:
+    param2imgs, pad_for_full = get_param2img(h_og, w_og)
+except Exception as e:
+    print('Unable to load param2img', e)
 
 cos = torch.cos
 sin = torch.sin
@@ -118,6 +121,7 @@ class BrushStroke(nn.Module):
     def __init__(self, 
                 stroke_length=None, stroke_z=None, stroke_bend=None, stroke_alpha=None,
                 color=None, 
+                ink=False,
                 a=None, xt=None, yt=None):
         super(BrushStroke, self).__init__()
 
@@ -152,7 +156,10 @@ class BrushStroke(nn.Module):
         self.stroke_bend = nn.Parameter(self.stroke_bend)
         self.stroke_alpha = nn.Parameter(self.stroke_alpha)
 
-        self.color_transform = nn.Parameter(color)
+        if not ink:
+            self.color_transform = nn.Parameter(color)
+        else:
+            self.color_transform = torch.zeros(3).to(device)
 
     def forward(self, h, w):
         # Do rigid body transformation
@@ -255,7 +262,7 @@ class Painting(nn.Module):
         else:
             self.brush_strokes = nn.ModuleList(brush_strokes)
 
-    def get_optimizers(self, multiplier=1.0):
+    def get_optimizers(self, multiplier=1.0, ink=False):
         xt = []
         yt = []
         a = []
@@ -275,7 +282,7 @@ class Painting(nn.Module):
 
         position_opt = torch.optim.RMSprop(xt + yt, lr=5e-3*multiplier)
         rotation_opt = torch.optim.RMSprop(a, lr=1e-2*multiplier)
-        color_opt = torch.optim.RMSprop(color, lr=5e-3*multiplier)
+        color_opt = None if ink else torch.optim.RMSprop(color, lr=5e-3*multiplier)
         bend_opt = torch.optim.RMSprop(bend, lr=3e-3*multiplier)
         length_opt = torch.optim.RMSprop(length, lr=1e-2*multiplier)
         thickness_opt = torch.optim.RMSprop(z, lr=1e-2*multiplier)

@@ -141,8 +141,9 @@ class Stroke(object):
         painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.07, speed=0.3)
         # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
 
-    def angled_paint(self, painter, x_start, y_start, rotation, step_size=.005):
+    def angled_paint(self, painter, x_start, y_start, rotation, step_size=.005, curve_angle_is_rotation=False):
         # x_start, y_start in global coordinates. rotation in radians
+        # curve_angle_is_rotation if true, then the brush is angled constantly down towards theta
 
         smooth = True
         if smooth:
@@ -182,7 +183,7 @@ class Stroke(object):
 
             stroke_length = ((p3[0]-p0[0])**2 + (p3[1] - p0[1])**2)**.5
             n = max(2, int(stroke_length/step_size))
-            n=5#30 # TODO: something more than this? see previous line
+            n=10#5#30 # TODO: something more than this? see previous line
             for t in np.linspace(0,1,n):
                 x = (1-t)**3 * p0[0] \
                       + 3*(1-t)**2*t*p1[0] \
@@ -219,6 +220,9 @@ class Stroke(object):
 
                 theta_sphere = np.arctan2(dy_dt, dx_dt) + np.pi/2 # the pi makes it perpendicular to trajectory
 
+                if curve_angle_is_rotation:
+                    theta_sphere = rotation
+
                 phi_sphere = alpha
                 # print(theta_sphere, phi_sphere)
                 roll = np.cos(theta_sphere)*np.sin(phi_sphere)
@@ -250,24 +254,24 @@ class Stroke(object):
                 # print(x,y,z)
 
                 if smooth:
-                    if t == 0:
+                    if t == 0 and i==0:
                         all_positions.append([x_start+x, y_start+y, z+0.02])
                         all_orientations.append(q)
                         all_positions.append([x_start+x, y_start+y, z+0.005])
                         all_orientations.append(q)
                     all_positions.append([x_start+x, y_start+y, z])
                     all_orientations.append(q)
-                    if t == 1:
+                    if t == 1 and (i == len(path)-4):
                         all_positions.append([x_start+x, y_start+y, z+0.01])
                         all_orientations.append(q)
                         all_positions.append([x_start+x, y_start+y, z+0.02])
                         all_orientations.append(q)
                 else:
-                    if t == 0:
+                    if t == 0 and i==0:
                         painter.move_to(x_start+x, y_start+y, z+0.02, q=q, method='direct', speed=0.1)
                         painter.move_to(x_start+x, y_start+y, z+0.005, q=q, method='direct', speed=0.03)
                     painter.move_to(x_start+x, y_start+y, z, q=q, method='direct', speed=0.05)
-                    if t == 1:
+                    if t == 1 and (i == len(path)-4):
                         painter.move_to(x_start+x, y_start+y, z+0.01, q=q, method='direct', speed=0.03)
                         painter.move_to(x_start+x, y_start+y, z+0.02, q=q, method='direct', speed=0.1)
                 # time.sleep(0.02)
@@ -284,7 +288,7 @@ class Stroke(object):
         # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
 
         if smooth:
-            painter.move_to_trajectories(all_positions, all_orientations)
+            return painter.move_to_trajectories(all_positions, all_orientations)
 
     def get_rotated_trajectory(self, rotation):
         # Rotation in radians

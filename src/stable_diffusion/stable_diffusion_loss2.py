@@ -2,7 +2,8 @@ from diffusers import StableDiffusionPipeline
 import torch
 import torchvision.transforms as transforms
 
-# Thank you Ajay Jain and https://colab.research.google.com/drive/1pT-WPdcdQ7e4E2EkkwGiPTIL1ZNMyj11#scrollTo=fXn5P2R60EuQ
+# Thank you Ajay Jain for vectorFusion which forms this theoretical basis
+# and Thank you to the author of this notebook for implmentation details https://colab.research.google.com/drive/1pT-WPdcdQ7e4E2EkkwGiPTIL1ZNMyj11#scrollTo=fXn5P2R60EuQ
 
 try:
     stable_pipe

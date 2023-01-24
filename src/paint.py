@@ -41,7 +41,7 @@ if __name__ == '__main__':
 
     # target = load_img(opt.target)
 
-    canvas = painter.camera.get_canvas()
+    # canvas = painter.camera.get_canvas()
     # target = cv2.resize(target, (canvas.shape[1], canvas.shape[0]))
     # target = np.array(target)
     # writer.add_image('target/real', target, 0)
