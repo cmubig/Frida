@@ -174,22 +174,24 @@ class Sawyer(Robot, object):
         result = traj.send_trajectory(timeout=None)
         # print(result.result)
         success = result.result
-        if success != True:
-            print(success)
+        # if success != True:
+        #     print(success)
         if not success:
             import time
-            print('sleeping')
-            time.sleep(10)
-            print('done sleeping. now to neutral')
+            # print('sleeping')
+            time.sleep(2)
+            # print('done sleeping. now to neutral')
             # Go to neutral and try again
-            limb.move_to_neutral(speed=.2)
-            print('done to neutral')
+            limb.move_to_neutral(speed=.3)
+            # print('done to neutral')
             result = traj.send_trajectory(timeout=None)
-            print('just tried to resend trajectory')
+            # print('just tried to resend trajectory')
             if result.result:
                 print('second attempt successful')
             else:
                 print('failed second attempt')
+            success = result.result
+        return success
 
 
     def inverse_kinematics(self, position, orientation, seed_position=None, debug=False):

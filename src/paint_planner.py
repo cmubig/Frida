@@ -123,7 +123,7 @@ def paint_color_calibration(painter, colors):
     return colors
 
 global_it = 0
-def paint_planner_new(painter, how_often_to_get_paint=4):
+def paint_planner_new(painter, how_often_to_get_paint=5):
     global global_it
     painter.to_neutral()
     canvas_after = painter.camera.get_canvas()
@@ -131,7 +131,7 @@ def paint_planner_new(painter, how_often_to_get_paint=4):
     real_canvases = [canvas_after]
     consecutive_paints = 0
     consecutive_strokes_no_clean = 0
-    camera_capture_interval = 8
+    camera_capture_interval = 20#8
     curr_color = -1
 
     # colors = paint_color_calibration(painter, colors)
@@ -198,24 +198,25 @@ def paint_planner_new(painter, how_often_to_get_paint=4):
                     color += np.random.randn(3)*5
 
                 # Clean paint brush and/or get more paint
-                new_paint_color = color_ind != curr_color
-                if new_paint_color or consecutive_strokes_no_clean > 12:
-                    dark_to_light = np.mean(colors[curr_color]) < np.mean(colors[color_ind])
-                    # if dark_to_light and curr_color != -1:
-                    #     painter.clean_paint_brush() # Really clean this thing
-                    #     painter.clean_paint_brush()
-                    #     if not painter.opt.simulate:
-                    #         show_img(target/255., title="About to start painting with a lighter color")
-                    painter.clean_paint_brush()
-                    if consecutive_strokes_no_clean <= 12: painter.clean_paint_brush()
-                    consecutive_strokes_no_clean = 0
-                    curr_color = color_ind
-                    new_paint_color = True
-                # else:
-                #     consecutive_strokes_no_clean += 1
-                if consecutive_paints >= how_often_to_get_paint or new_paint_color:
-                    painter.get_paint(color_ind)
-                    consecutive_paints = 0
+                if not painter.opt.ink:
+                    new_paint_color = color_ind != curr_color
+                    if new_paint_color or consecutive_strokes_no_clean > 12:
+                        dark_to_light = np.mean(colors[curr_color]) < np.mean(colors[color_ind])
+                        # if dark_to_light and curr_color != -1:
+                        #     painter.clean_paint_brush() # Really clean this thing
+                        #     painter.clean_paint_brush()
+                        #     if not painter.opt.simulate:
+                        #         show_img(target/255., title="About to start painting with a lighter color")
+                        painter.clean_paint_brush()
+                        if consecutive_strokes_no_clean <= 12: painter.clean_paint_brush()
+                        consecutive_strokes_no_clean = 0
+                        curr_color = color_ind
+                        new_paint_color = True
+                    # else:
+                    #     consecutive_strokes_no_clean += 1
+                    if consecutive_paints >= how_often_to_get_paint or new_paint_color:
+                        painter.get_paint(color_ind)
+                        consecutive_paints = 0
 
                 # Convert the canvas proportion coordinates to meters from robot
                 x, y = float(x) / painter.opt.CANVAS_WIDTH_PIX, 1 - (float(y) / painter.opt.CANVAS_HEIGHT_PIX)
@@ -258,11 +259,13 @@ def paint_planner_new(painter, how_often_to_get_paint=4):
                 if n_instr <= painter.opt.strokes_before_adapting:
                     break
 
-
-    painter.clean_paint_brush()
-    painter.clean_paint_brush()
-    painter.clean_paint_brush()
-    painter.clean_paint_brush()
+    if not painter.opt.ink:
+        painter.clean_paint_brush()
+        painter.clean_paint_brush()
+        painter.clean_paint_brush()
+        painter.clean_paint_brush()
+    else:
+        painter.to_neutral()
     to_video(real_canvases, fn=os.path.join(painter.opt.plan_gif_dir,'real_canvases{}.mp4'.format(str(time.time()))))
 
     canvas_after = painter.camera.get_canvas() if not painter.opt.simulate else full_sim_canvas

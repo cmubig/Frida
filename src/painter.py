@@ -24,6 +24,7 @@ from paint_utils import canvas_to_global_coordinates#*
 from robot import *
 from painting_materials import *
 from strokes import all_strokes, get_random_stroke, simple_parameterization_to_real
+from fill_in import get_random_fill_in
 from camera.dslr import WebCam, SimulatedWebCam
 
 try: import rospy
@@ -34,6 +35,18 @@ except: pass
 # q = np.array([.9,.155,.127,.05])
 PERPENDICULAR_QUATERNION = np.array([0.704020578925, 0.710172716916,0.00244101361829,0.00194372088834])
 
+def shift_image(X, dx, dy):
+    X = np.roll(X, dy, axis=0)
+    X = np.roll(X, dx, axis=1)
+    if dy>0:
+        X[:dy, :] = 255
+    elif dy<0:
+        X[dy:, :] = 255
+    if dx>0:
+        X[:, :dx] = 255
+    elif dx<0:
+        X[:, dx:] = 255
+    return X
 
 class Painter():
     '''
@@ -85,7 +98,7 @@ class Painter():
                     input('Could not connect camera. Try turning it off and on, then press start.')
                 except SyntaxError:
                     pass
-
+        print('1')
         self.curr_position = None
         self.seed_position = None
         self.H_coord = None # Translate coordinates based on faulty camera location
@@ -118,7 +131,7 @@ class Painter():
                 pickle.dump(params, f)
             self.to_neutral()
 
-
+        print('2')
         self.Z_RANGE = np.abs(self.Z_MAX_CANVAS - self.Z_CANVAS)
 
         self.WATER_POSITION = (-.4,.58+0.06,self.Z_CANVAS)
@@ -142,6 +155,8 @@ class Painter():
         # Ensure that x,y on the canvas photograph is x,y for the robot interacting with the canvas
         self.coordinate_calibration(use_cache=opt.use_cache)
 
+        # self.paint_fill_in_library() ######################################################
+
         # Get brush strokes from stroke library
         if not os.path.exists(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy')) or not use_cache:
             if not opt.simulate:
@@ -149,6 +164,7 @@ class Painter():
                     input('Need to create stroke library. Press enter to start.')
                 except SyntaxError:
                     pass
+                # self.paint_fill_in_library()
                 self.paint_extended_stroke_library()
         if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
             if not self.opt.dont_retrain_stroke_model:
@@ -171,7 +187,8 @@ class Painter():
         for i in range(len(orientations)):
             if orientations[i] is None:
                 orientations[i] = PERPENDICULAR_QUATERNION
-        self.robot.go_to_cartesian_pose(positions, orientations)
+        return self.robot.go_to_cartesian_pose(positions, orientations)
+
     def _move(self, x, y, z, q=None, timeout=20, method='direct', step_size=.1, speed=0.1):
         if self.opt.simulate: return
         '''
@@ -220,7 +237,7 @@ class Painter():
         positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
         positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]])
         for i in range(5):
-            noise = np.clip(np.random.randn(2)*0.04, a_min=-.04, a_max=0.04)
+            noise = np.clip(np.random.randn(2)*0.06, a_min=-.06, a_max=0.06)
             positions.append([self.RAG_POSTITION[0]+noise[0],self.RAG_POSTITION[1]+noise[1],self.RAG_POSTITION[2]])
         positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
@@ -452,7 +469,8 @@ class Painter():
         
         i = 0
         for canvas_coord in homography_points:
-            if i % 5 == 0: self.get_paint(0)
+            if not self.opt.ink:
+                if i % 5 == 0: self.get_paint(0)
             i += 1
             x_prop, y_prop = canvas_coord # Coord in canvas proportions
             # x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix) #  Coord in canvas pixels
@@ -551,22 +569,9 @@ class Painter():
 
 
 
-    def paint_extended_stroke_library(self, max_stroke_meters=0.05):
+    def paint_extended_stroke_library(self):
         w = self.opt.CANVAS_WIDTH_PIX
         h = self.opt.CANVAS_HEIGHT_PIX
-
-        def shift_image(X, dx, dy):
-            X = np.roll(X, dy, axis=0)
-            X = np.roll(X, dx, axis=1)
-            if dy>0:
-                X[:dy, :] = 255
-            elif dy<0:
-                X[dy:, :] = 255
-            if dx>0:
-                X[:, :dx] = 255
-            elif dx<0:
-                X[:, dx:] = 255
-            return X
 
         self.to_neutral()
         canvas_without_stroke = self.camera.get_canvas()
@@ -575,17 +580,17 @@ class Painter():
 
         # Some pre-programmed strokes to start
         random_strokes = []
-        random_strokes.append(simple_parameterization_to_real(.04, .02, 0.5))
-        r = 5
-        lengths = np.arange(r, dtype=np.float32)/(r-1)*(0.05-0.01) + 0.01
-        bends = np.arange(r, dtype=np.float32)/(r-1)*0.04 - 0.02
-        zs = np.arange(r, dtype=np.float32)/(r-1)
-        for i in range(r):
-            random_strokes.append(simple_parameterization_to_real(lengths[i], .02, 0.5))
-        for i in range(r):
-            random_strokes.append(simple_parameterization_to_real(.04, bends[i], 0.5))
-        for i in range(r):
-            random_strokes.append(simple_parameterization_to_real(.04, .02, zs[i]))
+        # random_strokes.append(simple_parameterization_to_real(.04, .02, 0.5))
+        # r = 5
+        # lengths = np.arange(r, dtype=np.float32)/(r-1)*(0.05-0.01) + 0.01
+        # bends = np.arange(r, dtype=np.float32)/(r-1)*0.04 - 0.02
+        # zs = np.arange(r, dtype=np.float32)/(r-1)
+        # for i in range(r):
+        #     random_strokes.append(simple_parameterization_to_real(lengths[i], .02, 0.5))
+        # for i in range(r):
+        #     random_strokes.append(simple_parameterization_to_real(.04, bends[i], 0.5))
+        # for i in range(r):
+        #     random_strokes.append(simple_parameterization_to_real(.04, .02, zs[i]))
 
         # Figure out how many strokes can be made on the given canvas size
         n_strokes_x = int(math.floor(self.opt.CANVAS_WIDTH/(self.opt.MAX_STROKE_LENGTH+0.005)))
@@ -607,22 +612,25 @@ class Painter():
                     x,y,_ = canvas_to_global_coordinates(x,y,None,self.opt)
 
                     
-                    if strokes_without_cleaning >= 8:
-                        self.clean_paint_brush()
-                        self.get_paint(0)
-                        strokes_without_cleaning, strokes_without_getting_new_paint = 0, 0
-                    if strokes_without_getting_new_paint >= 4:
-                        self.get_paint(0)
-                        strokes_without_getting_new_paint = 0
-                    strokes_without_getting_new_paint += 1
-                    strokes_without_cleaning += 1
+                    if not self.opt.ink:
+                        if strokes_without_cleaning >= 12:
+                            self.clean_paint_brush()
+                            self.get_paint(0)
+                            strokes_without_cleaning, strokes_without_getting_new_paint = 0, 0
+                        if strokes_without_getting_new_paint >= 4:
+                            self.get_paint(0)
+                            strokes_without_getting_new_paint = 0
+                        strokes_without_getting_new_paint += 1
+                        strokes_without_cleaning += 1
 
                     if len(stroke_trajectories) < len(random_strokes):
                         random_stroke = random_strokes[len(stroke_trajectories)]
                     else:
                         random_stroke = get_random_stroke()
 
-                    random_stroke.angled_paint(self, x, y, 0)
+                    success = random_stroke.angled_paint(self, x, y, 0)
+                    if not success:
+                        continue # Failed to make the stroke
 
                     self.to_neutral()
                     canvas_with_stroke = self.camera.get_canvas()
@@ -713,92 +721,33 @@ class Painter():
                 except SyntaxError:
                     pass
 
-
-    def manipulation_project(self, max_stroke_meters=0.05):
+    def paint_fill_in_library(self):
         w = self.opt.CANVAS_WIDTH_PIX
         h = self.opt.CANVAS_HEIGHT_PIX
 
-        def shift_image(X, dx, dy):
-            X = np.roll(X, dy, axis=0)
-            X = np.roll(X, dx, axis=1)
-            if dy>0:
-                X[:dy, :] = 255
-            elif dy<0:
-                X[dy:, :] = 255
-            if dx>0:
-                X[:, :dx] = 255
-            elif dx<0:
-                X[:, dx:] = 255
-            return X
-
         self.to_neutral()
         canvas_without_stroke = self.camera.get_canvas()
-        strokes_without_getting_new_paint = 999 
-        strokes_without_cleaning = 9999
-
-        # Some pre-programmed strokes to start
-        random_strokes = []
-        # random_strokes.append(simple_parameterization_to_real(.04, .02, 0.5))
-        # r = 5
-        # lengths = np.arange(r, dtype=np.float32)/(r-1)*(0.05-0.01) + 0.01
-        # bends = np.arange(r, dtype=np.float32)/(r-1)*0.04 - 0.02
-        # zs = np.arange(r, dtype=np.float32)/(r-1)
-        # for i in range(r):
-        #     random_strokes.append(simple_parameterization_to_real(lengths[i], .02, 0.5))
-        # for i in range(r):
-        #     random_strokes.append(simple_parameterization_to_real(.04, bends[i], 0.5))
-        # for i in range(r):
-        #     random_strokes.append(simple_parameterization_to_real(.04, .02, zs[i]))
-
-        alphas = np.linspace(-np.pi/9., np.pi/9., 5)
-        for alpha in alphas:
-            random_strokes.append(simple_parameterization_to_real(.05, 0.02, 0.5, alpha))
 
         # Figure out how many strokes can be made on the given canvas size
-        n_strokes_x = int(math.floor(self.opt.CANVAS_WIDTH/(max_stroke_meters+0.005)))
-        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT/0.035))
+        n_strokes_x = int(math.floor(self.opt.CANVAS_WIDTH/(self.opt.MAX_FILL_IN_LENGTH+0.005)))
+        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT/(self.opt.MAX_FILL_IN_HEIGHT+0.01)))
 
         stroke_trajectories = [] # Flatten so it's just twelve values x0,y0,z0,x1,y1,...
         stroke_intensities = [] # list of 2D numpy arrays 0-1 where 1 is paint
-        for paper_it in range(self.opt.num_papers):
-            i_row = 0
-            for y_offset_pix_og in np.linspace((.03/self.opt.CANVAS_HEIGHT), 0.99-(.02/self.opt.CANVAS_HEIGHT), n_strokes_y)*h:
-                i_col = 0
-                for x_offset_pix in np.linspace(0.02, 0.99-(max_stroke_meters/self.opt.CANVAS_WIDTH), n_strokes_x)*w:
-
-                    if len(stroke_trajectories) % 2 == 0:
-                        y_offset_pix = y_offset_pix_og #+ 0.005 * (h/self.opt.CANVAS_HEIGHT) # Offset y by 1cm every other stroke
-                    else:
-                        y_offset_pix = y_offset_pix_og
+        for paper_it in range(self.opt.num_fill_in_papers):
+            for y_offset_pix in np.linspace((.03/self.opt.CANVAS_HEIGHT), 0.99-(.02/self.opt.CANVAS_HEIGHT), n_strokes_y)*h:
+                for x_offset_pix in np.linspace(0.02, 0.99-(self.opt.MAX_FILL_IN_LENGTH/self.opt.CANVAS_WIDTH), n_strokes_x)*w:
 
                     x, y = x_offset_pix / w, 1 - (y_offset_pix / h)
                     x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
                     x,y,_ = canvas_to_global_coordinates(x,y,None,self.opt)
 
                     
-                    # if strokes_without_cleaning >= 8:
-                    #     self.clean_paint_brush()
-                    #     self.get_paint(0)
-                    #     strokes_without_cleaning, strokes_without_getting_new_paint = 0, 0
-                    # if strokes_without_getting_new_paint >= 4:
-                    #     self.get_paint(0)
-                    #     strokes_without_getting_new_paint = 0
-                    # strokes_without_getting_new_paint += 1
-                    # strokes_without_cleaning += 1
+                    self.get_paint(0)
 
-                    if len(stroke_trajectories) < len(random_strokes):
-                        random_stroke = random_strokes[len(stroke_trajectories)]
-                    else:
-                        random_stroke = get_random_stroke()
+                    random_stroke = get_random_fill_in()
 
-                    random_stroke = simple_parameterization_to_real(0.05, .02, 0.2, alpha=-np.pi/6)
-
-                    # random_stroke.paint(self, x, y, 0)
-                    # ####################################################################
-                    # random_stroke = get_random_stroke()
                     random_stroke.angled_paint(self, x, y, 0)
-                    # random_stroke.angled_paint(self, x, y, -1.0*np.pi/2.0)
-                    # return
 
                     self.to_neutral()
                     canvas_with_stroke = self.camera.get_canvas()
@@ -839,7 +788,7 @@ class Painter():
                     # stroke /= stroke.max()
                     # show_img(stroke)
 
-                    if len(stroke_intensities) % 5 == 0:
+                    if len(stroke_intensities) % 2 == 0:
                         import matplotlib
                         matplotlib.use('Agg')
                         import matplotlib.pyplot as plt
@@ -850,7 +799,7 @@ class Painter():
                         ax.imshow(stroke, cmap='gray', vmin=0, vmax=1)
                         ax.set_xticks([]), ax.set_yticks([])
                         fig.tight_layout()
-                        self.writer.add_figure('stroke_library/{}'.format(len(stroke_intensities)), fig, 0)
+                        self.writer.add_figure('stroke_library_fill_in/{}'.format(len(stroke_intensities)), fig, 0)
 
                     stroke[:int(.3*h)] = 0 
                     stroke[int(.6*h)] = 0
@@ -861,7 +810,7 @@ class Painter():
                     # plt.scatter(int(w*.5), int(h*.5))
                     # show_img(stroke)
 
-                    traj = np.array(random_stroke.trajectory).flatten()
+                    traj = np.array([random_stroke.h0, random_stroke.h1, random_stroke.length]).flatten()
                     # print(traj, '\n', random_stroke.trajectory)
                     stroke_intensities.append(stroke)
                     stroke_trajectories.append(traj)
@@ -870,25 +819,21 @@ class Painter():
 
                     if len(stroke_intensities) % 5 == 0:
                         # Save data
-                        with open(os.path.join(self.opt.cache_dir, 'man_hw_trajectories.npy'), 'wb') as f:
+                        with open(os.path.join(self.opt.cache_dir, 'fill_in_trajectories.npy'), 'wb') as f:
                             np.save(f, np.stack(stroke_trajectories, axis=0))
-                        # with open(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy'), 'wb') as f:
-                        #     intensities = np.stack(np.stack(stroke_intensities, axis=0), axis=0)
-                        #     intensities = (intensities * 255).astype(np.uint8)
-                        #     np.save(f, intensities)
-                        with gzip.GzipFile(os.path.join(self.opt.cache_dir, 'man_hw_intensities.npy'), 'w') as f:
+                        with gzip.GzipFile(os.path.join(self.opt.cache_dir, 'fill_in_intensities.npy'), 'w') as f:
                             intensities = np.stack(np.stack(stroke_intensities, axis=0), axis=0)
                             intensities = (intensities * 255).astype(np.uint8)
                             np.save(f, intensities)
-                        # with open(os.path.join(self.opt.cache_dir, 'stroke_size.npy'), 'wb') as f:
-                        #     np.save(f, np.array(stroke_intensities[0].shape))
-                    i_col += 1
-                i_row += 1
-            if paper_it != self.opt.num_papers-1:
+                        with open(os.path.join(self.opt.cache_dir, 'stroke_size.npy'), 'wb') as f:
+                            np.save(f, np.array(stroke_intensities[0].shape))
+
+            if paper_it != self.opt.num_fill_in_papers-1:
                 try:
                     input('Place down new paper. Press enter to start.')
                 except SyntaxError:
                     pass
+
 
     def create_continuous_stroke_model(self):
         # Call a script to take the stroke library and model it using a neural network

@@ -105,8 +105,8 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
 
 def plan(opt):
     global colors
-    #painting = random_init_painting(current_canvas, opt.num_strokes)
-    painting = Painting(opt.num_strokes, background_img=current_canvas)
+    painting = random_init_painting(current_canvas, opt.num_strokes, ink=opt.ink)
+    # painting = Painting(opt.num_strokes, background_img=current_canvas)
 
     # Do initilization objective(s)
     painting.to(device)
@@ -128,7 +128,8 @@ def plan(opt):
             painting.validate()
             optim.param_groups[0]['lr'] = optim.param_groups[0]['lr'] * 0.95
             # painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
-            painting = randomize_brush_stroke_order(painting)
+            if not opt.ink: 
+                painting = randomize_brush_stroke_order(painting)
             log_progress(painting, title='init_optimization', log_freq=opt.log_frequency)#, force_log=True)
             
 
@@ -139,10 +140,10 @@ def plan(opt):
     for attempt in range(opt.n_inits):
         painting = copy.deepcopy(init_painting).to(device)
         # optim = torch.optim.RMSprop(painting.parameters(), lr=5e-3) # Coarse optimization
-        optims = painting.get_optimizers(multiplier=opt.lr_multiplier)
+        optims = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
         for j in tqdm(range(opt.intermediate_optim_iter), desc="Intermediate Optimization"):
             #optim.zero_grad()
-            for o in optims: o.zero_grad()
+            for o in optims: o.zero_grad() if o is not None else None
             p, alphas = painting(h, w, use_alpha=True, return_alphas=True)
             loss = 0
             for k in range(len(opt.objective)):
@@ -153,10 +154,11 @@ def plan(opt):
 
             loss.backward()
             # optim.step()
-            for o in optims: o.step()
+            for o in optims: o.step() if o is not None else None
             painting.validate()
-            for o in optims: o.param_groups[0]['lr'] = o.param_groups[0]['lr'] * 0.95
-            painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
+            for o in optims: o.param_groups[0]['lr'] = o.param_groups[0]['lr'] * 0.95 if o is not None else None
+            if not opt.ink:
+                painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
             # make sure hidden strokes get some attention
             # painting = randomize_brush_stroke_order(painting)
             log_progress(painting, title='int_optimization_{}'.format(attempt), log_freq=opt.log_frequency)#, force_log=True)
@@ -170,10 +172,10 @@ def plan(opt):
 
     # Create the plan
     position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
-                = painting.get_optimizers(multiplier=opt.lr_multiplier)
+                = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
     optims = (position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt)
     for i in tqdm(range(opt.optim_iter), desc='Optimizing {} Strokes'.format(str(len(painting.brush_strokes)))):
-        for o in optims: o.zero_grad()
+        for o in optims: o.zero_grad() if o is not None else None
 
         p, alphas = painting(h, w, use_alpha=False, return_alphas=True)
         
@@ -190,7 +192,7 @@ def plan(opt):
         bend_opt.step()
         length_opt.step()
         thickness_opt.step()
-        if i < .8*opt.optim_iter: color_opt.step()
+        if i < .8*opt.optim_iter: color_opt.step() if color_opt is not None else None
 
         # position_opt.param_groups[0]['lr'] = position_opt.param_groups[0]['lr'] * 0.99
         # rotation_opt.param_groups[0]['lr'] = rotation_opt.param_groups[0]['lr'] * 0.99
@@ -201,18 +203,22 @@ def plan(opt):
 
         painting.validate()
 
-        painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
+        if not opt.ink:
+            painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
         
         if i < 0.3*opt.optim_iter and i %3 == 0:
             # make sure hidden strokes get some attention
-            painting = randomize_brush_stroke_order(painting)
+            if not opt.ink:
+                painting = randomize_brush_stroke_order(painting)
 
         if (i % 10 == 0 and i > (0.5*opt.optim_iter)) or i > 0.9*opt.optim_iter:
             if opt.use_colors_from is None:
                 # Cluster the colors from the existing painting
-                colors = painting.cluster_colors(opt.n_colors)
+                if not opt.ink:
+                    colors = painting.cluster_colors(opt.n_colors)
 
-            discretize_colors(painting, colors)
+            if not opt.ink:
+                discretize_colors(painting, colors)
         log_progress(painting, log_freq=opt.log_frequency)#, force_log=True)
 
         # Save paintings every 150 steps 
