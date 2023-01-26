@@ -27,6 +27,7 @@ from audio_loss.audio_loss import compute_audio_loss, load_audio_file
 from emotion_loss.emotion_loss import emotion_loss
 from face.face_loss import face_loss, parse_face_data
 from stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
+from speech2emotion.speech2emotion import speech2emotion, speech2text
 
 from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16, clip_fc_loss
 import clip
@@ -80,6 +81,9 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
     elif objective_type == 'stable_diffusion':
         # return sd_loss.stable_diffusion_loss(p, objective_data) * weight
         return stable_diffusion_loss(p, objective_data) * weight
+    elif objective_type == 'speech':
+        return emotion_loss(p, objective_data[0], opt.num_augs)[0] * weight \
+            + clip_text_loss(p, objective_data[1], opt.num_augs)[0] * weight
     elif objective_type == 'sketch':
         local_it += 1
         return compute_sketch_loss(objective_data, p, writer=writer, it=local_it) * weight
@@ -330,11 +334,6 @@ def parse_emotion_data(s):
     return weights.unsqueeze(0)
 
 def load_objectives_data(opt):
-    # if 'stable_diffusion' in opt.init_objective if opt.init_objective is not None else [] or 'stable_diffusion' in opt.objective if opt.objective is not None else []:
-    #     global sd_loss
-    #     from stable_diffusion.stable_diffusion_loss import StableDiffusionLoss
-    #     sd_loss = StableDiffusionLoss()
-
     # Load Initial objective data
     global init_objective_data
     init_objective_data = [] 
@@ -356,6 +355,12 @@ def load_objectives_data(opt):
         elif opt.init_objective[i] == 'stable_diffusion':
             with torch.no_grad():
                 init_objective_data.append(encode_text_stable_diffusion(opt.init_objective_data[i]))
+        elif opt.init_objective[i] == 'speech':
+            with torch.no_grad():
+                emotion = torch.tensor(speech2emotion(opt.init_objective_data[i])).float().to(device)
+                speech_text = speech2text(opt.init_objective_data[i])
+                text_features = clip_model.encode_text(clip.tokenize(speech_text).to(device))
+                init_objective_data.append([emotion, text_features])
         else:
             # Must be an image
             img = load_img(opt.init_objective_data[i],h=h, w=w).to(device)/255.
@@ -383,6 +388,12 @@ def load_objectives_data(opt):
         elif opt.objective[i] == 'stable_diffusion':
             with torch.no_grad():
                 objective_data.append(encode_text_stable_diffusion(opt.objective_data[i]))
+        elif opt.objective[i] == 'speech':
+            with torch.no_grad():
+                emotion = torch.tensor(speech2emotion(opt.objective_data[i])).float().to(device)
+                speech_text = speech2text(opt.objective_data[i])
+                text_features = clip_model.encode_text(clip.tokenize(speech_text).to(device))
+                objective_data.append([emotion, text_features])
         else:
             # Must be an image
             img = load_img(opt.objective_data[i],h=h, w=w).to(device)/255.
