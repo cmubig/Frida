@@ -29,9 +29,217 @@ class Robot:
     def good_night_robot(self):
         raise Exception("This method must be implemented")
 
-    def move_to_joint_positions(self, position):
+    def go_to_cartesian_pose(self, positions, orientations, precise=False):
         raise Exception("This method must be implemented")
 
+
+class Franka(Robot, object):
+    '''
+        Low-level action functionality of the Franka robot.
+    '''
+    def __init__(self, debug, node_name="painting"):
+        import sys
+        sys.path.append('~/Documents/frankapy/frankapy/')
+        from frankapy import FrankaArm
+
+        self.debug_bool = debug
+        self.fa = FrankaArm()
+
+        # reset franka to its home joints
+        self.fa.reset_joints()
+
+    def debug(self, msg):
+        if self.debug_bool:
+            print(msg)
+
+    def good_morning_robot(self):
+        # reset franka to its home joints
+        self.fa.reset_joints()
+
+    def good_night_robot(self):
+        # reset franka back to home
+        self.fa.reset_joints()
+
+    def create_rotation_transform(pos, quat):
+        from autolab_core import RigidTransform
+        rot = RigidTransform.rotation_from_quaternion(quat)
+        rt = RigidTransform(rotation=rot, translation=pos,
+                from_frame='franka_tool', to_frame='world')
+        return rt
+
+    def sawyer_to_franka_position(pos):
+        # Convert from sawyer code representation of X,Y to Franka
+        pos[0] *= -1 # The x is oposite sign from the sawyer code
+        pos[:2] = pos[:2][::-1] # The x and y are switched compared to sawyer for which code was written
+        return pos
+    
+    def go_to_cartesian_pose(self, positions, orientations, precise=False):
+        """
+            Move to a list of points in space
+            args:
+                positions (np.array(n,3)) : x,y,z coordinates in meters from robot origin
+                orientations (np.array(n,4)) : x,y,z,w quaternion orientation
+                precise (bool) : use precise for slow short movements. else use False, which is fast but unstable
+        """
+        positions, orientations = np.array(positions), np.array(orientations)
+        if len(positions.shape) == 1:
+            positions = positions[None,:]
+            orientations = orientations[None,:]
+
+        if precise:
+            self.go_to_cartesian_pose_precise(positions, orientations)
+        else:
+            self.go_to_cartesian_pose_stable(positions, orientations)
+
+
+    def go_to_cartesian_pose_stable(self, positions, orientations):
+        for i in range(len(positions)):
+            pos = Franka.sawyer_to_franka_position(positions[i])
+            rt = Franka.create_rotation_transform(pos, orientations[i])
+
+            # Determine speed/duration
+            curr_pos = self.fa.get_pose().translation
+            # print(curr_pos, pos)
+            dist = ((curr_pos - pos)**2).sum()**.5
+            # print('distance', dist)
+            duration = dist * 7 # 1cm=.1s 1m=10s
+            duration = max(0.6, duration) # Don't go toooo fast
+            # print('duration', duration, type(duration))
+            duration = float(duration)
+            if pos[2] < 0.05:
+                print('below threshold!!', pos[2])
+                continue
+            try:
+                self.fa.goto_pose(rt,
+                        duration=duration, 
+                        force_thresholds=[10,10,10,10,10,10],
+                        ignore_virtual_walls=True
+                )
+            except Exception as e:
+                print('Could not goto_pose', e)
+    
+    def go_to_cartesian_pose_precise(self, positions, orientations, hertz=200, stiffness_factor=3.0):
+        """
+            This is a smooth version of this function. It can very smoothly go betwen the positions.
+            However, it is unstable, and will result in oscilations sometimes.
+            Recommended to be used only for fine, slow motions like the actual brush strokes.
+        """
+        from frankapy import SensorDataMessageType
+        from frankapy import FrankaConstants as FC
+        from frankapy.proto_utils import sensor_proto2ros_msg, make_sensor_group_msg
+        from frankapy.proto import PosePositionSensorMessage, CartesianImpedanceSensorMessage
+        from franka_interface_msgs.msg import SensorDataGroup
+        from frankapy.utils import min_jerk, min_jerk_weight
+        import rospy
+        
+        def get_duration(here, there):
+            dist = ((here.translation - there.translation)**2).sum()**.5
+            duration = dist *  10#5 # 1cm=.1s 1m=10s
+            duration = max(0.2, duration) # Don't go toooo fast
+            duration = float(duration)
+            return duration, dist
+
+        def smooth_trajectory(poses, window_width=50):
+            # x = np.cumsum(delta_ts)
+            from scipy.interpolate import interp1d
+            from scipy.ndimage import gaussian_filter1d
+
+            for c in range(3):
+                coords = np.array([p.translation[c] for p in poses])
+
+                coords_smooth = gaussian_filter1d(coords, 31)
+                print(len(poses), len(coords_smooth))
+                for i in range(len(poses)-1):
+                    coords_smooth[i]
+                    poses[i].translation[c] = coords_smooth[i]
+            return poses
+
+        pose_trajs = []
+        delta_ts = []
+        
+        # Loop through each position/orientation and create interpolations between the points
+        p0 = self.fa.get_pose()
+        for i in range(len(positions)):
+            p1 = Franka.create_rotation_transform(\
+                Franka.sawyer_to_franka_position(positions[i]), orientations[i])
+
+            duration, distance = get_duration(p0, p1)
+
+            # needs to be high to avoid torque discontinuity error controller_torque_discontinuity
+            STEPS = max(10, int(duration*hertz))
+            # print(STEPS, distance)
+
+            # if distance*100 > 5:
+            #     print("You're using the precise movement wrong", distance*100)
+
+            ts = np.arange(0, duration, duration/STEPS)
+            # ts = np.linspace(0, duration, STEPS)
+            weights = [min_jerk_weight(t, duration) for t in ts]
+
+            if i == 0 or i == len(positions)-1:
+                # Smooth for the first and last way points
+                pose_traj = [p0.interpolate_with(p1, w) for w in weights]
+            else:
+                # linear for middle points cuz it's fast and accurate
+                pose_traj = p0.linear_trajectory_to(p1, STEPS)
+            # pose_traj = [p0.interpolate_with(p1, w) for w in weights]
+            # pose_traj = p0.linear_trajectory_to(p1, STEPS)
+
+            pose_trajs += pose_traj
+            
+            delta_ts += [duration/len(pose_traj),]*len(pose_traj)
+            
+            p0 = p1
+            
+        T = float(np.array(delta_ts).sum())
+
+        # pose_trajs = smooth_trajectory(pose_trajs)
+
+        pub = rospy.Publisher(FC.DEFAULT_SENSOR_PUBLISHER_TOPIC, SensorDataGroup, queue_size=1000)
+        
+        # To ensure skill doesn't end before completing trajectory, make the buffer time much longer than needed
+        self.fa.goto_pose(pose_trajs[1], duration=T, dynamic=True, 
+            buffer_time=T+10,
+            force_thresholds=[10,10,10,10,10,10],
+            cartesian_impedances=(np.array(FC.DEFAULT_TRANSLATIONAL_STIFFNESSES)*stiffness_factor).tolist() + FC.DEFAULT_ROTATIONAL_STIFFNESSES,
+            ignore_virtual_walls=True,
+        )
+        try:
+            init_time = rospy.Time.now().to_time()
+            for i in range(2, len(pose_trajs)):
+                timestamp = rospy.Time.now().to_time() - init_time
+                traj_gen_proto_msg = PosePositionSensorMessage(
+                    id=i, timestamp=timestamp, 
+                    position=pose_trajs[i].translation, quaternion=pose_trajs[i].quaternion
+                )
+                fb_ctrlr_proto = CartesianImpedanceSensorMessage(
+                    id=i, timestamp=timestamp,
+                    # translational_stiffnesses=FC.DEFAULT_TRANSLATIONAL_STIFFNESSES[:2] + [z_stiffness_trajs[i]],
+                    translational_stiffnesses=(np.array(FC.DEFAULT_TRANSLATIONAL_STIFFNESSES)*stiffness_factor).tolist(),
+                    rotational_stiffnesses=FC.DEFAULT_ROTATIONAL_STIFFNESSES
+                )
+                
+                ros_msg = make_sensor_group_msg(
+                    trajectory_generator_sensor_msg=sensor_proto2ros_msg(
+                        traj_gen_proto_msg, SensorDataMessageType.POSE_POSITION),
+                    feedback_controller_sensor_msg=sensor_proto2ros_msg(
+                        fb_ctrlr_proto, SensorDataMessageType.CARTESIAN_IMPEDANCE)
+                )
+
+                # rospy.loginfo('Publishing: ID {}'.format(traj_gen_proto_msg.id))
+                pub.publish(ros_msg)
+                # rate = rospy.Rate(1 / (delta_ts[i]))
+                rate = rospy.Rate(hertz)
+                rate.sleep()
+
+                # if i%100==0:
+                #     print(self.fa.get_pose().translation[-1] - pose_trajs[i].translation[-1], 
+                #         '\t', self.fa.get_pose().translation[-1], '\t', pose_trajs[i].translation[-1])
+        except Exception as e:
+            print('unable to execute skill', e)
+        # Stop the skill
+        self.fa.stop_skill()
+        
 class SimulatedRobot(Robot, object):
     def __init__(self, debug=True):
         pass
@@ -42,350 +250,6 @@ class SimulatedRobot(Robot, object):
     def good_night_robot(self):
         pass
 
-    def move_to_joint_positions(self, position):
-        pass
-    def go_to_cartesian_pose(self, position, orientation):
-        pass
-    def inverse_kinematics(self, position, orientation, seed_position=None, debug=False):
-        pass
-    def move_to_joint_positions(self, position, timeout=3, speed=0.1):
+    def go_to_cartesian_pose(self, position, orientation, precise):
         pass
 
-
-class Sawyer(Robot, object):
-    def __init__(self, debug=True):
-        super(Sawyer, self).__init__(debug)
-        import rospy
-
-
-        from intera_core_msgs.srv import (
-            SolvePositionIK,
-            SolvePositionIKRequest,
-            SolvePositionFK,
-            SolvePositionFKRequest,
-        )
-        import intera_interface
-        from intera_interface import CHECK_VERSION
-        import PyKDL
-        from tf_conversions import posemath
-
-        self.limb = intera_interface.Limb(synchronous_pub=False)
-        # print(self.limb)
-
-        self.ns = "ExternalTools/right/PositionKinematicsNode/IKService"
-        self.iksvc = rospy.ServiceProxy(self.ns, SolvePositionIK, persistent=True)
-        rospy.wait_for_service(self.ns, 5.0)
-
-    def good_morning_robot(self):
-        import intera_interface
-        import rospy
-        self.debug("Getting robot state... ")
-        rs = intera_interface.RobotEnable(False)
-        init_state = rs.state().enabled
-        self.debug("Enabling robot... ")
-        rs.enable()
-
-        def clean_shutdown():
-            """
-            Exits example cleanly by moving head to neutral position and
-            maintaining start state
-            """
-            self.debug("\nExiting example...")
-            limb = intera_interface.Limb(synchronous_pub=True)
-            limb.move_to_neutral(speed=.2)
-            # 1/0
-
-        rospy.on_shutdown(clean_shutdown)
-        self.debug("Excecuting... ")
-
-        # neutral_pose = rospy.get_param("named_poses/{0}/poses/neutral".format(self.name))
-        # angles = dict(list(zip(self.joint_names(), neutral_pose)))
-        # self.set_joint_position_speed(0.1)
-        # self.move_to_joint_positions(angles, timeout)
-        intera_interface.Limb(synchronous_pub=True).move_to_neutral(speed=.2)
-        
-        return rs
-
-    def good_night_robot(self):
-        import rospy
-        """ Tuck it in, read it a story """
-        rospy.signal_shutdown("Example finished.")
-        self.debug("Done")
-
-    def go_to_cartesian_pose(self, position, orientation):
-        #if len(position)
-        position, orientation = np.array(position), np.array(orientation)
-        if len(position.shape) == 1:
-            position = position[None,:]
-            orientation = orientation[None,:]
-
-        # import rospy
-        # import argparse
-        from intera_motion_interface import (
-            MotionTrajectory,
-            MotionWaypoint,
-            MotionWaypointOptions
-        )
-        from intera_motion_msgs.msg import TrajectoryOptions
-        from geometry_msgs.msg import PoseStamped
-        import PyKDL
-        # from tf_conversions import posemath
-        # from intera_interface import Limb
-
-        limb = self.limb#Limb()
-
-        traj_options = TrajectoryOptions()
-        traj_options.interpolation_type = TrajectoryOptions.CARTESIAN
-        traj = MotionTrajectory(trajectory_options = traj_options, limb = limb)
-
-        wpt_opts = MotionWaypointOptions(max_linear_speed=0.8*1.5,
-                                         max_linear_accel=0.8*1.5,
-                                         # joint_tolerances=0.05,
-                                         corner_distance=0.005,
-                                         max_rotational_speed=1.57,
-                                         max_rotational_accel=1.57,
-                                         max_joint_speed_ratio=1.0)
-
-        for i in range(len(position)):
-            waypoint = MotionWaypoint(options = wpt_opts.to_msg(), limb = limb)
-
-            joint_names = limb.joint_names()
-
-            endpoint_state = limb.tip_state("right_hand")
-            pose = endpoint_state.pose
-
-            pose.position.x = position[i,0]
-            pose.position.y = position[i,1]
-            pose.position.z = position[i,2]
-
-            pose.orientation.x = orientation[i,0]
-            pose.orientation.y = orientation[i,1]
-            pose.orientation.z = orientation[i,2]
-            pose.orientation.w = orientation[i,3]
-
-            poseStamped = PoseStamped()
-            poseStamped.pose = pose
-
-            joint_angles = limb.joint_ordered_angles()
-            waypoint.set_cartesian_pose(poseStamped, "right_hand", joint_angles)
-
-            traj.append_waypoint(waypoint.to_msg())
-
-        result = traj.send_trajectory(timeout=None)
-        # print(result.result)
-        success = result.result
-        # if success != True:
-        #     print(success)
-        if not success:
-            import time
-            # print('sleeping')
-            time.sleep(2)
-            # print('done sleeping. now to neutral')
-            # Go to neutral and try again
-            limb.move_to_neutral(speed=.3)
-            # print('done to neutral')
-            result = traj.send_trajectory(timeout=None)
-            # print('just tried to resend trajectory')
-            if result.result:
-                print('second attempt successful')
-            else:
-                print('failed second attempt')
-            success = result.result
-        return success
-
-
-    def inverse_kinematics(self, position, orientation, seed_position=None, debug=False):
-        """
-        args:
-            position=(x,y,z)
-            orientation=(x,y,z,w)
-        kwargs:
-            seed_position={'right_j0':float, 'right_j1':float, ...}
-        return:
-            dict{'right_j0',float} - dictionary of joint to joint angle
-        """
-
-        ###########################
-        # seed_position = None # Trying to fix bug where the robot gets stuck in weird positions
-        ######################
-
-        import rospy
-        from intera_core_msgs.srv import (
-            SolvePositionIK,
-            SolvePositionIKRequest,
-            SolvePositionFK,
-            SolvePositionFKRequest,
-        )
-        from geometry_msgs.msg import (
-            PoseStamped,
-            Pose,
-            Point,
-            Quaternion,
-        )
-        from std_msgs.msg import Header
-        from sensor_msgs.msg import JointState
-        ikreq = SolvePositionIKRequest()
-        hdr = Header(stamp=rospy.Time.now(), frame_id='base')
-        pose = PoseStamped(
-            header=hdr,
-            pose=Pose(
-                position=Point(
-                    x=position[0],
-                    y=position[1],
-                    z=position[2],
-                ),
-                orientation=Quaternion(
-                    x=orientation[0],
-                    y=orientation[1],
-                    z=orientation[2],
-                    w=orientation[3],
-                ),
-            ),
-        )
-        # Add desired pose for inverse kinematics
-        ikreq.pose_stamp.append(pose)
-        # Request inverse kinematics from base to "right_hand" link
-        ikreq.tip_names.append('right_hand')
-
-        if (seed_position is not None):
-            # Optional Advanced IK parameters
-            # rospy.loginfo("Running Advanced IK Service Client example.")
-            # The joint seed is where the IK position solver starts its optimization
-            try:
-                ikreq.seed_mode = ikreq.SEED_USER
-                seed = JointState()
-                seed.name = ['right_j0', 'right_j1', 'right_j2', 'right_j3',
-                             'right_j4', 'right_j5', 'right_j6']
-                seed.position = [seed_position['right_j0'], seed_position['right_j1'],
-                                 seed_position['right_j2'], seed_position['right_j3'],
-                                 seed_position['right_j4'], seed_position['right_j5'],
-                                 seed_position['right_j6']]
-                ikreq.seed_angles.append(seed)
-            except Exception as e:
-                print(e)
-
-            # # Once the primary IK task is solved, the solver will then try to bias the
-            # # the joint angles toward the goal joint configuration. The null space is
-            # # the extra degrees of freedom the joints can move without affecting the
-            # # primary IK task.
-            # ikreq.use_nullspace_goal.append(True)
-            # # The nullspace goal can either be the full set or subset of joint angles
-            # goal = JointState()
-            # goal.name = ['right_j1', 'right_j2', 'right_j3']
-            # goal.position = [0.1, -0.3, 0.5]
-            # ikreq.nullspace_goal.append(goal)
-            # # The gain used to bias toward the nullspace goal. Must be [0.0, 1.0]
-            # # If empty, the default gain of 0.4 will be used
-            # ikreq.nullspace_gain.append(0.4)
-
-        try:
-            resp = self.iksvc(ikreq)
-        except (rospy.ServiceException, rospy.ROSException) as e:
-            rospy.logerr("Service call failed: %s" % (e,))
-            return False
-
-
-        # if resp.result_type[0] == resp.IK_IN_COLLISION:
-        #     print('COOLLISSSIIIIONNN')
-
-        # Check if result valid, and type of seed ultimately used to get solution
-        if (resp.result_type[0] > 0):
-            seed_str = {
-                        ikreq.SEED_USER: 'User Provided Seed',
-                        ikreq.SEED_CURRENT: 'Current Joint Angles',
-                        ikreq.SEED_NS_MAP: 'Nullspace Setpoints',
-                       }.get(resp.result_type[0], 'None')
-            if debug:
-                rospy.loginfo("SUCCESS - Valid Joint Solution Found from Seed Type: %s" %
-                      (seed_str,))
-            # Format solution into Limb API-compatible dictionary
-            limb_joints = dict(list(zip(resp.joints[0].name, resp.joints[0].position)))
-            if debug:
-                rospy.loginfo("\nIK Joint Solution:\n%s", limb_joints)
-                rospy.loginfo("------------------")
-                rospy.loginfo("Response Message:\n%s", resp)
-        else:
-            rospy.logerr("INVALID POSE - No Valid Joint Solution Found.")
-            rospy.logerr("Result Error %d", resp.result_type[0])
-            return False
-        # Result to dictionary of joint angles
-        pos = {}
-        for i in range(len(resp.joints[0].name)):
-            name = resp.joints[0].name[i]
-            position = resp.joints[0].position[i]
-            # print(name, position)
-            pos[name] = position
-        return pos
-
-    def move_to_joint_positions(self, position, timeout=3, speed=0.1):
-        """
-        args:
-            dict{'right_j0',float} - dictionary of joint to joint angle
-        """
-        # rate = rospy.Rate(100)
-        #try:
-        # print('Positions:', position)
-        self.limb.set_joint_position_speed(speed=speed)
-        self.limb.move_to_joint_positions(position, timeout=timeout,
-                                     threshold=0.008726646)
-        self.limb.set_joint_position_speed(speed=.1)
-        # rate.sleep()
-        # except Exception as e:
-        #     print('Exception while moving robot:\n', e)
-        #     import traceback
-        #     import sys
-        #     print(traceback.format_exc())
-
-
-    def display_image(self, file_path):
-        import intera_interface
-        head_display = intera_interface.HeadDisplay()
-        # display_image params:
-        # 1. file Path to image file to send. Multiple files are separated by a space, eg.: a.png b.png
-        # 2. loop Display images in loop, add argument will display images in loop
-        # 3. rate Image display frequency for multiple and looped images.
-        head_display.display_image(file_path, False, 100)
-    def display_frida(self):
-        import rospkg
-        rospack = rospkg.RosPack()
-        # get the file path for rospy_tutorials
-        ros_dir = rospack.get_path('paint')
-        self.display_image(os.path.join(str(ros_dir), 'src', 'frida.jpg'))
-
-    def take_picture(self):
-        import cv2
-        from cv_bridge import CvBridge, CvBridgeError
-        import matplotlib.pyplot as plt
-        def show_image_callback(img_data):
-            """The callback function to show image by using CvBridge and cv
-            """
-            bridge = CvBridge()
-            try:
-                cv_image = bridge.imgmsg_to_cv2(img_data, "bgr8")
-            except CvBridgeError as err:
-                rospy.logerr(err)
-                return
-
-            # edge_str = ''
-            # cv_win_name = ' '.join(['heyyyy', edge_str])
-            # cv2.namedWindow(cv_win_name, 0)
-            # refresh the image on the screen
-            # cv2.imshow(cv_win_name, cv_image)
-            # cv2.waitKey(3)
-            plt.imshow(cv_image[:,:,::-1])
-            plt.show()
-        rp = intera_interface.RobotParams()
-        valid_cameras = rp.get_camera_names()
-        print('valid_cameras', valid_cameras)
-
-        camera = 'head_camera'
-        # camera = 'right_hand_camera'
-        cameras = intera_interface.Cameras()
-        if not cameras.verify_camera_exists(camera):
-            rospy.logerr("Could not detect the specified camera, exiting the example.")
-            return
-        rospy.loginfo("Opening camera '{0}'...".format(camera))
-        cameras.start_streaming(camera)
-        cameras.set_callback(camera, show_image_callback,
-            rectify_image=False)
-        raw_input('Attach the paint brush now. Press enter to continue:')

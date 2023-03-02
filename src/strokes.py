@@ -161,14 +161,9 @@ class Stroke(object):
 
         path = self.get_rotated_trajectory(rotation)
         
-        if smooth:
-            all_positions.append([x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.05])
-            all_orientations.append(None)
-            all_positions.append([x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.02])
-            all_orientations.append(None)
-        else:
-            painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.07, speed=0.4)
-            painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.02, speed=0.1)
+        
+        painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.07, speed=0.4)
+        painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.02, speed=0.1)
 
         p0 = path[0,0], path[0,1], path[0,2]
         p3 = None
@@ -231,6 +226,11 @@ class Stroke(object):
                 yaw = deg_to_rad(270.) # Constant yaw
                 q = get_quaternion_from_euler(roll,pitch,yaw)
 
+                ######
+                # TODO: fix the tilt of the brush for the Franka robot
+                q = None
+                ####
+
                 #brush_length = 0.095
                 l = painter.opt.brush_length
                 if l is None:
@@ -277,18 +277,15 @@ class Stroke(object):
                 # time.sleep(0.02)
             p0 = p3
 
-        if smooth:
-            # all_positions.append([x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.02])
-            # all_orientations.append(None)
-            all_positions.append([x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.05])
-            all_orientations.append(None)
-        else:
-            painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.02, speed=0.1)
-            painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.07, speed=0.3)
-        # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
 
         if smooth:
-            return painter.move_to_trajectories(all_positions, all_orientations)
+            stroke_complete = painter.move_to_trajectories(all_positions, all_orientations, precise=True)
+        
+        painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.02, speed=0.1)
+        painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.07, speed=0.3)
+        # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
+
+        return stroke_complete
 
     def get_rotated_trajectory(self, rotation):
         # Rotation in radians

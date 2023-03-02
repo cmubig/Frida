@@ -5,7 +5,6 @@ from scipy import ndimage
 import os
 import gzip
 
-from simulated_painting_environment import crop_stroke
 # strokes = pickle.load(open(("cache/strokes.pkl"),'rb'))
 # strokes = [cv2.resize(s,(256,128)) for s in strokes]
 

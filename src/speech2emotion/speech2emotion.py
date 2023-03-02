@@ -2,33 +2,34 @@
 import os
 import pickle
 import librosa
-import numpy as np
-
-from keras.models import Sequential
-from keras.layers import Dense, Conv1D, MaxPooling1D, Flatten, Dropout, BatchNormalization
+import numpy as np    
 
 model, encoder, scaler = None, None, None
 
-model=Sequential()
-model.add(Conv1D(256*2, kernel_size=5, strides=1, padding='same', activation='relu', input_shape=(162, 1)))
-model.add(MaxPooling1D(pool_size=5, strides = 2, padding = 'same'))
+def get_model():
+    print('\n\n\n\n\n\n\n\n')
+    from keras.models import Sequential
+    from keras.layers import Dense, Conv1D, MaxPooling1D, Flatten, Dropout, BatchNormalization
+    model=Sequential()
+    model.add(Conv1D(256*2, kernel_size=5, strides=1, padding='same', activation='relu', input_shape=(162, 1)))
+    model.add(MaxPooling1D(pool_size=5, strides = 2, padding = 'same'))
 
-model.add(Conv1D(256*2, kernel_size=5, strides=1, padding='same', activation='relu'))
-model.add(MaxPooling1D(pool_size=5, strides = 2, padding = 'same'))
+    model.add(Conv1D(256*2, kernel_size=5, strides=1, padding='same', activation='relu'))
+    model.add(MaxPooling1D(pool_size=5, strides = 2, padding = 'same'))
 
-model.add(Conv1D(128*2, kernel_size=5, strides=1, padding='same', activation='relu'))
-model.add(MaxPooling1D(pool_size=5, strides = 2, padding = 'same'))
-model.add(Dropout(0.2))
+    model.add(Conv1D(128*2, kernel_size=5, strides=1, padding='same', activation='relu'))
+    model.add(MaxPooling1D(pool_size=5, strides = 2, padding = 'same'))
+    model.add(Dropout(0.2))
 
-model.add(Conv1D(64*2, kernel_size=5, strides=1, padding='same', activation='relu'))
-model.add(MaxPooling1D(pool_size=5, strides = 2, padding = 'same'))
+    model.add(Conv1D(64*2, kernel_size=5, strides=1, padding='same', activation='relu'))
+    model.add(MaxPooling1D(pool_size=5, strides = 2, padding = 'same'))
 
-model.add(Flatten())
-model.add(Dense(units=32, activation='relu'))
-model.add(Dropout(0.3))
+    model.add(Flatten())
+    model.add(Dense(units=32, activation='relu'))
+    model.add(Dropout(0.3))
 
-model.add(Dense(units=8, activation='softmax'))
-model.compile(optimizer = 'adam' , loss = 'categorical_crossentropy' , metrics = ['accuracy'])
+    model.add(Dense(units=8, activation='softmax'))
+    model.compile(optimizer = 'adam' , loss = 'categorical_crossentropy' , metrics = ['accuracy'])
 
 # model.summary()
 
@@ -87,7 +88,8 @@ def to_features(path):
 def speech2emotion(path):
     # Path is a path to a wav file
     global model, encoder, scaler
-    #if model is None:
+    if model is None:
+        model = get_model()
     root = os.path.dirname(os.path.realpath(__file__))
 
 
