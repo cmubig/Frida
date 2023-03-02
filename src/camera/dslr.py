@@ -12,16 +12,13 @@ import matplotlib.pyplot as plt
 import pickle
 import os 
 
-import color_calib
-from .harris import find_corners
-from .intrinsic_calib import computeIntrinsic
+# import camera.color_calib
+from camera.color_calib import color_calib, find_calib_params
+from camera.harris import find_corners
+from camera.intrinsic_calib import computeIntrinsic
 import glob
 
-try:
-    #import .dslr_gphoto as dslr
-    from .dslr_gphoto import *
-except:
-    pass
+from camera.dslr_gphoto import *
 
 # https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/opencv_viewer_example.py
 
@@ -63,7 +60,7 @@ class WebCam():
                 while not completed_color_calib:
                     try:
                         self.init_color_calib()
-                        retake = raw_input("Retake? y/[n]")
+                        retake = input("Retake? y/[n]")
                         if not(retake[:1] == 'y' or retake[:1] == 'Y'):
                             completed_color_calib = True
                     except Exception as e:
@@ -75,14 +72,14 @@ class WebCam():
                 except SyntaxError:
                     pass
             else:
-                params = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_color_calibration.pkl"),'rb'))
+                params = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_color_calibration.pkl"),'rb'), encoding='latin1')
                 self.color_tmat, self.greyval = params["color_tmat"], params["greyval"]
                 self.has_color_info = True
 
         path, img = self.get_rgb_image()
 
         # has to be done for some reason
-        return cv2.cvtColor(color_calib.color_calib(img, self.color_tmat, self.greyval), cv2.COLOR_BGR2RGB)
+        return cv2.cvtColor(color_calib(img, self.color_tmat, self.greyval), cv2.COLOR_BGR2RGB)
 
     def get_canvas(self, use_cache=False, max_height=2048):
         if self.H_canvas is None:
@@ -111,7 +108,7 @@ class WebCam():
         assert(w <= img.shape[1])
 
         if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, 'cached_H_canvas.pkl')):
-            self.H_canvas = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_H_canvas.pkl"),'rb'))
+            self.H_canvas = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_H_canvas.pkl"),'rb'), encoding='latin1')
             img1_warp = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
             # plt.imshow(img1_warp[:, :w])
             # plt.title('Hopefully this looks like just the canvas')
@@ -153,7 +150,7 @@ class WebCam():
 
     def init_color_calib(self):
         path, img = self.get_rgb_image()
-        self.color_tmat, self.greyval = color_calib.find_calib_params(path, self.debug)
+        self.color_tmat, self.greyval = find_calib_params(path, self.debug)
         self.has_color_info = True
         
         with open(os.path.join(self.opt.cache_dir, 'cached_color_calibration.pkl'),'wb') as f:

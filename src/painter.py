@@ -30,10 +30,7 @@ from camera.dslr import WebCam, SimulatedWebCam
 try: import rospy
 except: pass
 
-# q = np.array([0.704020578925, 0.710172716916,0.00244101361829,0.00194372088834])
-# q = np.array([0.1,0.2,0.3])
-# q = np.array([.9,.155,.127,.05])
-PERPENDICULAR_QUATERNION = np.array([0.704020578925, 0.710172716916,0.00244101361829,0.00194372088834])
+PERPENDICULAR_QUATERNION = np.array([1.77622069e-04,   9.23865441e-01,  -3.82717408e-01,  -1.73978366e-05])
 
 def shift_image(X, dx, dy):
     X = np.roll(X, dy, axis=0)
@@ -53,12 +50,12 @@ class Painter():
         Class that abstracts robot functionality for painting
     '''
 
-    def __init__(self, opt, robot="sawyer", use_cache=False, writer=None):
+    def __init__(self, opt, robot="franka", use_cache=False, writer=None):
         '''
         args:
             opt (Options) : from options.py; class with info about painting environment and globals
         kwargs:
-            robot ("sawyer" | None) : which robot you are using or None for pure simulation
+            robot ("sawyer" | "franka" | None) : which robot you are using or None for pure simulation
             use_cache (bool) : Whether to use cached calibration parameters
             writer (TensorBoard) : see tensorboard.py
         '''
@@ -72,15 +69,14 @@ class Painter():
             import rospy
 
         self.robot = None
-        if robot == "sawyer":
-            self.robot = Sawyer(debug=True)
+        if robot == "franka":
+            self.robot = Franka(debug=True)
         elif robot == None:
             self.robot = SimulatedRobot(debug=True)
 
         self.writer = writer 
 
         self.robot.good_morning_robot()
-
 
         # Setup Camera
         while True:
@@ -98,18 +94,16 @@ class Painter():
                     input('Could not connect camera. Try turning it off and on, then press start.')
                 except SyntaxError:
                     pass
-        print('1')
-        self.curr_position = None
-        self.seed_position = None
+                
         self.H_coord = None # Translate coordinates based on faulty camera location
 
-        p = canvas_to_global_coordinates(0, 0.5, self.opt.INIT_TABLE_Z, self.opt)
-        self.move_to(p[0], p[1], self.opt.INIT_TABLE_Z, speed=0.2)
+        # p = canvas_to_global_coordinates(0, 0.5, self.opt.INIT_TABLE_Z, self.opt)
+        # self.move_to(p[0], p[1], self.opt.INIT_TABLE_Z, speed=0.2)
         self.to_neutral()
 
         # Set how high the table is wrt the brush
         if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, "cached_params.pkl")):
-            params = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_params.pkl"),'r'))
+            params = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_params.pkl"),'rb'))
             self.Z_CANVAS = params['Z_CANVAS']
             self.Z_MAX_CANVAS = params['Z_MAX_CANVAS']
         else:
@@ -131,19 +125,20 @@ class Painter():
                 pickle.dump(params, f)
             self.to_neutral()
 
-        print('2')
+        # print('2')
         self.Z_RANGE = np.abs(self.Z_MAX_CANVAS - self.Z_CANVAS)
 
-        self.WATER_POSITION = (-.4,.58+0.06,self.Z_CANVAS)
-        self.RAG_POSTITION = (-.42,.41+0.06,self.Z_CANVAS)
+        self.WATER_POSITION = (-.25,.50,self.Z_CANVAS)
+        self.RAG_POSTITION = (-.35,.27,self.Z_CANVAS)
 
-        self.PALLETTE_POSITION = (-.3,.47+0.06,self.Z_CANVAS- 0.2*self.Z_RANGE)
+        self.PALLETTE_POSITION = (-0.12,.32,self.Z_CANVAS- 0.2*self.Z_RANGE)
         self.PAINT_DIFFERENCE = 0.03976
 
+        # while True: 
+        #     self.locate_items()
 
         # self.locate_canvas()
         # self.calibrate_robot_tilt()
-
 
         if self.camera is not None:
             self.camera.debug = True
@@ -175,43 +170,29 @@ class Painter():
 
     def to_neutral(self, speed=0.4):
         # Initial spot
-        x, y, z = -0.18, 0.5, self.opt.INIT_TABLE_Z+0.05
-        if self.og_neutral is None:
-            self.og_neutral = self._move(x, y, z, timeout=20, method="direct", speed=speed)
-        else:
-            self.robot.move_to_joint_positions(self.og_neutral, timeout=20, speed=speed)
-            self.seed_position = self.og_neutral
-        self.curr_position = [x, y, z]
+        if not self.opt.simulate:
+            self.robot.fa.reset_joints()
 
-    def move_to_trajectories(self, positions, orientations):
+    def move_to_trajectories(self, positions, orientations, precise):
         for i in range(len(orientations)):
             if orientations[i] is None:
                 orientations[i] = PERPENDICULAR_QUATERNION
-        return self.robot.go_to_cartesian_pose(positions, orientations)
+        return self.robot.go_to_cartesian_pose(positions, orientations, precise=precise)
 
-    def _move(self, x, y, z, q=None, timeout=20, method='direct', step_size=.1, speed=0.1):
+    def _move(self, x, y, z, q=None, timeout=20, method='direct', 
+            step_size=.1, speed=0.1, duration=5):
         if self.opt.simulate: return
         '''
         Move to given x, y, z in global coordinates
         kargs:
             method 'linear'|'curved'|'direct'
         '''
-        if self.curr_position is None:
-            self.curr_position = [x, y, z]
 
         if q is None:
             q = PERPENDICULAR_QUATERNION
-        # print('2', q)
 
-        # Calculate how many
-        dist = ((x-self.curr_position[0])**2 + (y-self.curr_position[1])**2 + (z-self.curr_position[2])**2)**(0.5)
-        n_steps = max(2, int(dist//step_size))
-
-        self.robot.go_to_cartesian_pose([x,y,z], q)
-        pos = None
-
-        self.curr_position = [x, y, z]
-        return pos
+        self.robot.go_to_cartesian_pose([x,y,z], q, precise=False)
+        return None
 
     def hover_above(self, x,y,z, method='direct'):
         self._move(x,y,z+self.opt.HOVER_FACTOR, method=method, speed=0.4)
@@ -221,7 +202,34 @@ class Painter():
     def move_to(self, x,y,z, q=None, method='direct', speed=0.05):
         self._move(x,y,z, q=q, method=method, speed=speed)
 
+    def locate_items(self):
+        self.dip_brush_in_water()
+        self.rub_brush_on_rag()
+        self.get_paint(0)
+        self.get_paint(5)
+        self.get_paint(6)
+        self.get_paint(11)
+        import time
+        p = canvas_to_global_coordinates(0, 0, self.Z_CANVAS, self.opt)
+        self.hover_above(p[0], p[1], p[2])
+        self.move_to(p[0], p[1], p[2])
+        time.sleep(1)
+        p = canvas_to_global_coordinates(0, 1, self.Z_CANVAS, self.opt)
+        self.move_to(p[0], p[1], p[2])
+        time.sleep(1)
+        p = canvas_to_global_coordinates(1, 1, self.Z_CANVAS, self.opt)
+        self.move_to(p[0], p[1], p[2])
+        time.sleep(1)
+        p = canvas_to_global_coordinates(1, 0, self.Z_CANVAS, self.opt)
+        self.move_to(p[0], p[1], p[2])
+        time.sleep(1)
+        p = canvas_to_global_coordinates(0, 0, self.Z_CANVAS, self.opt)
+        self.move_to(p[0], p[1], p[2])
+        time.sleep(1)
+        self.hover_above(p[0], p[1], p[2])
+
     def dip_brush_in_water(self):
+        self.move_to(self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]+self.opt.HOVER_FACTOR)
         positions = []
         positions.append([self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
         positions.append([self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]])
@@ -230,9 +238,10 @@ class Painter():
             positions.append([self.WATER_POSITION[0]+noise[0],self.WATER_POSITION[1]+noise[1],self.WATER_POSITION[2]])
         positions.append([self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
-        self.move_to_trajectories(positions, orientations)
+        self.move_to_trajectories(positions, orientations, precise=True)
 
     def rub_brush_on_rag(self):
+        self.move_to(self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]+self.opt.HOVER_FACTOR, speed=0.3)
         positions = []
         positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
         positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]])
@@ -241,7 +250,7 @@ class Painter():
             positions.append([self.RAG_POSTITION[0]+noise[0],self.RAG_POSTITION[1]+noise[1],self.RAG_POSTITION[2]])
         positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
-        self.move_to_trajectories(positions, orientations)
+        self.move_to_trajectories(positions, orientations, precise=True)
 
     def clean_paint_brush(self):
         if self.opt.simulate: return
@@ -257,6 +266,8 @@ class Painter():
         x = self.PALLETTE_POSITION[0] + x_offset
         y = self.PALLETTE_POSITION[1] + y_offset
         z = self.PALLETTE_POSITION[2] 
+        
+        self.move_to(x,y,z+self.opt.HOVER_FACTOR)
 
         positions, orientations = [], []
         positions.append([x,y,z+self.opt.HOVER_FACTOR])
@@ -267,7 +278,7 @@ class Painter():
         positions.append([x,y,z + 0.02])
         positions.append([x,y,z+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
-        self.move_to_trajectories(positions, orientations)
+        self.move_to_trajectories(positions, orientations, precise=True)
 
     def paint_cubic_bezier(self, path, step_size=.005):
         """
@@ -344,8 +355,8 @@ class Painter():
         how tall something is (z).
         User preses escape to end, then this returns the x, y, z of the end effector
         '''
-        import intera_external_devices
-        import rospy
+        
+        import getch
 
         curr_z = z
         curr_x = x
@@ -358,9 +369,11 @@ class Painter():
         print("Use w/s for up/down to set the brush to touching the table")
         print("Esc to quit.")
 
-        while not rospy.is_shutdown():
-            c = intera_external_devices.getch()
+        while True:#not rospy.is_shutdown():
+            c = getch.getch()
+            
             if c:
+                # print(c)
                 #catch Esc or ctrl-c
                 if c in ['\x1b', '\x03']:
                     return curr_x, curr_y, curr_z
@@ -380,7 +393,7 @@ class Painter():
                     else:
                         print('Use arrow keys up and down. Esc when done.')
                     
-                    self.move_to(curr_x, curr_y,curr_z, method='direct')
+                    self._move(curr_x, curr_y,curr_z)
 
     def calibrate_robot_tilt(self):
 
@@ -435,7 +448,7 @@ class Painter():
         # to perfectly hit that given x,y using a homograph transformation
 
         if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, "cached_H_coord.pkl")):
-            self.H_coord = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_H_coord.pkl"),'rb'))
+            self.H_coord = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_H_coord.pkl"),'rb'), encoding='latin1')
             return self.H_coord
 
         import matplotlib
@@ -628,9 +641,7 @@ class Painter():
                     else:
                         random_stroke = get_random_stroke()
 
-                    success = random_stroke.angled_paint(self, x, y, 0)
-                    if not success:
-                        continue # Failed to make the stroke
+                    random_stroke.angled_paint(self, x, y, 0)
 
                     self.to_neutral()
                     canvas_with_stroke = self.camera.get_canvas()
@@ -839,11 +850,8 @@ class Painter():
         # Call a script to take the stroke library and model it using a neural network
         # It will save the model to a file to be used later
         # must be run in python3
-        import rospkg
-        rospack = rospkg.RosPack()
-        # get the file path for painter code
-        ros_dir = rospack.get_path('paint')
+        root = os.path.dirname(os.path.realpath(__file__))
 
         exit_code = subprocess.call(['python3', 
-            os.path.join(ros_dir, 'src','continuous_brush_model.py')]\
+            os.path.join(root, 'continuous_brush_model.py')]\
             +sys.argv[1:])

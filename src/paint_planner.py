@@ -17,7 +17,6 @@ import subprocess
 from tqdm import tqdm
 from PIL import Image
 
-from simulated_painting_environment import apply_stroke
 from painter import canvas_to_global_coordinates
 from strokes import all_strokes, simple_parameterization_to_real, StrokeBD
 from paint_utils import *
@@ -148,16 +147,10 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
         if not painter.opt.dont_plan or (painter.opt.adaptive and it>0):
             add_adapt = ['--generate_whole_plan'] if painter.opt.adaptive and it==0 else []
             
-            try:
-                import rospkg
-                rospack = rospkg.RosPack()
-                # get the file path for painter code
-                ros_dir = rospack.get_path('paint')
-            except: # Not running in ROS
-                ros_dir = ''
+            root = os.path.dirname(os.path.realpath(__file__))
 
             exit_code = subprocess.call(['python3', 
-                os.path.join(ros_dir, 'src', 'plan.py')]+sys.argv[1:]+['--global_it', str(global_it)]+add_adapt)
+                os.path.join(root, 'plan.py')]+sys.argv[1:]+['--global_it', str(global_it)]+add_adapt)
             if exit_code != 0:
                 print('exit code', exit_code)
                 return
@@ -207,6 +200,8 @@ def paint_planner_new(painter, how_often_to_get_paint=5):
                         #     painter.clean_paint_brush()
                         #     if not painter.opt.simulate:
                         #         show_img(target/255., title="About to start painting with a lighter color")
+                        painter.clean_paint_brush()
+                        painter.clean_paint_brush()
                         painter.clean_paint_brush()
                         if consecutive_strokes_no_clean <= 12: painter.clean_paint_brush()
                         consecutive_strokes_no_clean = 0

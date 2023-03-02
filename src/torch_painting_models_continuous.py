@@ -329,8 +329,8 @@ class Painting(nn.Module):
         
         if return_alphas: 
             alphas = torch.cat(stroke_alphas, dim=1)
-            # alphas, _ = torch.mean(alphas, dim=1) ###################################################
-            alphas = torch.sum(alphas, dim=1) ###################################################
+            alphas, _ = torch.max(alphas, dim=1) ###################################################
+            # alphas = torch.sum(alphas, dim=1) ###################################################
             return canvas, alphas
         
         return canvas
