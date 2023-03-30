@@ -8,6 +8,7 @@
 ##########################################################
 
 import os
+import shutil
 import time
 import sys
 import cv2
@@ -67,7 +68,7 @@ class Painter():
 
         if not opt.simulate:
             import rospy
-
+        print('0')
         self.robot = None
         if robot == "franka":
             self.robot = Franka(debug=True)
@@ -75,9 +76,9 @@ class Painter():
             self.robot = SimulatedRobot(debug=True)
 
         self.writer = writer 
-
+        print('1')
         self.robot.good_morning_robot()
-
+        print('1')
         # Setup Camera
         while True:
             try:
@@ -94,7 +95,7 @@ class Painter():
                     input('Could not connect camera. Try turning it off and on, then press start.')
                 except SyntaxError:
                     pass
-                
+        print('3') 
         self.H_coord = None # Translate coordinates based on faulty camera location
 
         # p = canvas_to_global_coordinates(0, 0.5, self.opt.INIT_TABLE_Z, self.opt)
@@ -712,6 +713,12 @@ class Painter():
                     canvas_without_stroke = canvas_with_stroke.copy()
 
                     if len(stroke_intensities) % 5 == 0:
+                        # Make a copy of the data just in case
+                        if os.path.exists(os.path.join(self.opt.cache_dir, 'extended_stroke_library_trajectories.npy')):
+                            shutil.copyfile(os.path.join(self.opt.cache_dir, 'extended_stroke_library_trajectories.npy'),
+                                        os.path.join(self.opt.cache_dir, 'extended_stroke_library_trajectories_copy.npy'))
+                            shutil.copyfile(os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities.npy'),
+                                        os.path.join(self.opt.cache_dir, 'extended_stroke_library_intensities_copy.npy'))
                         # Save data
                         with open(os.path.join(self.opt.cache_dir, 'extended_stroke_library_trajectories.npy'), 'wb') as f:
                             np.save(f, np.stack(stroke_trajectories, axis=0))
