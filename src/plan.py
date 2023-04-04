@@ -31,6 +31,7 @@ from speech2emotion.speech2emotion import speech2emotion, speech2text
 
 from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16, clip_fc_loss
 import clip
+from clip_attn.clip_attn import get_attention
 import kornia as K
 
 from paint_utils import to_video
@@ -106,6 +107,77 @@ def parse_objective(objective_type, objective_data, p, weight=1.0):
     else:
         print('don\'t know what objective')
         1/0
+
+
+def plan_from_image(opt):
+    global colors
+    painting = random_init_painting(current_canvas, opt.num_strokes, ink=opt.ink)
+
+    target_img = objective_data[0]
+    painting = initialize_painting(opt.num_strokes, target_img, current_canvas, opt.ink)
+    
+    attn = get_attention(target_img)
+    opt.writer.add_image('target/attention', format_img(torch.from_numpy(attn)[None,None,:,:]), 0)
+
+    stroke_batch_size = 64
+    iters_per_batch = 200
+
+    painting = initialize_painting(0, target_img, current_canvas, opt.ink)
+    painting.to(device)
+
+    c = 0
+    total_its = (opt.num_strokes/stroke_batch_size)*iters_per_batch
+    for i in (range(0, opt.num_strokes, stroke_batch_size)):#, desc="Initializing"):
+        painting = add_strokes_to_painting(painting, stroke_batch_size, target_img, opt.ink)
+        optims = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
+
+        # Learning rate scheduling. Start low, middle high, end low
+        og_lrs = [o.param_groups[0]['lr'] if o is not None else None for o in optims]
+
+        for it in tqdm(range(iters_per_batch), desc="Optim. {} Strokes".format(len(painting.brush_strokes))):
+            for o in optims: o.zero_grad() if o is not None else None
+
+            lr_factor = (1 - 2*np.abs(it/iters_per_batch - 0.5)) + 0.1
+            for i_o in range(len(optims)):
+                if optims[i_o] is not None:
+                    optims[i_o].param_groups[0]['lr'] = og_lrs[i_o]*lr_factor
+
+            p = painting(h, w, use_alpha=True, return_alphas=False)
+
+            t = c / total_its
+            c+=1 
+            
+            loss = 0
+            loss += parse_objective('l2', target_img, p[:,:3], weight=1-t)
+            loss += parse_objective('clip_conv_loss', target_img, p[:,:3], weight=t)
+
+            # loss += (1-alphas).mean() * opt.fill_weight
+
+            loss.backward()
+
+            for o in optims: o.step() if o is not None else None
+            painting.validate()
+            painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
+            # for o in optims: o.param_groups[0]['lr'] = o.param_groups[0]['lr'] * 0.95 if o is not None else None
+            if not opt.ink:
+                painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
+            # make sure hidden strokes get some attention
+            # painting = randomize_brush_stroke_order(painting)
+            # log_progress(painting, title='int_optimization_', log_freq=opt.log_frequency)#, force_log=True)
+            
+
+            if (it % 10 == 0 and it > (0.5*iters_per_batch)) or it > 0.9*iters_per_batch:
+                if opt.use_colors_from is None:
+                    # Cluster the colors from the existing painting
+                    if not opt.ink:
+                        colors = painting.cluster_colors(opt.n_colors)
+                if not opt.ink:
+                    discretize_colors(painting, colors)
+            log_progress(painting, log_freq=opt.log_frequency)#, force_log=True)
+
+            # if it % 1  ==0:
+            #     save_image(painting(h, w),'p.png')
+    return painting
 
 def plan(opt):
     global colors
@@ -430,7 +502,7 @@ if __name__ == '__main__':
 
     # Start Planning
     if opt.generate_whole_plan or not opt.adaptive:
-        painting = plan(opt)
+        painting = plan_from_image(opt) if opt.paint_from_image else plan(opt)
     else:
         painting = adapt(opt)
 

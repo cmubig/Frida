@@ -21,6 +21,7 @@ import random
 
 # from torch_painting_models_continuous_concerted import *
 from torch_painting_models_continuous import *
+from clip_attn.clip_attn import get_attention
 
 from my_tensorboard import TensorBoard
 
@@ -235,4 +236,38 @@ def parse_csv_line_continuous(line):
 
 def format_img(tensor_img):
     np_painting = tensor_img.detach().cpu().numpy()[0].transpose(1,2,0)
+    if np_painting.shape[-1] == 1:
+        np_painting = cv2.cvtColor(np.float32(np_painting), cv2.COLOR_GRAY2RGB)
     return np.clip(np_painting, a_min=0, a_max=1)
+
+
+def init_brush_strokes(attn, n_strokes, ink):
+    brush_strokes = []
+    
+    attn += 0.025
+    prob = attn / attn.sum()
+    prob = prob.flatten()
+    
+    ravelled_inds = np.random.choice(len(prob), size=n_strokes, p=prob)
+    xys = np.array(np.unravel_index(ravelled_inds, attn.shape))
+                   
+    for i in range(xys.shape[1]):
+        x, y = xys[1,i]/attn.shape[1]*2-1, xys[0,i]/attn.shape[0]*2-1
+        # Random brush stroke
+        brush_stroke = BrushStroke(xt=x, yt=y, ink=ink)
+        brush_strokes.append(brush_stroke)
+    return brush_strokes
+
+def initialize_painting(n_strokes, target_img, background_img, ink):
+    attn = get_attention(target_img)
+    brush_strokes = init_brush_strokes(attn, n_strokes, ink)
+    painting = Painting(0, background_img=background_img, 
+        brush_strokes=brush_strokes).to(device)
+    return painting
+
+def add_strokes_to_painting(painting, n_strokes, target_img, ink):
+    attn = get_attention(target_img)
+    brush_strokes = init_brush_strokes(attn, n_strokes, ink)
+    painting = Painting(0, background_img=painting.background_img, 
+        brush_strokes=painting.brush_strokes+brush_strokes).to(device)
+    return painting

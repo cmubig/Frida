@@ -141,7 +141,9 @@ class Options(object):
 
 
 
+
         parser.add_argument('--ink', action='store_true')
+        parser.add_argument('--paint_from_image', action='store_true')
 
         # parser.add_argument('--sd_version', type=str, default='2.0', choices=['1.5', '2.0'], help="stable diffusion version")
 
