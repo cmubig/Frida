@@ -118,9 +118,11 @@ def plan_from_image(opt):
     
     attn = get_attention(target_img)
     opt.writer.add_image('target/attention', format_img(torch.from_numpy(attn)[None,None,:,:]), 0)
+    if opt.caption:
+        sd_encoded_text = encode_text_stable_diffusion(opt.caption)
 
-    stroke_batch_size = 64
-    iters_per_batch = 200
+    stroke_batch_size = 100#64
+    iters_per_batch =  300
 
     painting = initialize_painting(0, target_img, current_canvas, opt.ink)
     painting.to(device)
@@ -137,12 +139,12 @@ def plan_from_image(opt):
         for it in tqdm(range(iters_per_batch), desc="Optim. {} Strokes".format(len(painting.brush_strokes))):
             for o in optims: o.zero_grad() if o is not None else None
 
-            lr_factor = (1 - 2*np.abs(it/iters_per_batch - 0.5)) + 0.1
+            lr_factor = (1 - 2*np.abs(it/iters_per_batch - 0.5)) + 0.05
             for i_o in range(len(optims)):
                 if optims[i_o] is not None:
                     optims[i_o].param_groups[0]['lr'] = og_lrs[i_o]*lr_factor
 
-            p = painting(h, w, use_alpha=True, return_alphas=False)
+            p, alphas = painting(h, w, use_alpha=True, return_alphas=True)
 
             t = c / total_its
             c+=1 
@@ -150,8 +152,10 @@ def plan_from_image(opt):
             loss = 0
             loss += parse_objective('l2', target_img, p[:,:3], weight=1-t)
             loss += parse_objective('clip_conv_loss', target_img, p[:,:3], weight=t)
+            # if i > opt.num_strokes/2 and opt.caption is not None:
+            # loss += parse_objective('stable_diffusion', sd_encoded_text, p[:,:3], weight=t*2)
 
-            # loss += (1-alphas).mean() * opt.fill_weight
+            # loss += (torch.abs(2-alphas)).mean() * 0.5#opt.fill_weight
 
             loss.backward()
 
@@ -173,10 +177,20 @@ def plan_from_image(opt):
                         colors = painting.cluster_colors(opt.n_colors)
                 if not opt.ink:
                     discretize_colors(painting, colors)
+
             log_progress(painting, log_freq=opt.log_frequency)#, force_log=True)
 
-            # if it % 1  ==0:
-            #     save_image(painting(h, w),'p.png')
+
+    if opt.use_colors_from is None:
+        colors = painting.cluster_colors(opt.n_colors)
+    with open(os.path.join(opt.cache_dir, 'colors_updated.npy'), 'wb') as f:
+        np.save(f, (colors.detach().cpu().numpy()*255).astype(np.uint8))
+
+
+    discretize_colors(painting, colors)
+    painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
+    log_progress(painting, force_log=True, log_freq=opt.log_frequency)
+
     return painting
 
 def plan(opt):
@@ -442,7 +456,9 @@ def load_objectives_data(opt):
     # Load Objective data
     global objective_data
     objective_data = [] 
-    for i in range(len(opt.objective)):
+    if not opt.objective:
+        print('\n\nNo objectives. Are you sure?\n\n')
+    for i in range(len(opt.objective) if opt.objective else 0):
         if opt.objective[i] == 'text':
             with torch.no_grad():
                 text_features = clip_model.encode_text(clip.tokenize(opt.objective_data[i]).to(device))

@@ -244,7 +244,7 @@ def format_img(tensor_img):
 def init_brush_strokes(attn, n_strokes, ink):
     brush_strokes = []
     
-    attn += 0.025
+    attn += 0.05
     prob = attn / attn.sum()
     prob = prob.flatten()
     

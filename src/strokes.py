@@ -253,35 +253,48 @@ class Stroke(object):
                 z = painter.Z_CANVAS - z * new_z_range - dz #+ 0.07
                 # print(x,y,z)
 
+                x_next = x_start + x 
+                y_next = y_start + y
+
+                # Don't over shoot the canvas
+                x_next = min(max(opt.X_CANVAS_MIN, x_next), opt.X_CANVAS_MAX) 
+                y_next = min(max(opt.Y_CANVAS_MIN, y_next), opt.Y_CANVAS_MAX)
+
                 if smooth:
                     if t == 0 and i==0:
-                        all_positions.append([x_start+x, y_start+y, z+0.02])
+                        all_positions.append([x_next, y_next, z+0.02])
                         all_orientations.append(q)
-                        all_positions.append([x_start+x, y_start+y, z+0.005])
+                        all_positions.append([x_next, y_next, z+0.005])
                         all_orientations.append(q)
-                    all_positions.append([x_start+x, y_start+y, z])
+                    all_positions.append([x_next, y_next, z])
                     all_orientations.append(q)
                     if t == 1 and (i == len(path)-4):
-                        all_positions.append([x_start+x, y_start+y, z+0.01])
+                        all_positions.append([x_next, y_next, z+0.01])
                         all_orientations.append(q)
-                        all_positions.append([x_start+x, y_start+y, z+0.02])
+                        all_positions.append([x_next, y_next, z+0.02])
                         all_orientations.append(q)
                 else:
                     if t == 0 and i==0:
-                        painter.move_to(x_start+x, y_start+y, z+0.02, q=q, method='direct', speed=0.1)
-                        painter.move_to(x_start+x, y_start+y, z+0.005, q=q, method='direct', speed=0.03)
-                    painter.move_to(x_start+x, y_start+y, z, q=q, method='direct', speed=0.05)
+                        painter.move_to(x_next, y_next, z+0.02, q=q, method='direct', speed=0.1)
+                        painter.move_to(x_next, y_next, z+0.005, q=q, method='direct', speed=0.03)
+                    painter.move_to(x_next, y_next, z, q=q, method='direct', speed=0.05)
                     if t == 1 and (i == len(path)-4):
-                        painter.move_to(x_start+x, y_start+y, z+0.01, q=q, method='direct', speed=0.03)
-                        painter.move_to(x_start+x, y_start+y, z+0.02, q=q, method='direct', speed=0.1)
+                        painter.move_to(x_next, y_next, z+0.01, q=q, method='direct', speed=0.03)
+                        painter.move_to(x_next, y_next, z+0.02, q=q, method='direct', speed=0.1)
                 # time.sleep(0.02)
             p0 = p3
 
 
         if smooth:
-            stroke_complete = painter.move_to_trajectories(all_positions, all_orientations, precise=True)
+            stroke_complete = painter.move_to_trajectories(all_positions, all_orientations)
         
-        painter.move_to(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS + 0.04, speed=0.3)
+
+        # Don't over shoot the canvas
+        x_next = x_start+path[-1,0]
+        y_next = y_start+path[-1,1]
+        x_next = min(max(opt.X_CANVAS_MIN, x_next), opt.X_CANVAS_MAX) 
+        y_next = min(max(opt.Y_CANVAS_MIN, y_next), opt.Y_CANVAS_MAX)
+        painter.move_to(x_next, y_next, painter.Z_CANVAS + 0.04, speed=0.3)
         # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
 
         return stroke_complete
