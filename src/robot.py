@@ -131,12 +131,18 @@ class Franka(Robot, object):
         # print(max(abs_diffs), sum(abs_diffs)/len(abs_diffs), '\t', time.time() - start)
         if abs_diffs[-1] > 1:
             # Didn't get to the last position. Try again.
+            print('Off from final position by', abs_diffs[-1], 'cm')
             self.fa.goto_pose(rt,
                         duration=duration+3, 
                         force_thresholds=[10,10,10,10,10,10],
                         ignore_virtual_walls=True,
                         buffer_time=0.0
-                )   
+                )
+            abs_diff = sum((self.fa.get_pose().translation-rt.translation)**2)**0.5 * 100
+            if abs_diff > 1:
+                print('Failed to get to end of trajectory again. Resetting Joints')
+                self.fa.reset_joints()
+
     def go_to_cartesian_pose_precise(self, positions, orientations, hertz=300, stiffness_factor=3.0):
         """
             This is a smooth version of this function. It can very smoothly go betwen the positions.
