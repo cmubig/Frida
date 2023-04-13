@@ -444,6 +444,19 @@ def train_param2stroke(opt, is_brush_stroke=True):
         if strokes[i].max() > 0.01:
             strokes[i] /= strokes[i].max()
         # strokes[i] *= 0.95
+    
+    # Filter out strokes that are bad perception. Avg is too high.
+    # One bad apple can really spoil the bunch
+    good_strokes = []
+    good_traj = []
+    for i in range(len(strokes)):
+        if strokes[i].mean() < 0.4: 
+            good_strokes.append(strokes[i])
+            good_traj.append(trajectories[i])
+    print(len(strokes)- len(good_strokes), 'strokes removed because average value too high')
+    strokes = torch.stack(good_strokes, dim=0)
+    trajectories = torch.stack(good_traj, dim=0)
+
 
     h, w = strokes[0].shape[0], strokes[0].shape[1]
     ##########FOR SPEED#########################################

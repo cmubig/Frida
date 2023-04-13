@@ -132,7 +132,7 @@ class Painter():
         self.WATER_POSITION = (-.25,.50,self.Z_CANVAS)
         self.RAG_POSTITION = (-.35,.27,self.Z_CANVAS)
 
-        self.PALLETTE_POSITION = (-0.12,.32,self.Z_CANVAS- 0.2*self.Z_RANGE)
+        self.PALLETTE_POSITION = (-0.15,.34,self.Z_CANVAS- 0.2*self.Z_RANGE)
         self.PAINT_DIFFERENCE = 0.03976
 
         # while True: 
@@ -172,13 +172,14 @@ class Painter():
     def to_neutral(self, speed=0.4):
         # Initial spot
         if not self.opt.simulate:
-            self.robot.fa.reset_joints()
+            # self.robot.fa.reset_joints()
+            self.move_to_trajectories([[0,0.4,self.opt.INIT_TABLE_Z]], [None])
 
-    def move_to_trajectories(self, positions, orientations, precise):
+    def move_to_trajectories(self, positions, orientations):
         for i in range(len(orientations)):
             if orientations[i] is None:
                 orientations[i] = PERPENDICULAR_QUATERNION
-        return self.robot.go_to_cartesian_pose(positions, orientations, precise=precise)
+        return self.robot.go_to_cartesian_pose(positions, orientations)
 
     def _move(self, x, y, z, q=None, timeout=20, method='direct', 
             step_size=.1, speed=0.1, duration=5):
@@ -192,7 +193,7 @@ class Painter():
         if q is None:
             q = PERPENDICULAR_QUATERNION
 
-        self.robot.go_to_cartesian_pose([x,y,z], q, precise=False)
+        self.robot.go_to_cartesian_pose([x,y,z], q)
         return None
 
     def hover_above(self, x,y,z, method='direct'):
@@ -239,7 +240,7 @@ class Painter():
             positions.append([self.WATER_POSITION[0]+noise[0],self.WATER_POSITION[1]+noise[1],self.WATER_POSITION[2]])
         positions.append([self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
-        self.move_to_trajectories(positions, orientations, precise=True)
+        self.move_to_trajectories(positions, orientations)
 
     def rub_brush_on_rag(self):
         self.move_to(self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]+self.opt.HOVER_FACTOR, speed=0.3)
@@ -251,7 +252,7 @@ class Painter():
             positions.append([self.RAG_POSTITION[0]+noise[0],self.RAG_POSTITION[1]+noise[1],self.RAG_POSTITION[2]])
         positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
-        self.move_to_trajectories(positions, orientations, precise=True)
+        self.move_to_trajectories(positions, orientations)
 
     def clean_paint_brush(self):
         if self.opt.simulate: return
@@ -279,7 +280,7 @@ class Painter():
         positions.append([x,y,z + 0.02])
         positions.append([x,y,z+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
-        self.move_to_trajectories(positions, orientations, precise=True)
+        self.move_to_trajectories(positions, orientations)
 
     def paint_cubic_bezier(self, path, step_size=.005):
         """
@@ -617,7 +618,7 @@ class Painter():
                 for x_offset_pix in np.linspace(0.02, 0.99-(self.opt.MAX_STROKE_LENGTH/self.opt.CANVAS_WIDTH), n_strokes_x)*w:
 
                     if len(stroke_trajectories) % 2 == 0:
-                        y_offset_pix = y_offset_pix_og + 0.005 * (h/self.opt.CANVAS_HEIGHT) # Offset y by 1cm every other stroke
+                        y_offset_pix = y_offset_pix_og + 0.0 * (h/self.opt.CANVAS_HEIGHT) # Offset y by 1cm every other stroke
                     else:
                         y_offset_pix = y_offset_pix_og
 
@@ -738,6 +739,8 @@ class Painter():
                     input('Place down new paper. Press enter to start.')
                 except SyntaxError:
                     pass
+                # Retake with the new paper
+                canvas_without_stroke = self.camera.get_canvas()
 
     def paint_fill_in_library(self):
         w = self.opt.CANVAS_WIDTH_PIX

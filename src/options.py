@@ -34,9 +34,15 @@ class Options(object):
 
         # X,Y of canvas wrt to robot center (global coordinates)
         # self.CANVAS_POSITION = (0,.5) 
-        self.CANVAS_POSITION = (0.34, .27) # 14x11"
+        self.CANVAS_POSITION = (0.34, .29) # 14x11"
         # self.CANVAS_POSITION = (0+0.0762, .5-.04) # 20x16"
         # self.CANVAS_POSITION = (0+0.0762-0.12, .5-.04-0.0635-0.06+.202)# 10x8"
+
+        thresh = 0.001 # 1cm tolerance on overshooting the canvas
+        self.Y_CANVAS_MAX = self.CANVAS_POSITION[1] + self.CANVAS_HEIGHT + thresh
+        self.Y_CANVAS_MIN = self.CANVAS_POSITION[1] - thresh
+        self.X_CANVAS_MAX = self.CANVAS_POSITION[0] + self.CANVAS_WIDTH/2 + thresh
+        self.X_CANVAS_MIN = self.CANVAS_POSITION[0] - self.CANVAS_WIDTH/2 - thresh
 
         """ How many times in a row can you paint with the same color before needing more paint """
         self.GET_PAINT_FREQ = 3
@@ -58,9 +64,9 @@ class Options(object):
 
         self.MAX_ALPHA = 0#math.pi / 18.
 
-        self.MIN_STROKE_LENGTH = 0.001
-        self.MAX_STROKE_LENGTH = 0.06
-        self.MIN_STROKE_Z = 0.05
+        self.MIN_STROKE_LENGTH = 0.005#0.001
+        self.MAX_STROKE_LENGTH = 0.06#0.03#0.04#0.06
+        self.MIN_STROKE_Z = 0.1#0.01
         self.MAX_BEND = 0.02 #2cm
 
 
@@ -139,11 +145,15 @@ class Options(object):
 
         parser.add_argument('--dont_retrain_stroke_model', action='store_true')
 
+        parser.add_argument('--pretrain_stroke_model', type=str, default=None,
+                            help="give a path to a folder with pretrained stroke models")
 
 
 
         parser.add_argument('--ink', action='store_true')
         parser.add_argument('--paint_from_image', action='store_true')
+        parser.add_argument("--caption", type=str,
+            default=None, help='A caption of the image you\'re trying to paint')
 
         # parser.add_argument('--sd_version', type=str, default='2.0', choices=['1.5', '2.0'], help="stable diffusion version")
 

@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 import os
 import numpy as np
+import time
 
 ##########################################################
 #################### Copyright 2022 ######################
@@ -73,7 +74,7 @@ class Franka(Robot, object):
         pos[:2] = pos[:2][::-1] # The x and y are switched compared to sawyer for which code was written
         return pos
     
-    def go_to_cartesian_pose(self, positions, orientations, precise=False):
+    def go_to_cartesian_pose(self, positions, orientations):
         """
             Move to a list of points in space
             args:
@@ -86,13 +87,16 @@ class Franka(Robot, object):
             positions = positions[None,:]
             orientations = orientations[None,:]
 
-        if precise:
-            self.go_to_cartesian_pose_precise(positions, orientations)
-        else:
-            self.go_to_cartesian_pose_stable(positions, orientations)
+        # if precise:
+        #     self.go_to_cartesian_pose_precise(positions, orientations, stiffness_factor=stiffness_factor)
+        # else:
+        #     self.go_to_cartesian_pose_stable(positions, orientations)
+        self.go_to_cartesian_pose_stable(positions, orientations)
 
 
     def go_to_cartesian_pose_stable(self, positions, orientations):
+        abs_diffs = []
+        # start = time.time()
         for i in range(len(positions)):
             pos = Franka.sawyer_to_franka_position(positions[i])
             rt = Franka.create_rotation_transform(pos, orientations[i])
@@ -100,10 +104,13 @@ class Franka(Robot, object):
             # Determine speed/duration
             curr_pos = self.fa.get_pose().translation
             # print(curr_pos, pos)
-            dist = ((curr_pos - pos)**2).sum()**.5
-            # print('distance', dist)
-            duration = dist * 7 # 1cm=.1s 1m=10s
+            dist = ((curr_pos - pos)**2).sum()**.5 
+            # print('distance', dist*100)
+            duration = dist * 5 # 1cm=.1s 1m=10s
             duration = max(0.6, duration) # Don't go toooo fast
+            if dist*100 < 0.8: # less than 0.8cm
+                # print('very short')
+                duration = 0.3
             # print('duration', duration, type(duration))
             duration = float(duration)
             if pos[2] < 0.05:
@@ -113,17 +120,30 @@ class Franka(Robot, object):
                 self.fa.goto_pose(rt,
                         duration=duration, 
                         force_thresholds=[10,10,10,10,10,10],
-                        ignore_virtual_walls=True
-                )
+                        ignore_virtual_walls=True,
+                        buffer_time=0.0
+                )    
             except Exception as e:
                 print('Could not goto_pose', e)
-    
-    def go_to_cartesian_pose_precise(self, positions, orientations, hertz=200, stiffness_factor=3.0):
+            abs_diff = sum((self.fa.get_pose().translation-rt.translation)**2)**0.5 * 100
+            # print(abs_diff, 'cm stable')
+            abs_diffs.append(abs_diff)
+        # print(max(abs_diffs), sum(abs_diffs)/len(abs_diffs), '\t', time.time() - start)
+        if abs_diffs[-1] > 1:
+            # Didn't get to the last position. Try again.
+            self.fa.goto_pose(rt,
+                        duration=duration+3, 
+                        force_thresholds=[10,10,10,10,10,10],
+                        ignore_virtual_walls=True,
+                        buffer_time=0.0
+                )   
+    def go_to_cartesian_pose_precise(self, positions, orientations, hertz=300, stiffness_factor=3.0):
         """
             This is a smooth version of this function. It can very smoothly go betwen the positions.
             However, it is unstable, and will result in oscilations sometimes.
             Recommended to be used only for fine, slow motions like the actual brush strokes.
         """
+        start = time.time()
         from frankapy import SensorDataMessageType
         from frankapy import FrankaConstants as FC
         from frankapy.proto_utils import sensor_proto2ros_msg, make_sensor_group_msg
@@ -135,7 +155,7 @@ class Franka(Robot, object):
         def get_duration(here, there):
             dist = ((here.translation - there.translation)**2).sum()**.5
             duration = dist *  10#5 # 1cm=.1s 1m=10s
-            duration = max(0.2, duration) # Don't go toooo fast
+            duration = max(0.4, duration) # Don't go toooo fast
             duration = float(duration)
             return duration, dist
 
@@ -204,6 +224,7 @@ class Franka(Robot, object):
             cartesian_impedances=(np.array(FC.DEFAULT_TRANSLATIONAL_STIFFNESSES)*stiffness_factor).tolist() + FC.DEFAULT_ROTATIONAL_STIFFNESSES,
             ignore_virtual_walls=True,
         )
+        abs_diffs = []
         try:
             init_time = rospy.Time.now().to_time()
             for i in range(2, len(pose_trajs)):
@@ -235,8 +256,15 @@ class Franka(Robot, object):
                 # if i%100==0:
                 #     print(self.fa.get_pose().translation[-1] - pose_trajs[i].translation[-1], 
                 #         '\t', self.fa.get_pose().translation[-1], '\t', pose_trajs[i].translation[-1])
+                if i%10 == 0:
+                    abs_diff = sum((self.fa.get_pose().translation-pose_trajs[i].translation)**2)**0.5 * 100
+                    # print(abs_diff, 'cm')
+                    abs_diffs.append(abs_diff)
+                    # print(self.fa.get_pose().translation[-1] - pose_trajs[i].translation[-1], 
+                    #     '\t', self.fa.get_pose().translation[-1], '\t', pose_trajs[i].translation[-1])
         except Exception as e:
             print('unable to execute skill', e)
+        print(max(abs_diffs), sum(abs_diffs)/len(abs_diffs), '\t', time.time() - start)
         # Stop the skill
         self.fa.stop_skill()
         
@@ -250,6 +278,6 @@ class SimulatedRobot(Robot, object):
     def good_night_robot(self):
         pass
 
-    def go_to_cartesian_pose(self, position, orientation, precise):
+    def go_to_cartesian_pose(self, position, orientation):
         pass
 
