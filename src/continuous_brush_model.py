@@ -36,8 +36,8 @@ if not torch.cuda.is_available():
     print('Using CPU..... good luck')
 
 def special_sigmoid(x):
-    # return 1/(1+torch.exp(-1.*((x*2-1)+0.2) / 0.05))
-    return x
+    return 1/(1+torch.exp(-1.*((x*2-1)+0.2) / 0.05))
+    # return x
 
     # x[x < 0.1] = 1/(1+torch.exp(-1.*((x[x < 0.1]*2-1)+0.2) / 0.05))
     # return x
@@ -277,26 +277,28 @@ class FillInParametersToImage(nn.Module):
         x = self.res2(self.conv((self.main(x).view(-1, 1, self.size_y, self.size_x))))[:,0]
         return x
 
-
-def shift_invariant_loss(pred, real, n=6):
+l1_loss = nn.L1Loss()
+def shift_invariant_loss(pred, real, n=8, delta=0.15):
     losses = None
-    for dx in torch.linspace(start=-0.05, end=0.05, steps=n):
-        for dy in torch.linspace(start=-0.05, end=0.05, steps=n):
+    for dx in torch.linspace(start=-1.0*delta, end=delta, steps=n):
+        for dy in torch.linspace(start=-1.0*delta, end=delta, steps=n):
             x = int(dx*real.shape[2])
             y = int(dy*real.shape[1])
             # Translate the real stroke slightly
-            translated_real = affine(real, angle=0, translate=(x, y), fill=0, scale=1.0, shear=0)
-            
+            translated_pred  = affine(pred, angle=0, translate=(x, y), fill=0, scale=1.0, shear=0)
+
             # L2
-            diff = (pred - translated_real)**2
+            diff = (translated_pred - real)**2
             l = diff.mean(dim=(1,2))
             
             losses = l[None,:] if losses is None else torch.cat([losses, l[None,:]], dim=0)
 
     # Only use the loss from the shift that gave the least loss value
-    loss, _ = torch.min(losses, dim=0)
-
-    return loss.mean()
+    loss, inds = torch.min(losses, dim=0)
+    # from scipy import stats
+    # mode = stats.mode(inds.cpu().numpy())
+    # print(mode, mode.mode, mode.count)
+    return loss.mean() + l1_loss(pred, real)
 
 def train_param2stroke(opt, is_brush_stroke=True):
     with gzip.GzipFile(os.path.join(opt.cache_dir, 
@@ -373,7 +375,7 @@ def train_param2stroke(opt, is_brush_stroke=True):
         trans = trans.to(device)
         print('# parameters in Param2Image model:', get_n_params(trans))
         optim = torch.optim.Adam(trans.parameters(), lr=1e-3)#, weight_decay=1e-5)
-        best_model = None
+        best_model = copy.deepcopy(trans)
         best_val_loss = 99999
         best_hasnt_changed_for = 0
 
@@ -425,23 +427,48 @@ def train_param2stroke(opt, is_brush_stroke=True):
         if model_ind == 0:
             if is_brush_stroke:
                 with torch.no_grad():
+                    def draw_grid(image, line_space_x=20, line_space_y=20):
+                        H, W = image.shape
+                        image[0:H:line_space_x] = 0
+                        image[:, 0:W:line_space_y] = 0
+                        return image
                     best_model.eval()
                     pred_strokes_val = best_model(val_trajectories)
+                    real_imgs, pred_imgs = None, None
                     for val_ind in range(min(n_view,len(val_strokes))):
-                        # print(val_trajectories[val_ind])
                         b, l, z, alpha = val_trajectories[val_ind][5], val_trajectories[val_ind][12], val_trajectories[val_ind][6], val_trajectories[val_ind][-1]
-                        log_images([process_img(1-val_strokes[val_ind]),
-                            process_img(1-special_sigmoid(pred_strokes_val[val_ind]))], 
-                            ['real','sim'], 'images_stroke_modeling_stroke/val_{}_sim_stroke_best_b{:.2f}_l{:.2f}_z{:.2f}_alph{:.2f}'.format(
-                                        val_ind, b, l, z, alpha), opt.writer)
+                        # log_images([process_img(1-val_strokes[val_ind]),
+                        #     process_img(1-special_sigmoid(pred_strokes_val[val_ind]))], 
+                        #     ['real','sim'], 'images_stroke_modeling_stroke/val_{}_sim_stroke_best_b{:.2f}_l{:.2f}_z{:.2f}_alph{:.2f}'.format(
+                        #                 val_ind, b, l, z, alpha), opt.writer)
+                        pred_img = draw_grid(1-special_sigmoid(pred_strokes_val[val_ind]))
+                        real_img = draw_grid(1-val_strokes[val_ind])
+                        real_imgs = real_img if real_imgs is None else torch.cat([real_imgs, real_img], dim=0)
+                        pred_imgs = pred_img if pred_imgs is None else torch.cat([pred_imgs, pred_img], dim=0)
+                    real_imgs[:,:5] = 0
+                    pred_imgs[:,:5] = 0
+                    whole_img = torch.cat([real_imgs, pred_imgs], dim=1)
+                    # whole_img = draw_grid(whole_img)
+                    opt.writer.add_image('images_stroke_modeling_stroke/val', process_img(whole_img), 0)
+
 
                     pred_strokes_train = best_model(train_trajectories)
+                    real_imgs, pred_imgs = None, None
                     for train_ind in range(min(n_view,len(train_strokes))):
                         b, l, z, alpha = train_trajectories[train_ind][5], train_trajectories[train_ind][12], train_trajectories[train_ind][6], train_trajectories[train_ind][-1]
-                        log_images([process_img(1-train_strokes[train_ind]),
-                            process_img(1-special_sigmoid(pred_strokes_train[train_ind]))], 
-                            ['real','sim'], 'images_stroke_modeling_stroke/train_{}_sim_stroke_best_b{:.2f}_l{:.2f}_z{:.2f}_alph{:.2f}'.format(
-                                        train_ind, b, l, z, alpha), opt.writer)
+                        # log_images([process_img(1-train_strokes[train_ind]),
+                        #     process_img(1-special_sigmoid(pred_strokes_train[train_ind]))], 
+                        #     ['real','sim'], 'images_stroke_modeling_stroke/train_{}_sim_stroke_best_b{:.2f}_l{:.2f}_z{:.2f}_alph{:.2f}'.format(
+                        #                 train_ind, b, l, z, alpha), opt.writer)
+                        pred_img = draw_grid(1-special_sigmoid(pred_strokes_train[train_ind]))
+                        real_img = draw_grid(1-train_strokes[train_ind])
+                        real_imgs = real_img if real_imgs is None else torch.cat([real_imgs, real_img], dim=0)
+                        pred_imgs = pred_img if pred_imgs is None else torch.cat([pred_imgs, pred_img], dim=0)
+                    real_imgs[:,:5] = 0
+                    pred_imgs[:,:5] = 0
+                    whole_img = torch.cat([real_imgs, pred_imgs], dim=1)
+                    # whole_img = draw_grid(whole_img)
+                    opt.writer.add_image('images_stroke_modeling_stroke/train', process_img(whole_img), 0)
             else:
                 with torch.no_grad():
                     best_model.eval()
