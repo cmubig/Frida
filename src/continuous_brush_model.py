@@ -22,6 +22,7 @@ import copy
 import gzip
 # import kornia as K
 # import datetime
+from torchvision.transforms.functional import affine
 
 from options import Options
 from my_tensorboard import TensorBoard
@@ -83,42 +84,48 @@ def process_img(img):
 def log_all_permutations(model, writer):
     # Length v Bend
     n_img = 5
-    lengths = torch.linspace(opt.MIN_STROKE_LENGTH, opt.MAX_STROKE_LENGTH, steps=n_img)#torch.arange(n_img)/(n_img-1)*(opt.MAX_STROKE_LENGTH-opt.MIN_STROKE_LENGTH) + opt.MIN_STROKE_LENGTH
-    bends = torch.linspace(-1.0*opt.MAX_BEND, opt.MAX_BEND, steps=n_img)#torch.arange(n_img)/(n_img-1)*(2*opt.MAX_BEND) - opt.MAX_BEND
-    zs = torch.linspace(opt.MIN_STROKE_Z, 1.0, steps=n_img)#torch.arange(n_img)/(n_img-1)
+    lengths = torch.linspace(opt.MIN_STROKE_LENGTH, opt.MAX_STROKE_LENGTH, steps=n_img)
+    bends = torch.linspace(-1.0*opt.MAX_BEND, opt.MAX_BEND, steps=n_img)
+    zs = torch.linspace(opt.MIN_STROKE_Z, 1.0, steps=n_img)
     alphas = torch.linspace(-1.*opt.MAX_ALPHA, opt.MAX_ALPHA, steps=n_img)
 
-    fig, ax = plt.subplots(n_img, n_img, figsize=(10,12))
 
+    whole_thing = []
     for i in range(n_img):
+        row = []
         for j in range(n_img):
             trajectory = to_full_param(lengths[i], bends[j], 0.5)
             s = 1-model(trajectory)
             # print(s.shape)
             s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
-
-            ax[i,j].imshow(s, cmap='gray')
-            ax[i,j].set_xticks([])
-            ax[i,j].set_yticks([])
+            row.append(s)
+        whole_thing.append(np.concatenate(row, axis=1))
+    whole_thing = np.concatenate(whole_thing, axis=0)
+    fig, ax = plt.subplots(1, 1, figsize=(10,12))    
+    ax.imshow(whole_thing, cmap='gray')
+    ax.set_xticks([])
+    ax.set_yticks([])
     fig.tight_layout()
-    # plt.show()
-    writer.add_figure('images_stroke_modeling/stroke_modelling_bend_vs_length', fig, 0)
+    writer.add_figure('images_stroke_modeling/bend_vs_length', fig, 0)
 
-    fig, ax = plt.subplots(n_img, n_img, figsize=(10,12))
 
+    whole_thing = []
     for i in range(n_img):
+        row = []
         for j in range(n_img):
             trajectory = to_full_param(lengths[i], 0.0, zs[j])
             s = 1-model(trajectory)
             # print(s.shape)
             s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
-
-            ax[i,j].imshow(s, cmap='gray')
-            ax[i,j].set_xticks([])
-            ax[i,j].set_yticks([])
+            row.append(s)
+        whole_thing.append(np.concatenate(row, axis=1))
+    whole_thing = np.concatenate(whole_thing, axis=0)
+    fig, ax = plt.subplots(1, 1, figsize=(10,12))    
+    ax.imshow(whole_thing, cmap='gray')
+    ax.set_xticks([])
+    ax.set_yticks([])
     fig.tight_layout()
-    writer.add_figure('images_stroke_modeling/stroke_modelling_thickness_vs_length', fig, 0)
-    # plt.show()
+    writer.add_figure('images_stroke_modeling/thickness_vs_length', fig, 0)
 
     whole_thing = []
     for i in range(n_img):
@@ -138,106 +145,6 @@ def log_all_permutations(model, writer):
     fig.tight_layout()
     writer.add_figure('images_stroke_modeling/length_vs_alpha', fig, 0)
 
-    img_fig = None
-    for i in range(n_img):
-        trajectory = to_full_param(.05, 0.0, zs[i])
-        s = 1-model(trajectory)
-        # print(s.shape)
-        s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
-        s = np.pad(s, (3), 'constant', constant_values=(1.))
-        if img_fig is None:
-            img_fig = s 
-        else:
-            img_fig = np.concatenate([img_fig, s], axis=1)
-    plt.figure(figsize=(19,3))
-    plt.imshow(img_fig, cmap='gray')
-    plt.xticks([])
-    plt.yticks([])
-    plt.tight_layout()
-    plt.savefig('thickness.png')
-    # plt.show()
-
-    img_fig = None
-    for i in range(n_img):
-        trajectory = to_full_param(.05, bends[i], .5)
-        s = 1-model(trajectory)
-        # print(s.shape)
-        s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
-        s = np.pad(s, (3), 'constant', constant_values=(1.))
-        if img_fig is None:
-            img_fig = s 
-        else:
-            img_fig = np.concatenate([img_fig, s], axis=1)
-    plt.figure(figsize=(19,3))
-    plt.imshow(img_fig, cmap='gray')
-    plt.xticks([])
-    plt.yticks([])
-    plt.tight_layout()
-    plt.savefig('bends.png')
-    # plt.show()
-
-    img_fig = None
-    for i in range(n_img):
-        trajectory = to_full_param(lengths[i], 0, .5)
-        s = 1-model(trajectory)
-        # print(s.shape)
-        s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
-        s = np.pad(s, (3), 'constant', constant_values=(1.))
-        if img_fig is None:
-            img_fig = s 
-        else:
-            img_fig = np.concatenate([img_fig, s], axis=1)
-    plt.figure(figsize=(19,3))
-    plt.imshow(img_fig, cmap='gray')
-    plt.xticks([])
-    plt.yticks([])
-    plt.tight_layout()
-    plt.savefig('lengths.png')
-    # plt.show()
-
-    # fig, ax = plt.subplots(1, n_img, figsize=(12,1))
-    # for i in range(n_img):
-    #     trajectory = to_full_param(.04, 0.0, zs[i])
-    #     s = 1-model(trajectory)
-    #     # print(s.shape)
-    #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
-
-        
-
-    #     ax[i].imshow(s, cmap='gray')
-    #     ax[i].set_xticks([])
-    #     ax[i].set_yticks([])
-    # fig.tight_layout()
-    # plt.show()
-    # writer.add_figure('images_stroke_modeling/stroke_modelling_thickness', fig, 0)
-
-    # fig, ax = plt.subplots(1, n_img, figsize=(12,1))
-    # for i in range(n_img):
-    #     trajectory = to_full_param(.04, bends[i], .5)
-    #     s = 1-model(trajectory)
-    #     # print(s.shape)
-    #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
-
-    #     ax[i].imshow(s, cmap='gray')
-    #     ax[i].set_xticks([])
-    #     ax[i].set_yticks([])
-    # fig.tight_layout()
-    # plt.show()
-    # writer.add_figure('images_stroke_modeling/stroke_modelling_bend', fig, 0)
-
-    # fig, ax = plt.subplots(1, n_img, figsize=(12,1))
-    # for i in range(n_img):
-    #     trajectory = to_full_param(lengths[i], 0, .5)
-    #     s = 1-model(trajectory)
-    #     # print(s.shape)
-    #     s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
-
-    #     ax[i].imshow(s, cmap='gray')
-    #     ax[i].set_xticks([])
-    #     ax[i].set_yticks([])
-    # fig.tight_layout()
-    # plt.show()
-    # writer.add_figure('images_stroke_modeling/stroke_modelling_length', fig, 0)
 
 
 def log_images(imgs, labels, label, writer, step=0):
@@ -371,31 +278,25 @@ class FillInParametersToImage(nn.Module):
         return x
 
 
+def shift_invariant_loss(pred, real, n=6):
+    losses = None
+    for dx in torch.linspace(start=-0.05, end=0.05, steps=n):
+        for dy in torch.linspace(start=-0.05, end=0.05, steps=n):
+            x = int(dx*real.shape[2])
+            y = int(dy*real.shape[1])
+            # Translate the real stroke slightly
+            translated_real = affine(real, angle=0, translate=(x, y), fill=0, scale=1.0, shear=0)
+            
+            # L2
+            diff = (pred - translated_real)**2
+            l = diff.mean(dim=(1,2))
+            
+            losses = l[None,:] if losses is None else torch.cat([losses, l[None,:]], dim=0)
 
-loss_fcn = nn.L1Loss()
-loss_fcn = nn.MSELoss()
-def custom_loss(pred, real):
-    # Weighted difference by where the stroke is present
-    # Guides model to make bigger strokes because it cares less about non-stroke regions
-    diff = (pred - real)**2#torch.abs(pred - real)
-    loss = (torch.abs(real)+2e-2) * diff
-    # loss = (torch.abs(real)+.1) * diff
-    # loss = diff
-    weight_loss = (pred.mean(dim=[1,2]) - real.mean(dim=[1,2])).abs().mean()
-    return loss.mean() + weight_loss*0.2# + (pred.mean() - real.mean())**2
-import torchvision
-blur = torchvision.transforms.GaussianBlur(11, sigma=5)
-# def custom_loss(pred, real):
-#     # Weighted difference by where the stroke is present
-#     # Guides model to make bigger strokes because it cares less about non-stroke regions
-#     diff = (blur(pred) - blur(real))**2#torch.abs(pred - real)
-#     diff += (pred - real)**2
-#     # loss = (torch.abs(real)+2e-2) * diff
-#     loss = (torch.abs(blur(real))+2e-2) * diff
-#     # loss = diff
-#     weight_loss = (pred.mean(dim=[1,2]) - real.mean(dim=[1,2])).abs().mean()
-#     return loss.mean() + weight_loss*0.2# + (pred.mean() - real.mean())**2
-loss_fcn = custom_loss
+    # Only use the loss from the shift that gave the least loss value
+    loss, _ = torch.min(losses, dim=0)
+
+    return loss.mean()
 
 def train_param2stroke(opt, is_brush_stroke=True):
     with gzip.GzipFile(os.path.join(opt.cache_dir, 
@@ -496,7 +397,7 @@ def train_param2stroke(opt, is_brush_stroke=True):
             noise = torch.randn(train_trajectories.shape).to(device)*0#*0.001 # For robustness
             pred_strokes = trans(train_trajectories + noise)
 
-            loss = loss_fcn(pred_strokes, train_strokes)
+            loss = shift_invariant_loss(pred_strokes, train_strokes)
             # loss = nn.MSELoss()(pred_strokes, train_strokes) # MSE loss produces crisper stroke images
 
             ep_loss = loss.item()
@@ -510,7 +411,8 @@ def train_param2stroke(opt, is_brush_stroke=True):
                 with torch.no_grad():
                     trans.eval()
                     pred_strokes_val = trans(val_trajectories)
-                    loss = loss_fcn(pred_strokes_val, val_strokes)
+
+                    loss = shift_invariant_loss(pred_strokes_val, val_strokes)
                     if it % 15 == 0: 
                         opt.writer.add_scalar('loss/val_loss_stroke_model', loss.item(), it)
                     if loss.item() < best_val_loss and it > 50:
@@ -536,7 +438,7 @@ def train_param2stroke(opt, is_brush_stroke=True):
                     pred_strokes_train = best_model(train_trajectories)
                     for train_ind in range(min(n_view,len(train_strokes))):
                         b, l, z, alpha = train_trajectories[train_ind][5], train_trajectories[train_ind][12], train_trajectories[train_ind][6], train_trajectories[train_ind][-1]
-                        log_images([process_img(1-blur(train_strokes)[train_ind]),
+                        log_images([process_img(1-train_strokes[train_ind]),
                             process_img(1-special_sigmoid(pred_strokes_train[train_ind]))], 
                             ['real','sim'], 'images_stroke_modeling_stroke/train_{}_sim_stroke_best_b{:.2f}_l{:.2f}_z{:.2f}_alph{:.2f}'.format(
                                         train_ind, b, l, z, alpha), opt.writer)
