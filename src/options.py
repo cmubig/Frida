@@ -27,6 +27,8 @@ class Options(object):
         self.CANVAS_HEIGHT = 0.2794 -0.001# 11"
         # self.CANVAS_WIDTH  = 0.5080 # 20"
         # self.CANVAS_HEIGHT = 0.4064 # 16"
+        # self.CANVAS_WIDTH  = 0.1524# 6"
+        # self.CANVAS_HEIGHT = 0.1524# 6"
 
 
         self.CANVAS_WIDTH_PIX  = None # set these after taking a picture
@@ -157,20 +159,40 @@ class Options(object):
 
         # parser.add_argument('--sd_version', type=str, default='2.0', choices=['1.5', '2.0'], help="stable diffusion version")
 
+        # Controlnet Parameters
+
+        parser.add_argument("--controlnet_dataset", type=str,
+            default="laion/laion-art", help='A dataset for training controlnet')
+        parser.add_argument("--output_parent_dir", type=str,
+            help='Where to save the data. Can continue if partially complete.')
+        parser.add_argument("--removal_method", type=str,
+            default='random',
+            help='how to make partial sketchs. [random|salience]')
+        parser.add_argument("--max_images", type=int,
+            default=20000, help='A dataset for training controlnet')
+        parser.add_argument("--max_strokes_added", type=int,
+            default=200, help='Final amount of strokes')
+        parser.add_argument("--min_strokes_added", type=int,
+            default=100, help='Amount of strokes in the partial sketch')
+        parser.add_argument("--num_images_to_consider_for_simplicity", type=int,
+            default=3, help='Load this many images and take the one with fewest edges for simplicity.')
+        parser.add_argument("--n_iters", type=int,
+            default=300, help='Number of optimization iterations.')
+
         return parser 
 
     def gather_options(self):
         if not self.initialized:
-            parser = argparse.ArgumentParser(description="FRIDA Robot Painter")
-            parser = self.initialize(parser)
+            self.parser = argparse.ArgumentParser(description="FRIDA Robot Painter")
+            self.parser = self.initialize(self.parser)
 
-        self.opt = vars(parser.parse_args())
+        self.opt = vars(self.parser.parse_args())
 
         if not self.simulate and self.brush_length is None:
             print('Must specify --brush_length cmd line param. Measure the brush length.')
 
         if self.ink:
-            self.MAX_STROKE_LENGTH = 0.02
+            self.MAX_STROKE_LENGTH = 0.03
             self.MAX_BEND = 0.01 #1cm
 
 
