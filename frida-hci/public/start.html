@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Frida SIM</title>
+    <link rel="stylesheet" type="text/css" href="css/codepen.css">
+    <link rel="stylesheet" type="text/css" href="css/fontawesome/css/all.css">
+    <link rel="stylesheet" type="text/css" href="css/canvas.css">
+    <link rel="stylesheet" type="text/css" href="css/start.css">
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>  
+    <script src="js/canvas.js"></script>
+</head>
+
+<body>
+    <div class="page">
+        <div class="lines">
+            <div class="line1"></div>
+            <div class="line2"></div>
+            <div class="line3"></div>
+            <div class="line4"></div>
+            <div class="line5"></div>
+        </div>
+
+        <div class="container">
+            <div id="frida-header" class="HoverButton">
+                <div class="bg"></div>
+                <h1>Frida HCI</h1>
+            </div>
+
+            <div class="canvas-container">
+                <div class="nav">
+                    <button id="reset-canvas" class="button" onclick="canvasreset();"><i class="fa-solid fa-eraser"></i> reset canvas</button>
+                    <form onsubmit="return start(event);">
+                        <textarea placeholder="A little girl in a field of poppies." type="text" id="prompt"></textarea>
+                        <input type="submit" value="manifest">
+                    </form>
+                </div>
+                <canvas id="canvas">
+                </canvas>
+            </div>
+            <section id="image-section">
+                <div class="image-container" onclick="select(1);">
+                    <img id="img-v1" onerror="this.style.display='none'">
+                    <span class="animation">
+                        <span class='loader-dot' style='--i:0'></span>
+                        <span class='loader-dot' style='--i:-1'></span>
+                        <span class='loader-dot' style='--i:-2'></span>
+                        <span class='loader-dot' style='--i:-3'></span>
+                        <span class='loader-dot' style='--i:-4'></span>
+                        <span class='loader-dot' style='--i:-5'></span>
+                        <span class='loader-dot' style='--i:-6'></span>
+                        <span class='loader-dot' style='--i:-7'></span>
+                        <span class='loader-dot' style='--i:-8'></span>
+                        <span class='loader-dot' style='--i:-9'></span>
+                        <span class='loader-dot' style='--i:-10'></span>
+                        <span class='loader-dot' style='--i:-11'></span>
+                        <span class='loader-dot' style='--i:-12'></span>
+                        <span class='loader-dot' style='--i:-13'></span>
+                        <span class='loader-dot' style='--i:-14'></span>
+                        <span class='loader-dot' style='--i:-15'></span>
+                    </span>
+                </div>
+                <div class="image-container" onclick="select(2);">
+                    <img id="img-v2">
+                    <span class="animation">
+                        <span class='loader-dot' style='--i:0'></span>
+                        <span class='loader-dot' style='--i:-1'></span>
+                        <span class='loader-dot' style='--i:-2'></span>
+                        <span class='loader-dot' style='--i:-3'></span>
+                        <span class='loader-dot' style='--i:-4'></span>
+                        <span class='loader-dot' style='--i:-5'></span>
+                        <span class='loader-dot' style='--i:-6'></span>
+                        <span class='loader-dot' style='--i:-7'></span>
+                        <span class='loader-dot' style='--i:-8'></span>
+                        <span class='loader-dot' style='--i:-9'></span>
+                        <span class='loader-dot' style='--i:-10'></span>
+                        <span class='loader-dot' style='--i:-11'></span>
+                        <span class='loader-dot' style='--i:-12'></span>
+                        <span class='loader-dot' style='--i:-13'></span>
+                        <span class='loader-dot' style='--i:-14'></span>
+                        <span class='loader-dot' style='--i:-15'></span>
+                    </span>
+                </div>
+                <div class="image-container">
+                    <img id="img-v3" onclick="select(3);">
+                    <span class="animation">
+                        <span class='loader-dot' style='--i:0'></span>
+                        <span class='loader-dot' style='--i:-1'></span>
+                        <span class='loader-dot' style='--i:-2'></span>
+                        <span class='loader-dot' style='--i:-3'></span>
+                        <span class='loader-dot' style='--i:-4'></span>
+                        <span class='loader-dot' style='--i:-5'></span>
+                        <span class='loader-dot' style='--i:-6'></span>
+                        <span class='loader-dot' style='--i:-7'></span>
+                        <span class='loader-dot' style='--i:-8'></span>
+                        <span class='loader-dot' style='--i:-9'></span>
+                        <span class='loader-dot' style='--i:-10'></span>
+                        <span class='loader-dot' style='--i:-11'></span>
+                        <span class='loader-dot' style='--i:-12'></span>
+                        <span class='loader-dot' style='--i:-13'></span>
+                        <span class='loader-dot' style='--i:-14'></span>
+                        <span class='loader-dot' style='--i:-15'></span>
+                    </span>
+                </div>
+                <div class="image-container">
+                    <img id="img-v4" onclick="select(4);">
+                    <span class="animation">
+                        <span class='loader-dot' style='--i:0'></span>
+                        <span class='loader-dot' style='--i:-1'></span>
+                        <span class='loader-dot' style='--i:-2'></span>
+                        <span class='loader-dot' style='--i:-3'></span>
+                        <span class='loader-dot' style='--i:-4'></span>
+                        <span class='loader-dot' style='--i:-5'></span>
+                        <span class='loader-dot' style='--i:-6'></span>
+                        <span class='loader-dot' style='--i:-7'></span>
+                        <span class='loader-dot' style='--i:-8'></span>
+                        <span class='loader-dot' style='--i:-9'></span>
+                        <span class='loader-dot' style='--i:-10'></span>
+                        <span class='loader-dot' style='--i:-11'></span>
+                        <span class='loader-dot' style='--i:-12'></span>
+                        <span class='loader-dot' style='--i:-13'></span>
+                        <span class='loader-dot' style='--i:-14'></span>
+                        <span class='loader-dot' style='--i:-15'></span>
+                    </span>
+                </div>
+            </section>
+            </div>
+        </div>
+
+    </div>
+    <div id="cursor" class="Cursor">
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/2.0.1/TweenMax.min.js"></script>
+    <script src="js/codepen.js"></script>
+    <script src="js/start.js"></script>
+</body>
+
+</html>
