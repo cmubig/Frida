@@ -27,8 +27,6 @@ class Options(object):
         self.CANVAS_HEIGHT = 0.2794 -0.001# 11"
         # self.CANVAS_WIDTH  = 0.5080 # 20"
         # self.CANVAS_HEIGHT = 0.4064 # 16"
-        # self.CANVAS_WIDTH  = 0.1524# 6"
-        # self.CANVAS_HEIGHT = 0.1524# 6"
 
 
         self.CANVAS_WIDTH_PIX  = None # set these after taking a picture
@@ -79,7 +77,7 @@ class Options(object):
         self.num_fill_in_papers = 1
 
     def initialize(self, parser):
-        parser.add_argument('--use_cache', action='store_true')
+        parser.add_argument('--use_cache', action='store_true', default=False)
         parser.add_argument('--dont_plan', action='store_true', help='Use saved plan from last run')
         # parser.add_argument('--discrete', action='store_true')
         parser.add_argument('--diffvg', action='store_true')
@@ -103,35 +101,37 @@ class Options(object):
         parser.add_argument('--brush_length', type=float, default=None)
 
 
-        parser.add_argument('--num_strokes', type=int, default=400)
-        parser.add_argument('--n_stroke_models', type=int, default=5)
+        parser.add_argument('--num_strokes', type=int, default=200)
+        parser.add_argument('--n_stroke_models', type=int, default=1)
         parser.add_argument('--fill_weight', type=float, default=0.5)
 
         parser.add_argument('--adaptive', action='store_true')
         parser.add_argument('--generate_whole_plan', action='store_true')
-        parser.add_argument('--strokes_before_adapting', type=int, default=100)
-        parser.add_argument('--remove_prop', type=float, default=0.8, help="Proportion of strokes to remove when adapting")
+        parser.add_argument('--strokes_before_adapting', type=int, default=0)
+        parser.add_argument('--remove_prop', type=float, default=1, help="Proportion of strokes to remove when adapting")
 
         parser.add_argument('--adapt_optim_iter', type=int, default=30)
+        parser.add_argument('--adapt_num_strokes', type=int, default=30)
 
         # parser.add_argument('--type', default='cubic_bezier', type=str, help='Type of instructions: [cubic_bezier | bezier]')
         # parser.add_argument('--continue_ind', default=0, type=int, help='Instruction to start from. Default 0.')
-        parser.add_argument('--simulate', action='store_true')
+        parser.add_argument('--simulate', action='store_true', default=True)
 
 
 
-        parser.add_argument('--objective', nargs='*', type=str, help='text|style|clip_conv_loss|l2|clip_fc_loss')
+        parser.add_argument('--objective', nargs='*', type=str, help='text|style|clip_conv_loss|l2|clip_fc_loss',
+                            default=['clip_conv_loss'])
         parser.add_argument('--objective_data', nargs='*', type=str)
-        parser.add_argument('--objective_weight', nargs='*', type=float, default=1.0)
-        parser.add_argument('--optim_iter', type=int, default=150)
-        parser.add_argument('--lr_multiplier', type=float, default=0.2)
+        parser.add_argument('--objective_weight', nargs='*', type=float, default=[1.0])
+        parser.add_argument('--optim_iter', type=int, default=500)
+        parser.add_argument('--lr_multiplier', type=float, default=0.8)
         parser.add_argument('--init_lr', type=float, default=3e-2, help="learning rate for initial objective")
 
         parser.add_argument('--init_objective', nargs='*', type=str, help='text|style|clip_conv_loss|l2|clip_fc_loss')
         parser.add_argument('--init_objective_data', nargs='*', type=str)
         parser.add_argument('--init_objective_weight', nargs='*', type=float, default=1.0)
         parser.add_argument('--init_optim_iter', type=int, default=40)
-        parser.add_argument('--n_inits', type=int, default=5, help='Number of times to try different initializations')
+        parser.add_argument('--n_inits', type=int, default=0, help='Number of times to try different initializations')
 
         parser.add_argument('--intermediate_optim_iter', type=int, default=40)
         parser.add_argument('--use_colors_from', type=str, default=None, help="Get the colors from this image. \
@@ -141,7 +141,7 @@ class Options(object):
         parser.add_argument('--bin_size', type=int, default=3000)
 
         parser.add_argument('--plan_gif_dir', type=str, default='/home/frida/Videos/frida/')
-        parser.add_argument('--log_frequency', type=int, default=5)
+        parser.add_argument('--log_frequency', type=int, default=500)
 
         parser.add_argument("--output_dir", type=str, default="../outputs/", help='Where to write output to.')
 
@@ -152,51 +152,27 @@ class Options(object):
 
 
 
-        parser.add_argument('--ink', action='store_true')
+        parser.add_argument('--ink', action='store_true', default=True)
         parser.add_argument('--paint_from_image', action='store_true')
         parser.add_argument("--caption", type=str,
             default=None, help='A caption of the image you\'re trying to paint')
 
         # parser.add_argument('--sd_version', type=str, default='2.0', choices=['1.5', '2.0'], help="stable diffusion version")
 
-        # Controlnet Parameters
-
-        parser.add_argument("--controlnet_dataset", type=str,
-            default="laion/laion-art", help='A dataset for training controlnet')
-        parser.add_argument("--output_parent_dir", type=str,
-            help='Where to save the data. Can continue if partially complete.')
-        parser.add_argument("--removal_method", type=str,
-            default='random',
-            help='how to make partial sketchs. [random|salience]')
-        parser.add_argument("--max_images", type=int,
-            default=20000, help='A dataset for training controlnet')
-        parser.add_argument("--max_strokes_added", type=int,
-            default=200, help='Final amount of strokes')
-        parser.add_argument("--min_strokes_added", type=int,
-            default=100, help='Amount of strokes in the partial sketch')
-        parser.add_argument("--num_images_to_consider_for_simplicity", type=int,
-            default=3, help='Load this many images and take the one with fewest edges for simplicity.')
-        parser.add_argument("--n_iters", type=int,
-            default=300, help='Number of optimization iterations.')
-        
-        ### Argument is not used, but is allowed for flask compatability ###
-        parser.add_argument("--app", type=str, nargs='*',
-            default="app run", help='Argument is not used, but is allowed for flask compatability')
-
         return parser 
 
     def gather_options(self):
         if not self.initialized:
-            self.parser = argparse.ArgumentParser(description="FRIDA Robot Painter")
-            self.parser = self.initialize(self.parser)
+            parser = argparse.ArgumentParser(description="FRIDA Robot Painter")
+            parser = self.initialize(parser)
 
-        self.opt = vars(self.parser.parse_args())
+        self.opt = vars(parser.parse_args(args=[]))
 
         if not self.simulate and self.brush_length is None:
             print('Must specify --brush_length cmd line param. Measure the brush length.')
 
         if self.ink:
-            self.MAX_STROKE_LENGTH = 0.03
+            self.MAX_STROKE_LENGTH = 0.02
             self.MAX_BEND = 0.01 #1cm
 
 
