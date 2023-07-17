@@ -1,0 +1,23 @@
+.canvas-container {
+    display: flex;
+    margin: auto;
+    width: 50%;
+    min-width: 1000px;
+
+    justify-content: space-between;
+  }
+
+canvas {
+    display: block;
+    background-color: white;
+    width: 400px;
+    height: 400px;
+    margin: auto;
+
+    border: 1px solid #ee3d3d;
+    box-shadow: 0 10px 10px 5px #ee3d3d14;
+
+    opacity: 0;
+
+    transition: opacity 0.3s;
+}

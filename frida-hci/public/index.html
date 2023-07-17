@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Frida SIM</title>
+    <link rel="stylesheet" type="text/css" href="css/codepen.css">
+    <link rel="stylesheet" type="text/css" href="css/canvas.css">
+    <link rel="stylesheet" type="text/css" href="css/index.css">
+    <link rel="stylesheet" type="text/css" href="css/fontawesome/css/all.css">
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>  
+    <script src="js/canvas.js"></script>
+    <script src="js/index.js"></script>
+</head>
+
+<body>
+    <div class="page">
+        <div class="lines">
+            <div class="line1"></div>
+            <div class="line2"></div>
+            <div class="line3"></div>
+            <div class="line4"></div>
+            <div class="line5"></div>
+        </div>
+
+        <div class="container">
+            <div id="frida-header" class="HoverButton">
+                <div class="bg"></div>
+                <h1>Frida HCI</h1>
+            </div>
+            <div id='nav' class="flex">
+                <!-- <button class="button" onclick="window.location.href = '/start'"><i class="fa-solid fa-arrow-rotate-left"></i></button> -->
+                <button class="button" onclick="swap_task()"><i class="fa-solid fa-shuffle"></i> switch task</button>
+            </div>
+
+            <div class="canvas-container">
+                <div class="nav">
+                    <div id="prompt-container">
+                        <span style="font-weight: bold;padding-left: 2px;">I am drawing</span> 
+                        <textarea id="prompt" placeholder="..."></textarea>
+                    </div>
+                    <button id="reset-canvas" class="button" onclick="canvasreset(); reset_counter();"><i class="fa-solid fa-eraser"></i> reset canvas</button>
+                    <button class="button" onclick="export_canvas()"><i class="fa-solid fa-file-export"></i> export</button>
+                </div>
+                <canvas id="canvas">
+                </canvas>
+                <div class="nav">
+                    <button id='main-button' class="button start" onclick="manifest()"><i class="fa-solid fa-play"></i> start FRIDA</button>
+                    <div id="image-container" class="disabled">
+                        <img id="thumbnail" src="data/stable/start.jpg">
+                        <span class="animation">
+                            <span class='loader-dot' style='--i:0'></span>
+                            <span class='loader-dot' style='--i:-1'></span>
+                            <span class='loader-dot' style='--i:-2'></span>
+                            <span class='loader-dot' style='--i:-3'></span>
+                            <span class='loader-dot' style='--i:-4'></span>
+                            <span class='loader-dot' style='--i:-5'></span>
+                            <span class='loader-dot' style='--i:-6'></span>
+                            <span class='loader-dot' style='--i:-7'></span>
+                            <span class='loader-dot' style='--i:-8'></span>
+                            <span class='loader-dot' style='--i:-9'></span>
+                            <span class='loader-dot' style='--i:-10'></span>
+                            <span class='loader-dot' style='--i:-11'></span>
+                            <span class='loader-dot' style='--i:-12'></span>
+                            <span class='loader-dot' style='--i:-13'></span>
+                            <span class='loader-dot' style='--i:-14'></span>
+                            <span class='loader-dot' style='--i:-15'></span>
+                        </span>
+                    </div>
+                    <h5>Current strokes: [<span id="global-counter">0</span> / 196]</h5>
+                    <div id="progress">
+                        <i id='icon-thinking' class="fa-solid fa-brain"></i>
+                        <i id='icon-painting' class="fa-solid fa-paintbrush"></i>
+                        <div id="progress-bar"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <div id="cursor" class="Cursor">
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/2.0.1/TweenMax.min.js"></script>
+    <script src="js/codepen.js"></script>
+</body>
+
+</html>
