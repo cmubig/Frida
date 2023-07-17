@@ -1,0 +1,145 @@
+body input {
+    cursor: none !important;
+}
+
+canvas {
+  margin-top: 20px;
+}
+form {
+  margin-top: 200px;
+}
+
+textarea {
+    outline: none;
+    display: block;
+    margin: auto;
+    margin-top: 30px;
+    border: transparent solid 1px;
+    border-radius: 10px;
+    box-sizing: border-box;
+    padding: 10px 20px;
+    width: 100%;
+    max-width: 200px;
+    height: 100px;
+
+    font-size: 15px;
+
+    color: black;
+    resize: none;
+
+    transition: margin 0.3s;
+  }
+textarea::placeholder {
+    color: gray;
+  }
+textarea:focus {
+    border: #ee3d3d solid 1px;
+}
+
+input[type=submit], button {
+    position: relative;
+    z-index: 1;
+    margin: 20px auto;
+    width: 100%;
+
+    display: block;
+    padding: 8px 24px;
+    font-size: 16px;
+    color: #ffffff;
+    background-color: #9f9f9f;
+    border: none;
+    border-radius: 10px;
+    text-decoration: none;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    transform: skew(-5deg);
+    transition: background-color 0.3s, transform 0.3s, box-shadow 0.3s;
+  }
+  
+input[type=submit]:hover:not(:disabled), button:hover:not(:disabled) {
+    background-color: #ee3d3d;
+    box-shadow: 0 4px 6px #9e2c2c77;
+    transform: translateY(-2px) skew(-5deg);
+    cursor: none;
+}
+
+section {
+    display: grid;
+    width: max-content;
+    max-width: 500px;
+    max-height: 500px;
+    margin: 20px auto;
+
+    opacity: 0;
+
+    grid-template-columns: max-content max-content;
+    column-gap: 30px;
+    row-gap: 30px;
+
+    transition: opacity 1s;
+}
+
+section img {
+    position: relative;
+    background: white;
+    width: 200px;
+    height: 200px;
+
+    z-index: 0;
+}
+
+.image-container {
+    position: relative;
+    background-color: white;
+    height: 200px;
+
+    transition-property: transform box-shadow;
+    transition-duration: 0.3s;
+}
+.image-container:hover {
+    transform: translateY(-10px);
+    box-shadow:#ee3d3dcb 0 2px 5px 0;
+}
+.animation {
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    top: 50%;
+    left: 50%;
+
+    transform: translateX(-50%) translateY(-50%);
+}
+.loader {
+    position: relative;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+  }
+  
+  .loader-dot {
+    position: absolute;
+    width: inherit;
+    height: inherit;
+    transform: rotate(calc((360deg / 16) * var(--i)));
+  }
+  
+  .loader-dot::after {
+    content: '';
+    position: absolute;
+    width: 1rem;
+    height: 1rem;
+    background-color: black;
+    border-radius: 50%;
+    animation: load 1.6s linear infinite;
+    animation-delay: calc(0.2s * var(--i));
+  }
+  
+  @keyframes load {
+    0% {
+      transform: scale(0);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 0;
+    }
+  }
