@@ -79,6 +79,9 @@ class Options(object):
         self.num_fill_in_papers = 1
 
     def initialize(self, parser):
+        parser.add_argument("--robot", type=str,
+            default='franka', help='Which robot to use "franka" "xarm" or "sawyer"')
+
         parser.add_argument('--use_cache', action='store_true')
         parser.add_argument('--dont_plan', action='store_true', help='Use saved plan from last run')
         # parser.add_argument('--discrete', action='store_true')
@@ -198,6 +201,12 @@ class Options(object):
         if self.ink:
             self.MAX_STROKE_LENGTH = 0.03
             self.MAX_BEND = 0.01 #1cm
+        
+        if self.robot == 'xarm':
+            self.CANVAS_WIDTH  = 0.1524 # 6"
+            self.CANVAS_HEIGHT = 0.1524 # 6"
+            self.INIT_TABLE_Z = 0.2
+            self.CANVAS_POSITION = (0, 0.15)
 
 
     def __getattr__(self, attr_name):

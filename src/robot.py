@@ -33,6 +33,66 @@ class Robot:
     def go_to_cartesian_pose(self, positions, orientations, precise=False):
         raise Exception("This method must be implemented")
 
+class XArm(Robot, object):
+    '''
+        Low-level action functionality of the robot.
+        This is an abstract class, see its children for usage.
+    '''
+    def __init__(self, debug):
+        from xarm.wrapper import XArmAPI
+        self.debug_bool = debug
+
+        self.arm = XArmAPI('192.168.2.157')
+
+    def debug(self, msg):
+        if self.debug_bool:
+            print(msg)
+
+    def good_morning_robot(self):
+        self.arm.motion_enable(enable=True)
+        self.arm.reset(wait=True)
+        self.arm.set_mode(0)
+        self.arm.reset(wait=True)
+        self.arm.set_state(state=0)
+
+        self.arm.reset(wait=True)
+
+    def good_night_robot(self):
+        self.arm.disconnect()
+
+    def go_to_cartesian_pose(self, positions, orientations,
+            speed=200):
+        # positions in meters
+        positions, orientations = np.array(positions), np.array(orientations)
+        if len(positions.shape) == 1:
+            positions = positions[None,:]
+            orientations = orientations[None,:]
+        for i in range(len(positions)):
+            x,y,z = positions[i][1], positions[i][0], positions[i][2]
+            x,y,z = x*1000, y*-1000, z*1000 #m to mm
+            q = orientations[i]
+            from strokes import euler_from_quaternion
+            euler= euler_from_quaternion(q[0], q[1], q[2], q[3])#quaternion.as_quat_array(orientations[i])
+            roll, pitch, yaw = 180, 0, 0#euler[0], euler[1], euler[2]
+            # https://github.com/xArm-Developer/xArm-Python-SDK/blob/0fd107977ee9e66b6841ea9108583398a01f227b/xarm/x3/xarm.py#L214
+            try:
+                r = self.arm.set_position(
+                        x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw,
+                        speed=speed, wait=True
+                )
+                # print(r)
+                if r:
+                    print("failed to go to pose, resetting.")
+                    self.arm.clean_error()
+                    self.good_morning_robot()
+                    self.arm.set_position(
+                            x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw,
+                            speed=speed, wait=True
+                    )
+            except Exception as e:
+                self.good_morning_robot()
+                print('Cannot go to position', e)
+
 
 class Franka(Robot, object):
     '''
