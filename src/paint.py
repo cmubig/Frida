@@ -30,7 +30,7 @@ if __name__ == '__main__':
     writer = TensorBoard('{}/{}'.format(opt.tensorboard_dir, run_name))
     writer.add_text('args', str(sys.argv), 0)
 
-    painter = Painter(opt, robot=None if opt.simulate else "franka", 
+    painter = Painter(opt, robot=None if opt.simulate else opt.robot, 
         use_cache=opt.use_cache, writer=writer)
 
     

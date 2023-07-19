@@ -256,6 +256,12 @@ class Stroke(object):
                 x_next = x_start + x 
                 y_next = y_start + y
 
+
+                # If off the canvas, lift up
+                if (x_next > opt.X_CANVAS_MAX) or (x_next < opt.X_CANVAS_MIN) or \
+                        (y_next > opt.Y_CANVAS_MAX) or (y_next < opt.Y_CANVAS_MIN):
+                    z += 0.005
+
                 # Don't over shoot the canvas
                 x_next = min(max(opt.X_CANVAS_MIN, x_next), opt.X_CANVAS_MAX) 
                 y_next = min(max(opt.Y_CANVAS_MIN, y_next), opt.Y_CANVAS_MAX)

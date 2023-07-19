@@ -66,19 +66,18 @@ class Painter():
         # a clean state for neutral each time
         self.og_neutral = None
 
-        if not opt.simulate:
-            import rospy
-        print('0')
         self.robot = None
         if robot == "franka":
             self.robot = Franka(debug=True)
+        elif robot == "xarm":
+            self.robot = XArm(debug=True)
         elif robot == None:
             self.robot = SimulatedRobot(debug=True)
 
         self.writer = writer 
-        print('1')
+
         self.robot.good_morning_robot()
-        print('1')
+
         # Setup Camera
         while True:
             try:
@@ -95,7 +94,7 @@ class Painter():
                     input('Could not connect camera. Try turning it off and on, then press start.')
                 except SyntaxError:
                     pass
-        print('3') 
+
         self.H_coord = None # Translate coordinates based on faulty camera location
 
         # p = canvas_to_global_coordinates(0, 0.5, self.opt.INIT_TABLE_Z, self.opt)
@@ -173,7 +172,12 @@ class Painter():
         # Initial spot
         if not self.opt.simulate:
             # self.robot.fa.reset_joints()
-            self.move_to_trajectories([[0,0.4,self.opt.INIT_TABLE_Z]], [None])
+            y = 0.4 
+            if self.opt.robot == 'franka':
+                y = 0.4
+            elif self.opt.robot == 'xarm':
+                y = 0.15
+            self.move_to_trajectories([[0,y,self.opt.INIT_TABLE_Z]], [None])
 
     def move_to_trajectories(self, positions, orientations):
         for i in range(len(orientations)):
@@ -198,8 +202,6 @@ class Painter():
 
     def hover_above(self, x,y,z, method='direct'):
         self._move(x,y,z+self.opt.HOVER_FACTOR, method=method, speed=0.4)
-        # rate = rospy.Rate(100)
-        # rate.sleep()
 
     def move_to(self, x,y,z, q=None, method='direct', speed=0.05):
         self._move(x,y,z, q=q, method=method, speed=speed)
