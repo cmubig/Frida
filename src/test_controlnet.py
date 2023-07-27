@@ -66,7 +66,7 @@ def add_imgs_together(imgs):
     return PIL.Image.fromarray(img)
 
 
-controlnet_model_name_or_path = "./controlnet_models/checkpoint-12000_good/controlnet"
+controlnet_model_name_or_path = "/home/frida/paint/FridaControlnet/src/controlnet_models/checkpoint-12000_good/controlnet"
 pretrained_model_name_or_path = "runwayml/stable-diffusion-v1-5"
 weight_dtype = torch.float16
 device = 'cuda'
@@ -137,54 +137,55 @@ pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.conf
 pipeline = pipeline.to(device)
 # pipeline.set_progress_bar_config(disable=True)
 
-validation_prompts = [
-    'A chicken riding a bicycle',
-    # 'A drawing of a dinosaur wearing a tuxedo',
-]
-validation_images = [
-    "/home/frida/Downloads/current_canvas.jpg",
-    # "/home/frida/Downloads/rex.jpg"
-]
-resolution = 512
-c = 0
-n_iters = 1
-n_tries = 4
+if __name__ == '__main__':
+    validation_prompts = [
+        'A chicken riding a bicycle',
+        # 'A drawing of a dinosaur wearing a tuxedo',
+    ]
+    validation_images = [
+        "/home/frida/Downloads/current_canvas.jpg",
+        # "/home/frida/Downloads/rex.jpg"
+    ]
+    resolution = 512
+    c = 0
+    n_iters = 1
+    n_tries = 4
 
-for validation_prompt, validation_image in zip(validation_prompts, validation_images):
-    validation_image = Image.open(validation_image).convert("RGB")
-    # print('validation_image', validation_image.size)
-    validation_image = validation_image.resize((resolution, resolution))####
-    
-    images = []
+    for validation_prompt, validation_image in zip(validation_prompts, validation_images):
+        validation_image = Image.open(validation_image).convert("RGB")
+        # print('validation_image', validation_image.size)
+        validation_image = validation_image.resize((resolution, resolution))####
+        
+        images = []
 
-    fig, ax = plt.subplots(n_tries,n_iters+1)
+        fig, ax = plt.subplots(n_tries,n_iters+1)
 
-    with torch.autocast("cuda"), torch.no_grad():
-        in_img = validation_image
-
-        # # No init latent conditioning
-        for j in range(n_tries):
-            
-            ax[j,0].imshow(validation_image)
-            ax[j,0].set_xticks([])
-            ax[j,0].set_yticks([])
-
-            if j > 0: images.append(validation_image)
+        with torch.autocast("cuda"), torch.no_grad():
             in_img = validation_image
-            for i in range(n_iters):
-                out_img = pipeline(
-                # out_img = new_call(pipeline,
-                    validation_prompt, in_img, num_inference_steps=20, 
-                    # generator=generator,
-                    num_images_per_prompt=1,
-                    # controlnet_conditioning_scale=1.4,
-                ).images[0]
-                # out_img = in_img
-                # images.append(out_img)
-                # images.append(add_imgs_together([in_img, out_img]))
-                out_img = add_imgs_together([in_img, out_img])
-                in_img = out_img
-                ax[j, i+1].imshow(out_img)
-                ax[j, i+1].set_xticks([])
-                ax[j, i+1].set_yticks([])
-        plt.show()
+
+            # # No init latent conditioning
+            for j in range(n_tries):
+                
+                ax[j,0].imshow(validation_image)
+                ax[j,0].set_xticks([])
+                ax[j,0].set_yticks([])
+
+                if j > 0: images.append(validation_image)
+                in_img = validation_image
+                for i in range(n_iters):
+                    out_img = pipeline(
+                    # out_img = new_call(pipeline,
+                        validation_prompt, in_img, num_inference_steps=20, 
+                        # generator=generator,
+                        num_images_per_prompt=1,
+                        # controlnet_conditioning_scale=1.4,
+                    ).images[0]
+                    # out_img = in_img
+                    # images.append(out_img)
+                    # images.append(add_imgs_together([in_img, out_img]))
+                    out_img = add_imgs_together([in_img, out_img])
+                    in_img = out_img
+                    ax[j, i+1].imshow(out_img)
+                    ax[j, i+1].set_xticks([])
+                    ax[j, i+1].set_yticks([])
+            plt.show()

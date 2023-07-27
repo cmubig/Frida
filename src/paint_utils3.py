@@ -86,6 +86,22 @@ def sort_brush_strokes_by_color(painting, bin_size=3000):
         painting.brush_strokes = nn.ModuleList(brush_strokes)
         return painting
 
+def sort_brush_strokes_by_location(painting, bin_size=3000):
+    from scipy.spatial import distance_matrix
+    points = np.zeros((2, len(painting.brush_strokes)))
+    for i in range(len(painting.brush_strokes)):
+        points[0,i] = painting.brush_strokes[i].transformation.xt.detach().cpu().numpy()
+        points[1,i] = painting.brush_strokes[i].transformation.yt.detach().cpu().numpy()
+    d_mat = distance_matrix(points.T, points.T)
+    
+    from tsp_solver.greedy import solve_tsp
+    ordered_stroke_inds = solve_tsp(d_mat)
+
+    with torch.no_grad():
+        brush_strokes = [painting.brush_strokes[i] for i in ordered_stroke_inds]
+        painting.brush_strokes = nn.ModuleList(brush_strokes)
+        return painting
+
 def randomize_brush_stroke_order(painting):
     with torch.no_grad():
         brush_strokes = [bs for bs in painting.brush_strokes]
@@ -241,33 +257,60 @@ def format_img(tensor_img):
     return np.clip(np_painting, a_min=0, a_max=1)
 
 
-def init_brush_strokes(attn, n_strokes, ink):
+def init_brush_strokes(diff, n_strokes, ink):
+    matplotlib.use('TkAgg')
     brush_strokes = []
     
-    attn += 0.05
-    prob = attn / attn.sum()
-    prob = prob.flatten()
-    
-    ravelled_inds = np.random.choice(len(prob), size=n_strokes, p=prob)
-    xys = np.array(np.unravel_index(ravelled_inds, attn.shape))
+    diff[diff < 0.5] = 0
+    diff = diff.cpu().detach().numpy()
+    points = (np.array(np.nonzero(diff))).astype(int)
+
+
+    # from scipy.spatial import distance_matrix
+
+    # #for j in range(8):
+    # # while(points.shape[1] > n_strokes*1.5):
+    # for j in range(2):
+    #     d_mat = distance_matrix(points.T, points.T)
+    #     for i in range(len(d_mat)):
+    #         d_mat[i,i] = 1e9
+
+    #     min_dists = d_mat.argmin(axis=0)
+    #     # print('min_dists', min_dists.shape, min_dists[:50])
+    #     min_inds = np.maximum(np.arange(points.shape[1]), min_dists)
+    #     point_inds = np.unique(min_inds)
+    #     points = points[:,point_inds]
+    #     print('points', points.shape, point_inds.shape)
+
+    # Subsample
+    if n_strokes > 0:
+        sub_samp = list(np.arange(points.shape[1]))
+        import random 
+        random.shuffle(sub_samp)
+        points = points[:,np.array(sub_samp[:(min(n_strokes, points.shape[1]))])]
+        # print('points', points.shape, points.max(), points[:,0])
+    else:
+        points = points[:,:0]
                    
-    for i in range(xys.shape[1]):
-        x, y = xys[1,i]/attn.shape[1]*2-1, xys[0,i]/attn.shape[0]*2-1
+    for i in range(points.shape[1]):
+        x, y = points[1,i]/diff.shape[1]*2-1, points[0,i]/diff.shape[0]*2-1
         # Random brush stroke
-        brush_stroke = BrushStroke(xt=x, yt=y, ink=ink)
+        brush_stroke = BrushStroke(xt=x, yt=y, ink=ink, 
+                                   stroke_length=torch.Tensor([0.001]))
         brush_strokes.append(brush_stroke)
     return brush_strokes
 
 def initialize_painting(n_strokes, target_img, background_img, ink):
-    attn = get_attention(target_img)
+    attn = (target_img[0] - background_img[0]).abs().mean(dim=0)
     brush_strokes = init_brush_strokes(attn, n_strokes, ink)
     painting = Painting(0, background_img=background_img, 
         brush_strokes=brush_strokes).to(device)
     return painting
 
-def add_strokes_to_painting(painting, n_strokes, target_img, ink):
-    attn = get_attention(target_img)
+def add_strokes_to_painting(painting, rendered_painting, n_strokes, target_img, background_img, ink):
+    attn = (target_img[0] - rendered_painting[0]).abs().mean(dim=0)
     brush_strokes = init_brush_strokes(attn, n_strokes, ink)
-    painting = Painting(0, background_img=painting.background_img, 
-        brush_strokes=painting.brush_strokes+brush_strokes).to(device)
+    existing_strokes = [painting.brush_strokes[i] for i in range(len(painting.brush_strokes))]
+    painting = Painting(0, background_img=background_img, 
+        brush_strokes=existing_strokes+brush_strokes).to(device)
     return painting

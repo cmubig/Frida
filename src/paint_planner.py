@@ -36,7 +36,7 @@ def parse_csv_line(line, painter, colors):
 
 
 
-def parse_csv_line_continuous(line, painter, colors):
+def parse_csv_line_continuous(line, painter, colors=None):
     toks = line.split(',')
     if len(toks) != 10:
         return None
@@ -49,8 +49,10 @@ def parse_csv_line_continuous(line, painter, colors):
     bend = float(toks[5])
     alpha = float(toks[6])
     color = np.array([float(toks[7]), float(toks[8]), float(toks[9])])*255.
-    color_ind, color_discrete = nearest_color(color, colors)
-
+    if colors is None:
+        color_ind, color_discrete = None, None
+    else:
+        color_ind, color_discrete = nearest_color(color, colors)
 
     return x, y, r, length, thickness, bend, alpha, color, color_ind, color_discrete
 

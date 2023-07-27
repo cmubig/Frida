@@ -130,7 +130,8 @@ def plan_from_image(opt):
     c = 0
     total_its = (opt.num_strokes/stroke_batch_size)*iters_per_batch
     for i in (range(0, opt.num_strokes, stroke_batch_size)):#, desc="Initializing"):
-        painting = add_strokes_to_painting(painting, stroke_batch_size, target_img, opt.ink)
+        painting = add_strokes_to_painting(painting, painting(h,w)[:,:3], stroke_batch_size, 
+                                           target_img, current_canvas, opt.ink)
         optims = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
 
         # Learning rate scheduling. Start low, middle high, end low
