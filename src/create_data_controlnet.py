@@ -25,6 +25,10 @@ import pickle
 import shutil
 matplotlib.use('TkAgg')
 
+import sys 
+import os 
+sys.path.insert(0, '..')
+
 from plan import *
 
 from transformers import CLIPProcessor, CLIPModel, CLIPTokenizer, CLIPTextModel
@@ -94,10 +98,12 @@ def plan_from_image(opt, num_strokes, target_img, current_canvas, clip_lr=1.0):
     c = 0
     painting = add_strokes_to_painting(painting, painting(h,w)[:,:3], num_strokes, 
                                         target_img, current_canvas, opt.ink)
+    painting.validate()
     optims = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
 
     # Learning rate scheduling. Start low, middle high, end low
     og_lrs = [o.param_groups[0]['lr'] if o is not None else None for o in optims]
+    plans = []
 
     for it in tqdm(range(opt.n_iters), desc="Optim. {} Strokes".format(len(painting.brush_strokes))):
         for o in optims: o.zero_grad() if o is not None else None
@@ -116,8 +122,9 @@ def plan_from_image(opt, num_strokes, target_img, current_canvas, clip_lr=1.0):
         loss = 0
         # loss += parse_objective('l2', target_img, p[:,:3], weight=1-t)
         # loss += parse_objective('clip_conv_loss', target_img, p[:,:3], weight=clip_lr)
-        loss += parse_objective('l2', target_img, p[:,:3], weight=1)
+        # loss += parse_objective('l2', target_img, p[:,:3], weight=1)
         loss += parse_objective('clip_conv_loss', target_img, p[:,:3], weight=1)
+
 
         loss.backward()
 
@@ -131,17 +138,16 @@ def plan_from_image(opt, num_strokes, target_img, current_canvas, clip_lr=1.0):
             if not opt.ink:
                 discretize_colors(painting, colors)
         # log_progress(painting, opt, log_freq=opt.log_frequency)#, force_log=True)
+        # with torch.no_grad():
+        #     p = p[:,:3]
+        #     p = format_img(p)
+        #     plans.append((p*255.).astype(np.uint8))
 
+    # to_video(plans, fn=os.path.join(opt.plan_gif_dir,'controlnet_training{}.mp4'.format(str(time.time()))))
+    # video_path = os.path.join(output_dir, 'id{}_{}strokes.jpg'.format(len(data_dict), opt.max_strokes_added))
     return painting
 
-
-def load_img_internet(url, h=None, w=None):
-    try:
-        response = requests.get(url, timeout=10)
-        im = Image.open(BytesIO(response.content))
-    except:
-        return None
-    # im = Image.open(path)
+def process_pil(im, h=None, w=None):
     if im.mode != 'RGB':
         im = im.convert('RGB')
     im = np.array(im)
@@ -151,6 +157,15 @@ def load_img_internet(url, h=None, w=None):
     im = torch.from_numpy(im)
     im = im.permute(2,0,1)
     return im.unsqueeze(0).float() / 255.
+
+def load_img_internet(url, h=None, w=None):
+    try:
+        response = requests.get(url, timeout=10)
+        im = Image.open(BytesIO(response.content))
+    except:
+        return None
+    # im = Image.open(path)
+    return process_pil(im, h=h, w=w)
 
 
 
@@ -198,33 +213,87 @@ def get_image_text_pair(dataset):
 
     return best_datum
 
+
+def get_image_image_text_pair(dataset):
+    datum = dataset[np.random.randint(len(dataset))]
+
+    unchanged_image = datum['input_image']
+    changed_image = datum['edited_image']
+
+    datum['unchanged_image'] = process_pil(unchanged_image)
+    datum['changed_image'] = process_pil(changed_image)
+
+    return datum
+
 def remove_strokes_randomly(painting, min_strokes_added, max_strokes_added):
     to_delete = set(random.sample(range(len(painting.brush_strokes)), max_strokes_added-min_strokes_added))
     enumerate(painting.brush_strokes)
     bs = [x for i,x in enumerate(painting.brush_strokes) if not i in to_delete]
     painting.brush_strokes = nn.ModuleList(bs)
-    return painting
+    # return painting
+    with torch.no_grad():
+        p = painting(h,w)
+    return p[:,:3]
+
 
 def remove_strokes_by_region(painting, target_img, keep_important=False):
     from clip_attn.clip_attn import get_attention
     attn = get_attention(target_img) 
-    # attn = transforms.Resize((target_img.shape[2], target_img.shape[3]))(attn)
-    # print('atnn', attn.shape, attn.min(), attn.max(), attn.mean())
-    remaining_bs = []
-    for bs in painting.brush_strokes:
-        bs_x, bs_y = bs.transformation.xt*0.5 + .5, bs.transformation.yt*0.5 + .5
-        # print(bs.transformation.xt, bs.transformation.yt)
-        # print(bs_x, bs_y)
-        bs_x_ind, bs_y_ind = int(bs_x*attn.shape[1]), int(bs_y*attn.shape[0])
-        bs_x_ind, bs_y_ind = max(min(attn.shape[1]-1, bs_x_ind),0), max(min(attn.shape[0]-1, bs_y_ind),0)
-        # print(bs_x_ind, bs_y_ind)
-        attn_val = attn[bs_y_ind, bs_x_ind]
-        if (attn_val < 0.25 and not keep_important) or (attn_val > 0.25 and keep_important):
-            remaining_bs.append(bs)
-    # print(len(painting.brush_strokes), len(remaining_bs))
-    painting.brush_strokes = nn.ModuleList(remaining_bs)
-    return painting
+    attn = transforms.Resize((target_img.shape[2], target_img.shape[3]))(torch.from_numpy(attn[None,None,:,:]))[0,0]
+    
+    with torch.no_grad():
+        p = painting(h,w, use_alpha=False)
+    background = painting.background_img.detach().clone()
+    output = p.detach().clone()
+    
+    if keep_important:
+        for c in range(3):
+            output[0,c][attn < 0.25] = background[0,c][attn < 0.25]
+    else:
+        for c in range(3):
+            # print(output[0,c].shape, attn.shape)
+            output[0,c][attn > 0.25] = background[0,c][attn > 0.25]
+    return output
 
+from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+
+sam_checkpoint = "/home/frida/Downloads/sam_vit_b_01ec64.pth"
+model_type = "vit_b"
+sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+sam.to(device=device)
+
+mask_generator = SamAutomaticMaskGenerator(sam)
+
+def remove_strokes_by_object(painting, target_img):
+    # print(target_img.shape)
+    with torch.no_grad():
+        t = target_img[0].permute(1,2,0)
+        t = (t.cpu().numpy()*255.).astype(np.uint8)
+        # print(t.shape)
+        masks = mask_generator.generate(t)
+    
+    # Big objects first
+    # masks = sorted(masks, key=(lambda x: x['area']), reverse=True)
+    random.shuffle(masks)
+    # print(masks)
+    # print(masks[0]['area'])
+    # print(masks[0]['segmentation'].shape)
+    # plt.imshow(target_img)
+    # masked = target_img.clone()
+    # masked[0,:,masks[0]['segmentation']] = 1.0
+    # plt.imshow(masked)
+    # plt.show()
+    # matplotlib.use('TkAgg')
+    # show_img(masked)
+    # masks.area
+    background = painting.background_img.detach().clone()
+    with torch.no_grad():
+        p = painting(h,w, use_alpha=False)
+    if len(masks) > 0:
+        # for i in range(min(max(1, int(len(masks)/2)), len(masks)-1)):
+        for i in range(max(1, min(int(len(masks)/2), len(masks)-1))):
+            p[0,:3,masks[i]['segmentation']] = background[0,:3,masks[i]['segmentation']]
+    return p[:,:3]
 
 if __name__ == '__main__':
     global opt
@@ -255,6 +324,7 @@ if __name__ == '__main__':
     # dataset = load_dataset("laion/laion-art")['train']
     # dataset = load_dataset("zoheb/sketch-scene")['train']
     dataset = load_dataset(opt.controlnet_dataset)['train']
+    dataset_add = load_dataset(opt.controlnet_dataset_addition)['train']
     
     crop = transforms.RandomResizedCrop((h, w), scale=(0.7, 1.0), 
                                         ratio=(0.95,1.05))
@@ -264,8 +334,58 @@ if __name__ == '__main__':
         data_dict = pickle.load(open(data_dict_fn,'rb'))
 
     for i in range(opt.max_images):
+
+        # # Time to do the examples where content is changed
+        # try:
+        #     datum = get_image_image_text_pair(dataset_add)
+        # except:
+        #     continue
+        # output_dir = os.path.join(opt.output_parent_dir,
+        #                         str(int(np.floor(len(data_dict)/100))),)
+        # if not os.path.exists(output_dir): os.mkdir(output_dir)
+        # unchanged_target_img = crop(datum['unchanged_image']).to(device)
+        # changed_target_img = crop(datum['changed_image']).to(device)
+        # colors = get_colors(cv2.resize(unchanged_target_img.cpu().numpy()[0].transpose(1,2,0), (256, 256))*255., 
+        #         n_colors=opt.n_colors)
+        # # print(datum)
+        # datum_no_img = copy.deepcopy(datum)
+        # datum_no_img['img'] = None # Don't save the image directly, just path
+        # current_canvas = default_current_canvas
+
+        # unchanged_painting = plan_from_image(opt, opt.max_strokes_added, unchanged_target_img, current_canvas)
+        # with torch.no_grad():
+        #     start_painting = unchanged_painting(h,w)
+        # current_canvas = start_painting
+        # changed_painting = plan_from_image(opt, opt.min_strokes_added, changed_target_img, 
+        #                                    current_canvas)
+        # with torch.no_grad():
+        #     final_painting = changed_painting(h,w)
+
+        # start_img_path = os.path.join(output_dir, 'id{}_start.jpg'.format(len(data_dict)))
+        # save_image(start_painting[:,:3],start_img_path)
+        # dst = torch.cat([unchanged_target_img, changed_target_img], dim=3)
+        # target_img_path = os.path.join(output_dir, 'id{}_target.jpg'.format(len(data_dict)))
+        # save_image(dst[:,:3],target_img_path)
+        # final_img_path = os.path.join(output_dir, 'id{}_{}strokes.jpg'.format(len(data_dict), opt.max_strokes_added))
+        # save_image(final_painting[:,:3],final_img_path)
+
+        # d = {'id':len(data_dict),
+        #     'num_strokes_added':opt.max_strokes_added+opt.min_strokes_added,
+        #     'num_prev_strokes':opt.max_strokes_added,
+        #     'start_img':start_img_path,
+        #     'final_img':final_img_path,
+        #     'target_img':target_img_path,
+        #     'method':'Image-to-Image',
+        #     'text':datum['edit_prompt'],
+        #     'dataset_info':datum_no_img}
+        # data_dict.append(d)
+
+
         # Get a new image
-        datum = get_image_text_pair(dataset)
+        try:
+            datum = get_image_text_pair(dataset)
+        except:
+            continue
         target_img = crop(datum['img']).to(device)
         colors = get_colors(cv2.resize(target_img.cpu().numpy()[0].transpose(1,2,0), (256, 256))*255., 
                 n_colors=opt.n_colors)
@@ -274,56 +394,71 @@ if __name__ == '__main__':
         datum_no_img['img'] = None # Don't save the image directly, just path
         current_canvas = default_current_canvas
 
-        # Make sub-directories so single directories don't get too big
-        output_dir = os.path.join(opt.output_parent_dir,
-                                  str(int(np.floor(len(data_dict)/100))),)
-        if not os.path.exists(output_dir): os.mkdir(output_dir)
-        
-        target_img_path = os.path.join(output_dir, 'id{}_target.jpg'.format(len(data_dict)))
-        save_image(target_img[:,:3],target_img_path)
-        
-        start_img_path = os.path.join(output_dir, 'id{}_start.jpg'.format(len(data_dict)))
-        save_image(current_canvas[:,:3],start_img_path)
-        
         painting = plan_from_image(opt, opt.max_strokes_added, target_img, current_canvas)
-        with torch.no_grad():
-            p = painting(h,w)
-        
-        final_img_path = os.path.join(output_dir, 'id{}_{}strokes.jpg'.format(len(data_dict), opt.max_strokes_added))
-        save_image(p[:,:3],final_img_path)
 
-        if opt.removal_method == 'random':
-            # Randomly remove strokes to get the start image
-            painting = remove_strokes_randomly(painting, opt.min_strokes_added, opt.max_strokes_added)
-        elif opt.removal_method == 'salience':
-            # Remove strokes by region
-            painting = remove_strokes_by_region(painting, target_img)
-        else:
-            print("Not sure which removal method you mean")
-            1/0
-
-        with torch.no_grad():
-            p = painting(h,w)
-        save_image(p[:,:3],start_img_path)
-
-        d = {'id':len(data_dict),
-                'num_strokes_added':opt.max_strokes_added-opt.min_strokes_added,
-                'num_prev_strokes':opt.min_strokes_added,
-                'start_img':start_img_path,
-                'final_img':final_img_path,
-                'target_img':target_img_path,
-            #  'text':datum['text'],#sketches
-                'text':datum['TEXT'],
-                'dataset_info':datum_no_img}
-
-        # current_canvas = p.detach()
-        # start_img_path = final_img_path
-
-        data_dict.append(d)
-
-        if os.path.exists(data_dict_fn):
-            shutil.copyfile(data_dict_fn,
-                        os.path.join(opt.output_parent_dir, 'data_dict_saved.pkl'))
+        for method in ['random', 'random', 'salience', 'not_salience', 'object', 'object', 'all']:
+            try:
+                # Make sub-directories so single directories don't get too big
+                output_dir = os.path.join(opt.output_parent_dir,
+                                        str(int(np.floor(len(data_dict)/100))),)
+                if not os.path.exists(output_dir): os.mkdir(output_dir)
+                
+                target_img_path = os.path.join(output_dir, 'id{}_target.jpg'.format(len(data_dict)))
+                save_image(target_img[:,:3],target_img_path)
                             
-        with open(data_dict_fn,'wb') as f:
-            pickle.dump(data_dict, f)
+                with torch.no_grad():
+                    final_painting = painting(h,w)
+                
+                final_img_path = os.path.join(output_dir, 'id{}_{}strokes.jpg'.format(len(data_dict), opt.max_strokes_added))
+                save_image(final_painting[:,:3],final_img_path)
+
+                if method == 'random':
+                    # Randomly remove strokes to get the start image
+                    start_painting = remove_strokes_randomly(copy.deepcopy(painting), 
+                                                             opt.min_strokes_added, opt.max_strokes_added)
+                elif method == 'salience':
+                    # Remove strokes by region
+                    start_painting = remove_strokes_by_region(copy.deepcopy(painting), 
+                                                              target_img)
+                elif method == 'not_salience':
+                    # Remove strokes by region
+                    start_painting = remove_strokes_by_region(copy.deepcopy(painting), 
+                                                              target_img, keep_important=True)
+                elif method == 'object':
+                    start_painting = remove_strokes_by_object(copy.deepcopy(painting), 
+                                                              target_img)
+                elif method == 'all':
+                    start_painting = painting.background_img
+                else:
+                    print("Not sure which removal method you mean")
+                    1/0
+
+                start_img_path = os.path.join(output_dir, 'id{}_start.jpg'.format(len(data_dict)))
+                save_image(start_painting[:,:3],start_img_path)
+
+                d = {'id':len(data_dict),
+                        'num_strokes_added':opt.max_strokes_added-opt.min_strokes_added,
+                        'num_prev_strokes':opt.min_strokes_added,
+                        'start_img':start_img_path,
+                        'final_img':final_img_path,
+                        'target_img':target_img_path,
+                        'method':method,
+                    #  'text':datum['text'],#sketches
+                        'text':datum['TEXT'],
+                        'dataset_info':datum_no_img}
+
+                # current_canvas = p.detach()
+                # start_img_path = final_img_path
+
+                data_dict.append(d)
+
+                if os.path.exists(data_dict_fn):
+                    shutil.copyfile(data_dict_fn,
+                                os.path.join(opt.output_parent_dir, 'data_dict_saved.pkl'))
+                                    
+                with open(data_dict_fn,'wb') as f:
+                    pickle.dump(data_dict, f)
+            except Exception as e:
+                print(e)
+                continue
+        

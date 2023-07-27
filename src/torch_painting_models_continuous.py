@@ -246,7 +246,7 @@ class BrushStroke(nn.Module):
                 stroke.color_transform.data.clamp_(0.02,0.85)
 
 class Painting(nn.Module):
-    def __init__(self, n_strokes, background_img=None, brush_strokes=None):
+    def __init__(self, n_strokes=None, background_img=None, brush_strokes=None):
         # h, w are canvas height and width in pixels
         super(Painting, self).__init__()
         self.n_strokes = n_strokes
@@ -285,7 +285,7 @@ class Painting(nn.Module):
         rotation_opt = torch.optim.RMSprop(a, lr=1e-2*multiplier)
         color_opt = None if ink else torch.optim.RMSprop(color, lr=5e-3*multiplier)
         bend_opt = torch.optim.RMSprop(bend, lr=3e-3*multiplier)
-        length_opt = torch.optim.RMSprop(length, lr=1e-2*multiplier)
+        length_opt = torch.optim.RMSprop(length, lr=3e-3*multiplier)
         thickness_opt = torch.optim.RMSprop(z, lr=1e-2*multiplier)
         
         # t=5
