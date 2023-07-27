@@ -62,7 +62,9 @@ def plan_from_image(opt, num_strokes, target_img, current_canvas, clip_lr=1.0):
     painting.to(device)
 
     c = 0
-    painting = add_strokes_to_painting(painting, num_strokes, target_img, opt.ink)
+
+    painting = add_strokes_to_painting(painting, painting(h,w)[:,:3], num_strokes, 
+                                        target_img, current_canvas, opt.ink)
     optims = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
 
     # Learning rate scheduling. Start low, middle high, end low
