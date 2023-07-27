@@ -205,8 +205,14 @@ class Options(object):
         if self.robot == 'xarm':
             self.CANVAS_WIDTH  = 0.1524 # 6"
             self.CANVAS_HEIGHT = 0.1524 # 6"
-            self.INIT_TABLE_Z = 0.2
+            self.INIT_TABLE_Z = 0.17
             self.CANVAS_POSITION = (0, 0.15)
+
+            thresh = 0.001 # 1cm tolerance on overshooting the canvas
+            self.Y_CANVAS_MAX = self.CANVAS_POSITION[1] + self.CANVAS_HEIGHT + thresh
+            self.Y_CANVAS_MIN = self.CANVAS_POSITION[1] - thresh
+            self.X_CANVAS_MAX = self.CANVAS_POSITION[0] + self.CANVAS_WIDTH/2 + thresh
+            self.X_CANVAS_MIN = self.CANVAS_POSITION[0] - self.CANVAS_WIDTH/2 - thresh
 
 
     def __getattr__(self, attr_name):
