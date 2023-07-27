@@ -166,6 +166,8 @@ class Options(object):
 
         parser.add_argument("--controlnet_dataset", type=str,
             default="laion/laion-art", help='A dataset for training controlnet')
+        parser.add_argument("--controlnet_dataset_addition", type=str,
+            default="fusing/instructpix2pix-1000-samples", help='A dataset for training controlnet to add material')
         parser.add_argument("--output_parent_dir", type=str,
             help='Where to save the data. Can continue if partially complete.')
         parser.add_argument("--removal_method", type=str,
