@@ -61,7 +61,7 @@ class XArm(Robot, object):
         self.arm.disconnect()
 
     def go_to_cartesian_pose(self, positions, orientations,
-            speed=200):
+            speed=250):
         # positions in meters
         positions, orientations = np.array(positions), np.array(orientations)
         if len(positions.shape) == 1:
@@ -75,16 +75,34 @@ class XArm(Robot, object):
             euler= euler_from_quaternion(q[0], q[1], q[2], q[3])#quaternion.as_quat_array(orientations[i])
             roll, pitch, yaw = 180, 0, 0#euler[0], euler[1], euler[2]
             # https://github.com/xArm-Developer/xArm-Python-SDK/blob/0fd107977ee9e66b6841ea9108583398a01f227b/xarm/x3/xarm.py#L214
+            
+            wait = True 
+            failure, state = self.arm.get_position()
+            if not failure:
+                curr_x, curr_y, curr_z = state[0], state[1], state[2]
+                # print('curr', curr_y, y)
+                dist = ((x-curr_x)**2 + (y-curr_y)**2 + (z-curr_z)**2)**0.5
+                # print('dist', dist)
+                # Dist in mm
+                if dist < 5:
+                    wait=False
+                    speed=600
+                    # print('less')
+
             try:
                 r = self.arm.set_position(
                         x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw,
-                        speed=speed, wait=True
+                        speed=speed, wait=wait
                 )
                 # print(r)
                 if r:
                     print("failed to go to pose, resetting.")
                     self.arm.clean_error()
                     self.good_morning_robot()
+                    self.arm.set_position(
+                            x=x, y=y, z=z+5, roll=roll, pitch=pitch, yaw=yaw,
+                            speed=speed, wait=True
+                    )
                     self.arm.set_position(
                             x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw,
                             speed=speed, wait=True
