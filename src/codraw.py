@@ -1,6 +1,6 @@
 
 ##########################################################
-#################### Copyright 2022 ######################
+#################### Copyright 2023 ######################
 ################ by Peter Schaldenbrand ##################
 ### The Robotics Institute, Carnegie Mellon University ###
 ################ All rights reserved. ####################
@@ -21,31 +21,23 @@ from options import Options
 from painter import Painter
 from strokes import simple_parameterization_to_real
 
-# from torch_painting_models_continuous_concerted import *
 from torch_painting_models_continuous import *
-from style_loss import compute_style_loss
-from sketch_loss.sketch_loss import compute_sketch_loss, compute_canny_loss
-from audio_loss.audio_loss import compute_audio_loss, load_audio_file
-from emotion_loss.emotion_loss import emotion_loss
-from face.face_loss import face_loss, parse_face_data
 from stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
-from speech2emotion.speech2emotion import speech2emotion, speech2text
 
-from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16, clip_fc_loss
-import clip
-from clip_attn.clip_attn import get_attention
-import kornia as K
+from clip_loss import clip_conv_loss, clip_model, clip_text_loss
 
 from paint_utils import canvas_to_global_coordinates, to_video
 from paint_utils3 import *
 from torchvision.utils import save_image
 from torchvision.transforms import Resize
 
-from test_controlnet import pipeline as sd_interactive_pipeline
+# from test_controlnet import pipeline as sd_interactive_pipeline
+from test_instruct_pix2pix import pipeline as sd_interactive_pipeline
+
 # from create_data_controlnet import image_text_similarity
 
 # python3 codraw.py  --use_cache --cache_dir caches/cache_6_6_cvpr/ --dont_retrain_stroke_model --robot xarm --brush_length 0.2 --ink   --lr_multiplier 0.2 --num_strokes 40
-
+# python3 codraw.py  --use_cache --cache_dir caches/cache_6_6_cvpr/ --dont_retrain_stroke_model --robot xarm --brush_length 0.2 --ink   --lr_multiplier 0.3 --num_strokes 120
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 if not torch.cuda.is_available():
@@ -77,7 +69,7 @@ def plan_from_image(opt, target_img, current_canvas):
     # painting = initialize_painting(opt.num_strokes, target_img, current_canvas, opt.ink)
 
     stroke_batch_size = opt.num_strokes#100#64
-    iters_per_batch =  200
+    iters_per_batch =  400
 
     # painting = initialize_painting(stroke_batch_size, target_img, current_canvas, opt.ink)
     painting = initialize_painting(1, target_img, current_canvas, opt.ink)
@@ -86,7 +78,7 @@ def plan_from_image(opt, target_img, current_canvas):
 
     c = 0
     total_its = (opt.num_strokes/stroke_batch_size)*iters_per_batch
-    for i in range(2):#(range(0, opt.num_strokes, stroke_batch_size)):#, desc="Initializing"):
+    for i in range(1):#(range(0, opt.num_strokes, stroke_batch_size)):#, desc="Initializing"):
         with torch.no_grad():
             p = painting(h,w)
         painting = add_strokes_to_painting(painting, p[:,:3], stroke_batch_size, target_img, current_canvas, opt.ink)
@@ -154,6 +146,7 @@ if __name__ == '__main__':
     opt = Options()
     opt.gather_options()
 
+    matplotlib.use('TkAgg')
     # painting = calibrate(opt)
 
     opt.writer = create_tensorboard(log_dir=opt.tensorboard_dir)
@@ -164,6 +157,8 @@ if __name__ == '__main__':
     w = int((opt.max_height/h)*w)
     h = int(opt.max_height)
 
+    n_ai_options = 4
+
     target_img = load_img('/home/frida/Downloads/id36_pass0_100strokes.jpg',h=h, w=w).to(device)/255.
 
     from robot import XArm, SimulatedRobot
@@ -173,24 +168,10 @@ if __name__ == '__main__':
     painter = Painter(opt, robot=None if opt.simulate else opt.robot, 
         use_cache=opt.use_cache, writer=opt.writer)
     
-    corners = np.array([[0,0],[1,0],[1,1],[0,1],[0,0]]).astype(np.float32)
-    for i in range(len(corners)):
-        corner = corners[i]
-        x, y = corner[0], corner[1]
-        x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
-        x,y,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
-        if i == 0:
-            painter.move_to(x,y,painter.Z_CANVAS+0.03)
-        painter.move_to(x,y,painter.Z_CANVAS)
-        if i == 4:
-            painter.move_to(x,y,painter.Z_CANVAS+0.03)
-    painter.to_neutral()
-    
     for i in range(9):
         current_canvas = painter.camera.get_canvas()
         current_canvas = torch.from_numpy(current_canvas).permute(2,0,1).float().to(device)[None] / 255.
         current_canvas = Resize((h,w))(current_canvas)
-        print('curr canva', current_canvas.shape)
 
         opt.writer.add_image('images/{}_0_canvas_start'.format(i), format_img(current_canvas), 0)
 
@@ -206,34 +187,54 @@ if __name__ == '__main__':
         current_canvas = Resize((h,w))(current_canvas)
         opt.writer.add_image('images/{}_1_canvas_after_human'.format(i), format_img(current_canvas), 0)
 
-        #text_prompt = "Frog astronaut"#input("New text prompt:")
 
-        text_prompt = None
-        try:
-            text_prompt = input('\nIf you would like the robot to draw, type a description then press enter. Type nothing if you do not want to the robot to draw.\n:')
-        except SyntaxError:
-            # No input
-            continue
-
-        text_prompt = 'line drawing of ' + text_prompt + ', else empty, black and white'
+        # text_prompt = 'line drawing of ' + text_prompt + ', else empty, black and white'
 
         curr_canvas = painter.camera.get_canvas()
-        print(curr_canvas.shape, curr_canvas.max())
-        dark_inds = curr_canvas.mean(axis=2) < 0.75*255
-        curr_canvas[dark_inds] = 5
+        # dark_inds = curr_canvas.mean(axis=2) < 0.81*255
+        # curr_canvas[dark_inds] = 5
         curr_canvas_pil = Image.fromarray(curr_canvas.astype(np.uint8)).resize((512,512))
-        curr_canvas_pil = curr_canvas_pil.convert("L").convert('RGB')
+        curr_canvas_pil = curr_canvas_pil#.convert("L").convert('RGB')
         # plt.imshow(curr_canvas_pil)
         # plt.show()
+        matplotlib.use('TkAgg')
+        satisfied = False
+        while(not satisfied):
 
-        with torch.no_grad():
-            target_img = sd_interactive_pipeline(
-                text_prompt, curr_canvas_pil, num_inference_steps=20, 
-                # generator=generator,
-                num_images_per_prompt=1,
-                # controlnet_conditioning_scale=1.4,
-            ).images[0]
+            text_prompt = None
+            try:
+                text_prompt = input('\nIf you would like the robot to draw, type a description then press enter. Type nothing if you do not want to the robot to draw.\n:')
+            except SyntaxError:
+                # No input
+                continue
 
+            with torch.no_grad():
+                target_imgs = []
+                for op in range(n_ai_options):
+                    target_imgs.append(sd_interactive_pipeline(
+                        text_prompt, 
+                        curr_canvas_pil, 
+                        num_inference_steps=20, 
+                        # generator=generator,
+                        num_images_per_prompt=1,
+                        # image_guidance_scale=2.5,#1.5 is default
+                    ).images[0])
+            fig, ax = plt.subplots(1,n_ai_options, figsize=(2*n_ai_options,2))
+            for j in range(n_ai_options):
+                ax[j].imshow(target_imgs[j])
+                ax[j].set_xticks([])
+                ax[j].set_yticks([])
+                ax[j].set_title(str(j))
+            if n_ai_options > 1:
+                matplotlib.use('TkAgg')
+                plt.show()
+                target_img_ind = int(input("Type the number of the option you liked most? Type -1 if you don't like any and want more options.\n:"))
+                if target_img_ind < 0:
+                    continue
+                target_img = target_imgs[target_img_ind]
+            else:
+                target_img = target_imgs[0]
+            satisfied = True
         # plt.imshow(target_img)
         # plt.show()
         target_img = torch.from_numpy(np.array(target_img)).permute(2,0,1).float().to(device)[None] / 255.
@@ -249,8 +250,14 @@ if __name__ == '__main__':
         f.write(painting.to_csv())
         f.close()
 
-        opt.writer.add_image('images/{}_3_planned_drawing'.format(i), 
-                             format_img(painting(h,w, use_alpha=False)), 0)
+        with torch.no_grad():
+            opt.writer.add_image('images/{}_3_planned_drawing'.format(i), 
+                                format_img(painting(h,w, use_alpha=False)), 0)
+
+            if opt.simulate:
+                sim_canvas_pil = Image.fromarray(
+                    (painting(h,w, use_alpha=False).cpu().numpy()[0].transpose(1,2,0)*255).astype(np.uint8))
+                painter.camera.get_canvas = lambda : np.array(sim_canvas_pil)
 
         # Paint
         with open(os.path.join(painter.opt.cache_dir, "next_brush_strokes.csv"), 'r') as fp:
@@ -273,12 +280,11 @@ if __name__ == '__main__':
 
         painter.to_neutral()
 
-
         current_canvas = painter.camera.get_canvas()
         current_canvas = torch.from_numpy(current_canvas).permute(2,0,1).float().to(device)[None] / 255.
         current_canvas = Resize((h,w))(current_canvas)
         opt.writer.add_image('images/{}_4_canvas_after_drawing'.format(i), format_img(current_canvas), 0)
-    
+        
     painter.to_neutral()
 
     painter.robot.good_night_robot()

@@ -140,6 +140,20 @@ class Painter():
         # self.locate_canvas()
         # self.calibrate_robot_tilt()
 
+        if self.opt.ink:
+            corners = np.array([[0,0],[1,0],[1,1],[0,1],[0,0]]).astype(np.float32)
+            for i in range(len(corners)):
+                corner = corners[i]
+                x, y = corner[0], corner[1]
+                x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
+                x,y,_ = canvas_to_global_coordinates(x,y,None,self.opt)
+                if i == 0:
+                    self.move_to(x,y,self.Z_CANVAS+0.03)
+                self.move_to(x,y,self.Z_CANVAS)
+                if i == 4:
+                    self.move_to(x,y,self.Z_CANVAS+0.03)
+            self.to_neutral()
+
         if self.camera is not None:
             self.camera.debug = True
             self.camera.calibrate_canvas(use_cache=use_cache)
