@@ -34,6 +34,11 @@ from plan import *
 from transformers import CLIPProcessor, CLIPModel, CLIPTokenizer, CLIPTextModel
 import torchvision.transforms as transforms
 
+import clip 
+if not os.path.exists('./clipscore/'):
+    print('You have to clone the clipscore repo here from Github.')
+sys.path.append('./clipscore')
+from clipscore import get_clip_score, extract_all_images
 
 # Load the CLIP model
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -56,6 +61,21 @@ def image_text_similarity(image_path, text):
     with torch.no_grad():
         image = load_image(image_path)
         inputs = preprocess(text=[text], images=image, return_tensors="pt", padding=True)
+        # [i.to(device) for i in inputs]
+        inputs['input_ids'] = inputs['input_ids'].to(device)
+        inputs['attention_mask'] = inputs['attention_mask'].to(device)
+        inputs['pixel_values'] = inputs['pixel_values'].to(device)
+
+        # inputs['input_ids'] = inputs['input_ids'].to(device)
+        # print(inputs)
+        outputs = model(**inputs)
+        logits_per_image = outputs.logits_per_image  # this is the image-text similarity score
+        probs = logits_per_image#logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
+    return probs
+
+def image_text_similarity_local(pil_image, text):
+    with torch.no_grad():
+        inputs = preprocess(text=[text], images=pil_image, return_tensors="pt", padding=True)
         # [i.to(device) for i in inputs]
         inputs['input_ids'] = inputs['input_ids'].to(device)
         inputs['attention_mask'] = inputs['attention_mask'].to(device)
@@ -186,7 +206,7 @@ def get_image_text_pair(dataset):
             except:
                 continue
             # print(text_img_sim)
-            if text_img_sim < 27: # Filter out images where the text caption isn't accurate
+            if text_img_sim < 30: # Filter out images where the text caption isn't accurate
                 continue
             
             datums.append(datum)
@@ -295,6 +315,24 @@ def remove_strokes_by_object(painting, target_img):
             p[0,:3,masks[i]['segmentation']] = background[0,:3,masks[i]['segmentation']]
     return p[:,:3]
 
+
+clip_model, _ = clip.load("ViT-B/32", device=device, jit=False)
+clip_model.eval()
+
+def clip_score(text_fn, img_fn):
+    image_paths = [img_fn]
+    candidates = [text_fn]
+
+    image_feats = extract_all_images(
+        image_paths, clip_model, device, batch_size=64, num_workers=8)
+
+    # get image-text clipscore
+    with torch.no_grad():
+        _, per_instance_image_text, candidate_feats = get_clip_score(
+            clip_model, image_feats, candidates, device)
+
+    return per_instance_image_text[0]
+
 if __name__ == '__main__':
     global opt
     opt = Options()
@@ -324,7 +362,7 @@ if __name__ == '__main__':
     # dataset = load_dataset("laion/laion-art")['train']
     # dataset = load_dataset("zoheb/sketch-scene")['train']
     dataset = load_dataset(opt.controlnet_dataset)['train']
-    dataset_add = load_dataset(opt.controlnet_dataset_addition)['train']
+    # dataset_add = load_dataset(opt.controlnet_dataset_addition)['train']
     
     crop = transforms.RandomResizedCrop((h, w), scale=(0.7, 1.0), 
                                         ratio=(0.95,1.05))
@@ -336,34 +374,41 @@ if __name__ == '__main__':
     for i in range(opt.max_images):
 
         # # Time to do the examples where content is changed
-        # try:
-        #     datum = get_image_image_text_pair(dataset_add)
-        # except:
-        #     continue
         # output_dir = os.path.join(opt.output_parent_dir,
         #                         str(int(np.floor(len(data_dict)/100))),)
         # if not os.path.exists(output_dir): os.mkdir(output_dir)
-        # unchanged_target_img = crop(datum['unchanged_image']).to(device)
-        # changed_target_img = crop(datum['changed_image']).to(device)
-        # colors = get_colors(cv2.resize(unchanged_target_img.cpu().numpy()[0].transpose(1,2,0), (256, 256))*255., 
+        
+        # try:
+        #     datum0 = get_image_text_pair(dataset)
+        # except:
+        #     continue
+        # target_img0 = crop(datum0['img']).to(device)
+        # try:
+        #     datum1 = get_image_text_pair(dataset)
+        # except:
+        #     continue
+        # target_img1 = crop(datum1['img']).to(device)
+        
+        # colors = get_colors(cv2.resize(target_img0.cpu().numpy()[0].transpose(1,2,0), (256, 256))*255., 
         #         n_colors=opt.n_colors)
         # # print(datum)
-        # datum_no_img = copy.deepcopy(datum)
+        # datum_no_img = copy.deepcopy(datum1)
         # datum_no_img['img'] = None # Don't save the image directly, just path
         # current_canvas = default_current_canvas
 
-        # unchanged_painting = plan_from_image(opt, opt.max_strokes_added, unchanged_target_img, current_canvas)
+        # painting0 = plan_from_image(opt, opt.min_strokes_added, target_img0, 
+        #                                      current_canvas)
         # with torch.no_grad():
-        #     start_painting = unchanged_painting(h,w)
+        #     start_painting = painting0(h,w)
         # current_canvas = start_painting
-        # changed_painting = plan_from_image(opt, opt.min_strokes_added, changed_target_img, 
-        #                                    current_canvas)
+        # painting1 = plan_from_image(opt, opt.max_strokes_added - opt.min_strokes_added, target_img1, 
+        #                                    current_canvas[:,:3])
         # with torch.no_grad():
-        #     final_painting = changed_painting(h,w)
+        #     final_painting = painting1(h,w)
 
         # start_img_path = os.path.join(output_dir, 'id{}_start.jpg'.format(len(data_dict)))
         # save_image(start_painting[:,:3],start_img_path)
-        # dst = torch.cat([unchanged_target_img, changed_target_img], dim=3)
+        # dst = torch.cat([target_img0, target_img1], dim=3)
         # target_img_path = os.path.join(output_dir, 'id{}_target.jpg'.format(len(data_dict)))
         # save_image(dst[:,:3],target_img_path)
         # final_img_path = os.path.join(output_dir, 'id{}_{}strokes.jpg'.format(len(data_dict), opt.max_strokes_added))
@@ -375,8 +420,9 @@ if __name__ == '__main__':
         #     'start_img':start_img_path,
         #     'final_img':final_img_path,
         #     'target_img':target_img_path,
-        #     'method':'Image-to-Image',
-        #     'text':datum['edit_prompt'],
+        #     'method':'img2img',
+        #     # 'text':datum['edit_prompt'],
+        #     'text':datum1['TEXT'],
         #     'dataset_info':datum_no_img}
         # data_dict.append(d)
 
@@ -394,71 +440,95 @@ if __name__ == '__main__':
         datum_no_img['img'] = None # Don't save the image directly, just path
         current_canvas = default_current_canvas
 
-        painting = plan_from_image(opt, opt.max_strokes_added, target_img, current_canvas)
+        for turn in range(4):
+            painting = plan_from_image(opt, opt.max_strokes_added, target_img, current_canvas[:,:3])
 
-        for method in ['random', 'random', 'salience', 'not_salience', 'object', 'object', 'all']:
-            try:
-                # Make sub-directories so single directories don't get too big
-                output_dir = os.path.join(opt.output_parent_dir,
-                                        str(int(np.floor(len(data_dict)/100))),)
-                if not os.path.exists(output_dir): os.mkdir(output_dir)
-                
-                target_img_path = os.path.join(output_dir, 'id{}_target.jpg'.format(len(data_dict)))
-                save_image(target_img[:,:3],target_img_path)
-                            
-                with torch.no_grad():
-                    final_painting = painting(h,w)
-                
-                final_img_path = os.path.join(output_dir, 'id{}_{}strokes.jpg'.format(len(data_dict), opt.max_strokes_added))
-                save_image(final_painting[:,:3],final_img_path)
+            # If the painting doesn't fit the text prompt well, just break
+            with torch.no_grad():
+                final_painting = painting(h,w)
+            output_dir = os.path.join(opt.output_parent_dir, str(int(np.floor(len(data_dict)/100))),)
+            if not os.path.exists(output_dir): os.mkdir(output_dir)
+            final_img_path = os.path.join(output_dir, 'id{}_{}strokes.jpg'.format(len(data_dict), opt.max_strokes_added))
+            save_image(final_painting[:,:3],final_img_path)
+            cs = clip_score(datum['TEXT'], final_img_path)
+            print('cs', cs, datum['TEXT'])
+            if cs < 0.55:
+                break
 
-                if method == 'random':
-                    # Randomly remove strokes to get the start image
-                    start_painting = remove_strokes_randomly(copy.deepcopy(painting), 
-                                                             opt.min_strokes_added, opt.max_strokes_added)
-                elif method == 'salience':
-                    # Remove strokes by region
-                    start_painting = remove_strokes_by_region(copy.deepcopy(painting), 
-                                                              target_img)
-                elif method == 'not_salience':
-                    # Remove strokes by region
-                    start_painting = remove_strokes_by_region(copy.deepcopy(painting), 
-                                                              target_img, keep_important=True)
-                elif method == 'object':
-                    start_painting = remove_strokes_by_object(copy.deepcopy(painting), 
-                                                              target_img)
-                elif method == 'all':
-                    start_painting = painting.background_img
-                else:
-                    print("Not sure which removal method you mean")
-                    1/0
+            for method in ['random', 'random', 'salience', 'not_salience', 'object', 'object', 'all']:
+                try:
+                    # Make sub-directories so single directories don't get too big
+                    output_dir = os.path.join(opt.output_parent_dir,
+                                            str(int(np.floor(len(data_dict)/100))),)
+                    if not os.path.exists(output_dir): os.mkdir(output_dir)
+                    
+                    target_img_path = os.path.join(output_dir, 'id{}_target.jpg'.format(len(data_dict)))
+                    save_image(target_img[:,:3],target_img_path)
+                                
+                    with torch.no_grad():
+                        final_painting = painting(h,w)
+                    
+                    final_img_path = os.path.join(output_dir, 'id{}_{}strokes.jpg'.format(len(data_dict), opt.max_strokes_added))
+                    save_image(final_painting[:,:3],final_img_path)
 
-                start_img_path = os.path.join(output_dir, 'id{}_start.jpg'.format(len(data_dict)))
-                save_image(start_painting[:,:3],start_img_path)
+                    if method == 'random':
+                        # Randomly remove strokes to get the start image
+                        start_painting = remove_strokes_randomly(copy.deepcopy(painting), 
+                                                                opt.min_strokes_added, opt.max_strokes_added)
+                    elif method == 'salience':
+                        # Remove strokes by region
+                        start_painting = remove_strokes_by_region(copy.deepcopy(painting), 
+                                                                target_img)
+                    elif method == 'not_salience':
+                        # Remove strokes by region
+                        start_painting = remove_strokes_by_region(copy.deepcopy(painting), 
+                                                                target_img, keep_important=True)
+                    elif method == 'object':
+                        start_painting = remove_strokes_by_object(copy.deepcopy(painting), 
+                                                                target_img)
+                    elif method == 'all':
+                        start_painting = painting.background_img
+                    else:
+                        print("Not sure which removal method you mean")
+                        1/0
 
-                d = {'id':len(data_dict),
-                        'num_strokes_added':opt.max_strokes_added-opt.min_strokes_added,
-                        'num_prev_strokes':opt.min_strokes_added,
-                        'start_img':start_img_path,
-                        'final_img':final_img_path,
-                        'target_img':target_img_path,
-                        'method':method,
-                    #  'text':datum['text'],#sketches
-                        'text':datum['TEXT'],
-                        'dataset_info':datum_no_img}
+                    # Don't save if the start painting is too similar to final painting
+                    diff = torch.mean(torch.abs(start_painting[:,:3] - final_painting[:,:3]))
+                    # print(diff)
+                    if diff < 0.025:
+                        # print('not different enough')
+                        continue
 
-                # current_canvas = p.detach()
-                # start_img_path = final_img_path
+                    start_img_path = os.path.join(output_dir, 'id{}_start.jpg'.format(len(data_dict)))
+                    save_image(start_painting[:,:3],start_img_path)
 
-                data_dict.append(d)
+                    d = {'id':len(data_dict),
+                            'num_strokes_added':opt.max_strokes_added-opt.min_strokes_added,
+                            'num_prev_strokes':opt.min_strokes_added,
+                            'start_img':start_img_path,
+                            'final_img':final_img_path,
+                            'target_img':target_img_path,
+                            'method':method,
+                        #  'text':datum['text'],#sketches
+                            'text':datum['TEXT'],
+                            'photo_to_sketch_diff': diff.item(),
+                            'clip_score':cs,
+                            'dataset_info':datum_no_img}
 
-                if os.path.exists(data_dict_fn):
-                    shutil.copyfile(data_dict_fn,
-                                os.path.join(opt.output_parent_dir, 'data_dict_saved.pkl'))
-                                    
-                with open(data_dict_fn,'wb') as f:
-                    pickle.dump(data_dict, f)
-            except Exception as e:
-                print(e)
-                continue
+                    # current_canvas = p.detach()
+                    # start_img_path = final_img_path
+
+                    current_canvas = final_painting.detach()
+
+                    data_dict.append(d)
+
+                    if os.path.exists(data_dict_fn):
+                        shutil.copyfile(data_dict_fn,
+                                    os.path.join(opt.output_parent_dir, 'data_dict_saved.pkl'))
+                                        
+                    with open(data_dict_fn,'wb') as f:
+                        pickle.dump(data_dict, f)
+                except Exception as e:
+                    print(e)
+                    continue
         
