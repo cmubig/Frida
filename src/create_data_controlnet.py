@@ -18,12 +18,18 @@ from io import BytesIO
 import kornia
 from torchvision import transforms
 
+try:
+  import google.colab
+  IN_COLAB = True
+except:
+  IN_COLAB = False
+
 import tkinter
 import matplotlib
 import matplotlib.pyplot as plt
 import pickle
 import shutil
-matplotlib.use('TkAgg')
+if not IN_COLAB: matplotlib.use('TkAgg')
 
 import sys 
 import os 
@@ -33,6 +39,7 @@ from plan import *
 
 from transformers import CLIPProcessor, CLIPModel, CLIPTokenizer, CLIPTextModel
 import torchvision.transforms as transforms
+
 
 import clip 
 if not os.path.exists('./clipscore/'):
@@ -277,9 +284,14 @@ def remove_strokes_by_region(painting, target_img, keep_important=False):
 
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
-sam_checkpoint = "/home/frida/Downloads/sam_vit_b_01ec64.pth"
+sam_checkpoint = "sam_vit_b_01ec64.pth"
 model_type = "vit_b"
-sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+try:
+    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+except Exception as e:
+    print(e)
+    print('try')
+    print('wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth')
 sam.to(device=device)
 
 mask_generator = SamAutomaticMaskGenerator(sam)
@@ -438,13 +450,15 @@ if __name__ == '__main__':
         
         if opt.colors is not None:
             # 209,0,0.241,212,69.39,94,195
-            print(opt.colors)
+            # 235,137,15 orange
+            # 115,66,16 brown
+            # 138,99,139 purple
             colors = np.array([i.split(',') for i in opt.colors.split('.')]).astype(np.float32)
             colors = (torch.from_numpy(colors) / 255.).to(device)
         else:
             colors = get_colors(cv2.resize(target_img.cpu().numpy()[0].transpose(1,2,0), (256, 256))*255., 
                 n_colors=opt.n_colors)
-        print(colors)
+
         # print(datum)
         datum_no_img = copy.deepcopy(datum)
         datum_no_img['img'] = None # Don't save the image directly, just path

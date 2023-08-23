@@ -10,6 +10,11 @@ import numpy as np
 import torch
 from torchvision import transforms
 import matplotlib
+try:
+  import google.colab
+  IN_COLAB = True
+except:
+  IN_COLAB = False
 # matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -258,10 +263,10 @@ def format_img(tensor_img):
 
 
 def init_brush_strokes(diff, n_strokes, ink):
-    matplotlib.use('TkAgg')
+    if not IN_COLAB: matplotlib.use('TkAgg')
     brush_strokes = []
     
-    diff[diff < 0.5] = 0
+    diff[diff < 0.15] = 0
     diff = diff.cpu().detach().numpy()
     points = (np.array(np.nonzero(diff))).astype(int)
 
