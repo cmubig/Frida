@@ -7,7 +7,6 @@
 ##########################################################
 
 import argparse 
-import math
 
 # Based off of Jun-Yan Zhu's Cyclegan implementation's options
 
@@ -104,6 +103,7 @@ class Options(object):
             default=0, help='Picking up where it left off.')
 
         parser.add_argument('--brush_length', type=float, default=None)
+        parser.add_argument('--max_stroke_length', type=float, default=0.06)
 
 
         parser.add_argument('--num_strokes', type=int, default=400)
@@ -183,6 +183,8 @@ class Options(object):
             default=3, help='Load this many images and take the one with fewest edges for simplicity.')
         parser.add_argument("--n_iters", type=int,
             default=300, help='Number of optimization iterations.')
+        parser.add_argument("--colors", type=str,
+            default=None, help='Specify a fixed palette of paint colors.')
         
         ### Argument is not used, but is allowed for flask compatability ###
         parser.add_argument("--app", type=str, nargs='*',
@@ -201,8 +203,9 @@ class Options(object):
             print('Must specify --brush_length cmd line param. Measure the brush length.')
 
         if self.ink:
-            self.MAX_STROKE_LENGTH = 0.03
-            self.MAX_BEND = 0.01 #1cm
+            # self.MAX_STROKE_LENGTH = 0.03
+            self.MAX_BEND = 0.02 #1cm
+        self.MAX_STROKE_LENGTH = self.max_stroke_length
         
         if self.robot == 'xarm':
             self.CANVAS_WIDTH  = 0.1524 # 6"

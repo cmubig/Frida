@@ -278,7 +278,7 @@ class FillInParametersToImage(nn.Module):
         return x
 
 l1_loss = nn.L1Loss()
-def shift_invariant_loss(pred, real, n=8, delta=0.15):
+def shift_invariant_loss(pred, real, n=8, delta=0.1):
     losses = None
     for dx in torch.linspace(start=-1.0*delta, end=delta, steps=n):
         for dy in torch.linspace(start=-1.0*delta, end=delta, steps=n):
