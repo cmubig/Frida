@@ -367,6 +367,8 @@ if __name__ == '__main__':
     crop = transforms.RandomResizedCrop((h, w), scale=(0.7, 1.0), 
                                         ratio=(0.95,1.05))
     
+    
+    
     data_dict = []
     if os.path.exists(data_dict_fn):
         data_dict = pickle.load(open(data_dict_fn,'rb'))
@@ -433,8 +435,16 @@ if __name__ == '__main__':
         except:
             continue
         target_img = crop(datum['img']).to(device)
-        colors = get_colors(cv2.resize(target_img.cpu().numpy()[0].transpose(1,2,0), (256, 256))*255., 
+        
+        if opt.colors is not None:
+            # 209,0,0.241,212,69.39,94,195
+            print(opt.colors)
+            colors = np.array([i.split(',') for i in opt.colors.split('.')]).astype(np.float32)
+            colors = (torch.from_numpy(colors) / 255.).to(device)
+        else:
+            colors = get_colors(cv2.resize(target_img.cpu().numpy()[0].transpose(1,2,0), (256, 256))*255., 
                 n_colors=opt.n_colors)
+        print(colors)
         # print(datum)
         datum_no_img = copy.deepcopy(datum)
         datum_no_img['img'] = None # Don't save the image directly, just path
@@ -452,7 +462,7 @@ if __name__ == '__main__':
             save_image(final_painting[:,:3],final_img_path)
             cs = clip_score(datum['TEXT'], final_img_path)
             print('cs', cs, datum['TEXT'])
-            if cs < 0.55:
+            if cs < 0.45:
                 break
 
             for method in ['random', 'random', 'salience', 'not_salience', 'object', 'object', 'all']:

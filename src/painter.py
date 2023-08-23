@@ -624,15 +624,30 @@ class Painter():
         #     random_strokes.append(simple_parameterization_to_real(.04, .02, zs[i]))
 
         # Figure out how many strokes can be made on the given canvas size
-        n_strokes_x = int(math.floor(self.opt.CANVAS_WIDTH/(self.opt.MAX_STROKE_LENGTH+0.005)))
         n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT/(self.opt.MAX_BEND+0.01)))
+
+        if self.opt.ink:
+            n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT/(self.opt.MAX_BEND+0.002)))
 
         stroke_trajectories = [] # Flatten so it's just twelve values x0,y0,z0,x1,y1,...
         stroke_intensities = [] # list of 2D numpy arrays 0-1 where 1 is paint
         for paper_it in range(self.opt.num_papers):
             for y_offset_pix_og in np.linspace((.03/self.opt.CANVAS_HEIGHT), 0.99-(.02/self.opt.CANVAS_HEIGHT), n_strokes_y)*h:
-                for x_offset_pix in np.linspace(0.02, 0.99-(self.opt.MAX_STROKE_LENGTH/self.opt.CANVAS_WIDTH), n_strokes_x)*w:
+                # for x_offset_pix in np.linspace(0.02, 0.99-(self.opt.MAX_STROKE_LENGTH/self.opt.CANVAS_WIDTH), n_strokes_x)*w:
 
+                x_offset_pix = 0.02 * w 
+                while(True): # x loop
+
+                    if len(stroke_trajectories) < len(random_strokes):
+                        random_stroke = random_strokes[len(stroke_trajectories)]
+                    else:
+                        random_stroke = get_random_stroke()
+                    
+                    stroke_length_cm = random_stroke.trajectory[-1][0]
+                    stroke_length_pix = stroke_length_cm * (w / self.opt.CANVAS_WIDTH)
+                    if stroke_length_pix + x_offset_pix > 0.98*w:
+                        break # No room left on the page width
+                    
                     if len(stroke_trajectories) % 2 == 0:
                         y_offset_pix = y_offset_pix_og + 0.0 * (h/self.opt.CANVAS_HEIGHT) # Offset y by 1cm every other stroke
                     else:
@@ -654,10 +669,6 @@ class Painter():
                         strokes_without_getting_new_paint += 1
                         strokes_without_cleaning += 1
 
-                    if len(stroke_trajectories) < len(random_strokes):
-                        random_stroke = random_strokes[len(stroke_trajectories)]
-                    else:
-                        random_stroke = get_random_stroke()
 
                     random_stroke.angled_paint(self, x, y, 0)
 
@@ -749,6 +760,9 @@ class Painter():
                             np.save(f, intensities)
                         with open(os.path.join(self.opt.cache_dir, 'stroke_size.npy'), 'wb') as f:
                             np.save(f, np.array(stroke_intensities[0].shape))
+                    
+                    gap = 0.02*w if self.opt.ink else 0.05*w
+                    x_offset_pix += stroke_length_pix + gap
 
             if paper_it != self.opt.num_papers-1:
                 try:
@@ -864,7 +878,6 @@ class Painter():
                             np.save(f, intensities)
                         with open(os.path.join(self.opt.cache_dir, 'stroke_size.npy'), 'wb') as f:
                             np.save(f, np.array(stroke_intensities[0].shape))
-
             if paper_it != self.opt.num_fill_in_papers-1:
                 try:
                     input('Place down new paper. Press enter to start.')
