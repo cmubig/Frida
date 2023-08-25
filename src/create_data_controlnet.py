@@ -41,6 +41,7 @@ from transformers import CLIPProcessor, CLIPModel, CLIPTokenizer, CLIPTextModel
 import torchvision.transforms as transforms
 
 
+
 import clip 
 if not os.path.exists('./clipscore/'):
     print('You have to clone the clipscore repo here from Github.')
@@ -464,7 +465,7 @@ if __name__ == '__main__':
         datum_no_img['img'] = None # Don't save the image directly, just path
         current_canvas = default_current_canvas
 
-        for turn in range(4):
+        for turn in range(opt.turn_takes):
             painting = plan_from_image(opt, opt.max_strokes_added, target_img, current_canvas[:,:3])
 
             # If the painting doesn't fit the text prompt well, just break
