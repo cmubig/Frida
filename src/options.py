@@ -185,6 +185,8 @@ class Options(object):
             default=300, help='Number of optimization iterations.')
         parser.add_argument("--colors", type=str,
             default=None, help='Specify a fixed palette of paint colors.')
+        parser.add_argument("--turn_takes", type=int,
+            default=3, help='How many turns for generating pix2pix training data.')
         
         ### Argument is not used, but is allowed for flask compatability ###
         parser.add_argument("--app", type=str, nargs='*',
