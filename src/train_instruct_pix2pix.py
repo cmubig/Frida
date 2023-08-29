@@ -17,9 +17,11 @@
 """Script to fine-tune Stable Diffusion for InstructPix2Pix."""
 
 import argparse
+import copy
 import logging
 import math
 import os
+import random
 import shutil
 from pathlib import Path
 
@@ -62,6 +64,7 @@ DATASET_NAME_MAPPING = {
     "fusing/instructpix2pix-1000-samples": ("input_image", "edit_prompt", "edited_image"),
 }
 WANDB_TABLE_COL_NAMES = ["original_image", "edited_image", "edit_prompt"]
+
 
 
 def parse_args():
@@ -701,6 +704,7 @@ def main():
         # Collate the preprocessed images into the `examples`.
         examples["original_pixel_values"] = original_images
         examples["edited_pixel_values"] = edited_images
+        examples["text"] = examples[edit_prompt_column]
 
         # Preprocess the captions.
         captions = list(examples[edit_prompt_column])
@@ -724,10 +728,17 @@ def main():
         edited_pixel_values = edited_pixel_values.to(memory_format=torch.contiguous_format).float()
         # input_ids = torch.stack([example["input_ids"] for example in examples])
         input_ids = torch.stack([example["input_ids"][0] for example in examples])
+        texts = [example["text"] for example in examples]
+        original_images = [[e.resize((args.resolution,args.resolution)) for e in example[original_image_column]] for example in examples]
+        edited_images =   [[e.resize((args.resolution,args.resolution)) for e in example[edited_image_column]] for example in examples]
+        
         return {
             "original_pixel_values": original_pixel_values,
             "edited_pixel_values": edited_pixel_values,
             "input_ids": input_ids,
+            "text":texts,
+            "original_images":original_images,
+            "edited_images":edited_images
         }
 
     # DataLoaders creation:
@@ -738,6 +749,7 @@ def main():
         batch_size=args.train_batch_size,
         num_workers=args.dataloader_num_workers,
     )
+    train_logging_examples = None
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -936,7 +948,9 @@ def main():
                 #     and (epoch % args.validation_epochs == 0)
                 # ):
                 # if True:
-                if args.validation_prompt is not None and ((global_step % args.validation_steps == 0 and accelerator.sync_gradients) or (global_step+step)==0):
+                if args.validation_prompt is not None \
+                        and ((global_step % args.validation_steps == 0 and accelerator.sync_gradients) \
+                        or ((global_step+step)==0 and accelerator.sync_gradients)):
 
                     
                     # create pipeline
@@ -972,17 +986,18 @@ def main():
                             str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
                         ):
                             for _ in range(args.num_validation_images):
-                                edited_images.append(
-                                    pipeline(
-                                        validation_prompt,
-                                        image=original_image,
-                                        num_inference_steps=20,
-                                        image_guidance_scale=1.5,
-                                        guidance_scale=7,
-                                        generator=generator,
-                                        num_images_per_prompt=1,
-                                    ).images[0]
-                                )
+                                with torch.no_grad():
+                                    edited_images.append(
+                                        pipeline(
+                                            validation_prompt,
+                                            image=original_image,
+                                            num_inference_steps=20,
+                                            image_guidance_scale=1.5,
+                                            guidance_scale=7,
+                                            generator=generator,
+                                            num_images_per_prompt=1,
+                                        ).images[0]
+                                    )
                                 # ####### for predicting delta
                                 # delta = edited_images[-1]
                                 # undeltad = 2*np.array(delta, dtype=np.float32) - 255 + np.array(edited_images[-2], dtype=np.float32)
@@ -1005,6 +1020,63 @@ def main():
                         if args.use_ema:
                             # Switch back to the original UNet parameters.
                             ema_unet.restore(unet.parameters())
+
+                    # with torch.no_grad():
+                    #     train_examples = 6
+                        
+                    #     train_exp_counter = 0
+                    #     if train_logging_examples is None:
+                    #         train_logging_examples = list(enumerate(copy.deepcopy(train_dataloader)))
+                    #         random.Random(0).shuffle(sorted(train_logging_examples))
+                    #     for _, batch_log in train_logging_examples:
+                    #         if train_exp_counter == train_examples:
+                    #             break
+                    #         train_exp_counter += 1
+
+                    #         # train_input_image = batch_log["original_pixel_values"]#.to(weight_dtype)
+                    #         # train_input_image = PIL.Image.fromarray((train_input_image[0].cpu().numpy().transpose(1,2,0).clip(0,1) * 254.).astype(np.uint8))
+                    #         # original_image = train_input_image.resize((args.resolution, args.resolution))####
+                    #         original_image = batch_log["original_images"][0][0]
+
+                    #         # edited_image = batch_log["edited_pixel_values"]#.to(weight_dtype)
+                    #         # edited_image = PIL.Image.fromarray((edited_image[0].cpu().numpy().transpose(1,2,0).clip(0,1) * 254.).astype(np.uint8))
+                    #         # edited_image = edited_image.resize((args.resolution, args.resolution))####
+                    #         edited_image = batch_log["edited_images"][0][0]
+
+                    #         train_prompt = batch_log["text"][0][0]
+
+                    #         edited_images = [original_image, edited_image]
+                    #         with torch.autocast(
+                    #             str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
+                    #         ):
+                    #             for _ in range(args.num_validation_images):
+                    #                 edited_images.append(
+                    #                     pipeline(
+                    #                         train_prompt,
+                    #                         image=original_image,
+                    #                         num_inference_steps=20,
+                    #                         image_guidance_scale=1.5,
+                    #                         guidance_scale=7,
+                    #                         generator=generator,
+                    #                         num_images_per_prompt=1,
+                    #                     ).images[0]
+                    #                 )
+
+                    #         for tracker in accelerator.trackers:
+                    #             if tracker.name == "tensorboard":
+                    #                 np_images = np.stack([np.asarray(img) for img in edited_images])
+                    #                 tracker.writer.add_images("train/"+train_prompt, np_images, global_step, dataformats="NHWC")
+                                
+                    #             if tracker.name == "wandb":
+                    #                 wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
+                    #                 for edited_image in edited_images:
+                    #                     wandb_table.add_data(
+                    #                         wandb.Image(original_image), wandb.Image(edited_image), train_prompt
+                    #                     )
+                    #                 tracker.log({"train": wandb_table})
+                    #         if args.use_ema:
+                    #             # Switch back to the original UNet parameters.
+                    #             ema_unet.restore(unet.parameters())
 
                     del pipeline
                     torch.cuda.empty_cache()

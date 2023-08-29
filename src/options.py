@@ -187,6 +187,10 @@ class Options(object):
             default=None, help='Specify a fixed palette of paint colors.')
         parser.add_argument("--turn_takes", type=int,
             default=3, help='How many turns for generating pix2pix training data.')
+        parser.add_argument("--codraw_metric_data_dir", type=str,
+            default=None, help='Where to store evaluation data.')
+        parser.add_argument("--codraw_eval_setting", type=str,
+            default=None, help='[same_text_fill_in,same_text_add_detail_different_text,add_background,something_from_nothing]')
         
         ### Argument is not used, but is allowed for flask compatability ###
         parser.add_argument("--app", type=str, nargs='*',
@@ -206,7 +210,7 @@ class Options(object):
 
         if self.ink:
             # self.MAX_STROKE_LENGTH = 0.03
-            self.MAX_BEND = 0.02 #1cm
+            self.MAX_BEND = 0.01 #1cm
         self.MAX_STROKE_LENGTH = self.max_stroke_length
         
         if self.robot == 'xarm':
