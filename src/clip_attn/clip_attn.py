@@ -20,11 +20,11 @@ clip_norm = transforms.Compose([
     transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
 ])
 
-def get_attention(img):
+def get_attention(img, prompt=""):
     global attn_model
     if attn_model is None:
         attn_model, _  = clip.load("ViT-B/32", device=device, jit=False)
-    texts = ["a man with eyeglasses"]
+    texts = [prompt]
     text = clip.tokenize(texts).to(device)
 
     res_img = clip_norm(img)
@@ -32,8 +32,7 @@ def get_attention(img):
 
     dim = int(image_relevance.numel() ** 0.5)
     image_relevance = image_relevance.reshape(1, 1, dim, dim)
-    image_relevance = torch.nn.functional.interpolate(image_relevance, size=224, mode='bilinear')
-    image_relevance = image_relevance.reshape(224, 224).to(device).data.cpu().numpy()
+    image_relevance = image_relevance.reshape(dim, dim).to(device).data.cpu().numpy()
     image_relevance = (image_relevance - image_relevance.min()) / (image_relevance.max() - image_relevance.min())
     
     return image_relevance

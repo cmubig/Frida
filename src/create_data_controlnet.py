@@ -17,7 +17,8 @@ import requests
 from io import BytesIO
 import kornia
 from torchvision import transforms
-
+from torchvision.transforms import InterpolationMode 
+bicubic = InterpolationMode.BICUBIC
 try:
   import google.colab
   IN_COLAB = True
@@ -201,7 +202,7 @@ def get_image_text_pair(dataset):
     datums = []
     least_complicated_value = 1e9
     best_datum = None
-    resize = transforms.Resize((256,256))
+    resize = transforms.Resize((256,256), bicubic)
     while len(datums) < opt.num_images_to_consider_for_simplicity:
         datum = dataset[np.random.randint(len(dataset))]
         img = load_img_internet(datum['URL'])
@@ -260,28 +261,34 @@ def remove_strokes_randomly(painting, min_strokes_added, max_strokes_added):
     painting.brush_strokes = nn.ModuleList(bs)
     # return painting
     with torch.no_grad():
-        p = painting(h,w)
+        p = painting(h*4,w*4)
     return p[:,:3]
 
 
-def remove_strokes_by_region(painting, target_img, keep_important=False):
+def remove_strokes_by_region(painting, target_img, prompt, keep_important=False):
     from clip_attn.clip_attn import get_attention
-    attn = get_attention(target_img) 
-    attn = transforms.Resize((target_img.shape[2], target_img.shape[3]))(torch.from_numpy(attn[None,None,:,:]))[0,0]
+    attn = get_attention(target_img, prompt) 
+    # attn = transforms.Resize((target_img.shape[2], target_img.shape[3]))(torch.from_numpy(attn[None,None,:,:]))[0,0]
     
     with torch.no_grad():
-        p = painting(h,w, use_alpha=False)
+        p = painting(h*4,w*4, use_alpha=False)
     background = painting.background_img.detach().clone()
     output = p.detach().clone()
+
+    background = transforms.Resize((h*4,w*4), bicubic)(background)
+    attn = transforms.Resize((h*4,w*4), bicubic)(torch.from_numpy(attn[None,None,:,:]))[0,0]
+
+    salient = attn > 0.25#torch.quantile(attn.float(), q=0.5)
+    not_salient = ~salient
     
     if keep_important:
         for c in range(3):
-            output[0,c][attn < 0.25] = background[0,c][attn < 0.25]
+            output[0,c][not_salient] = background[0,c][not_salient]
     else:
         for c in range(3):
             # print(output[0,c].shape, attn.shape)
-            output[0,c][attn > 0.25] = background[0,c][attn > 0.25]
-    return output
+            output[0,c][salient] = background[0,c][salient]
+    return output, attn, salient
 
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
@@ -299,34 +306,54 @@ mask_generator = SamAutomaticMaskGenerator(sam)
 
 def remove_strokes_by_object(painting, target_img):
     # print(target_img.shape)
+    target_img = transforms.Resize((h*4, w*4), bicubic)(target_img)
     with torch.no_grad():
         t = target_img[0].permute(1,2,0)
         t = (t.cpu().numpy()*255.).astype(np.uint8)
         # print(t.shape)
         masks = mask_generator.generate(t)
     
+    def show_anns(anns):
+        if len(anns) == 0:
+            return
+        sorted_anns = sorted(anns, key=(lambda x: x['area']), reverse=True)
+        # ax = plt.gca()
+        # ax.set_autoscale_on(False)
+
+        img = np.ones((sorted_anns[0]['segmentation'].shape[0], sorted_anns[0]['segmentation'].shape[1], 4))
+        img[:,:,3] = 0
+        for ann in sorted_anns:
+            m = ann['segmentation']
+            color_mask = np.concatenate([np.random.random(3), [0.35]])
+            img[m] = color_mask
+        # ax.imshow(img)
+        return img
+
+    mask_img = show_anns(masks)
+    # plt.imshow(show_anns(masks))
+    # plt.show()
     # Big objects first
     # masks = sorted(masks, key=(lambda x: x['area']), reverse=True)
     random.shuffle(masks)
     # print(masks)
     # print(masks[0]['area'])
     # print(masks[0]['segmentation'].shape)
-    # plt.imshow(target_img)
+    # # plt.imshow(target_img)
     # masked = target_img.clone()
     # masked[0,:,masks[0]['segmentation']] = 1.0
-    # plt.imshow(masked)
+    # plt.imshow(masked.cpu()[0].numpy().transpose(1,2,0))
     # plt.show()
     # matplotlib.use('TkAgg')
     # show_img(masked)
     # masks.area
-    background = painting.background_img.detach().clone()
+    background = transforms.Resize((h*4, w*4), bicubic)(painting.background_img.detach().clone())
     with torch.no_grad():
-        p = painting(h,w, use_alpha=False)
+        p = painting(h*4,w*4, use_alpha=False)
     if len(masks) > 0:
         # for i in range(min(max(1, int(len(masks)/2)), len(masks)-1)):
         for i in range(max(1, min(int(len(masks)/2), len(masks)-1))):
             p[0,:3,masks[i]['segmentation']] = background[0,:3,masks[i]['segmentation']]
-    return p[:,:3]
+    return p[:,:3], mask_img
 
 
 clip_model, _ = clip.load("ViT-B/32", device=device, jit=False)
@@ -377,7 +404,7 @@ if __name__ == '__main__':
     dataset = load_dataset(opt.controlnet_dataset)['train']
     # dataset_add = load_dataset(opt.controlnet_dataset_addition)['train']
     
-    crop = transforms.RandomResizedCrop((h, w), scale=(0.7, 1.0), 
+    crop = transforms.RandomResizedCrop((h*4, w*4), scale=(0.7, 1.0), 
                                         ratio=(0.95,1.05))
     
     
@@ -447,7 +474,8 @@ if __name__ == '__main__':
             datum = get_image_text_pair(dataset)
         except:
             continue
-        target_img = crop(datum['img']).to(device)
+        target_img_full = crop(datum['img']).to(device)
+        target_img = transforms.Resize((h,w), bicubic)(target_img_full)
         
         if opt.colors is not None:
             # 209,0,0.241,212,69.39,94,195
@@ -470,15 +498,15 @@ if __name__ == '__main__':
 
             # If the painting doesn't fit the text prompt well, just break
             with torch.no_grad():
-                final_painting = painting(h,w)
+                final_painting = painting(h*4,w*4)
             output_dir = os.path.join(opt.output_parent_dir, str(int(np.floor(len(data_dict)/100))),)
             if not os.path.exists(output_dir): os.mkdir(output_dir)
-            final_img_path = os.path.join(output_dir, 'id{}_{}strokes.jpg'.format(len(data_dict), opt.max_strokes_added))
+            final_img_path = os.path.join(output_dir, 'id{}_{}strokes.png'.format(len(data_dict), opt.max_strokes_added))
             save_image(final_painting[:,:3],final_img_path)
             cs = clip_score(datum['TEXT'], final_img_path)
             print('cs', cs, datum['TEXT'])
-            if cs < 0.45:
-                break
+            # if cs < 0.45:
+            #     break
 
             for method in ['random', 'random', 'salience', 'not_salience', 'object', 'object', 'all']:
                 try:
@@ -487,13 +515,13 @@ if __name__ == '__main__':
                                             str(int(np.floor(len(data_dict)/100))),)
                     if not os.path.exists(output_dir): os.mkdir(output_dir)
                     
-                    target_img_path = os.path.join(output_dir, 'id{}_target.jpg'.format(len(data_dict)))
-                    save_image(target_img[:,:3],target_img_path)
+                    target_img_path = os.path.join(output_dir, 'id{}_target.png'.format(len(data_dict)))
+                    save_image(target_img_full[:,:3],target_img_path)
                                 
                     with torch.no_grad():
-                        final_painting = painting(h,w)
+                        final_painting = painting(h*4,w*4)
                     
-                    final_img_path = os.path.join(output_dir, 'id{}_{}strokes.jpg'.format(len(data_dict), opt.max_strokes_added))
+                    final_img_path = os.path.join(output_dir, 'id{}_{}strokes.png'.format(len(data_dict), opt.max_strokes_added))
                     save_image(final_painting[:,:3],final_img_path)
 
                     if method == 'random':
@@ -502,15 +530,25 @@ if __name__ == '__main__':
                                                                 opt.min_strokes_added, opt.max_strokes_added)
                     elif method == 'salience':
                         # Remove strokes by region
-                        start_painting = remove_strokes_by_region(copy.deepcopy(painting), 
-                                                                target_img)
+                        start_painting, attn, salient = remove_strokes_by_region(copy.deepcopy(painting), 
+                                                                target_img, datum["TEXT"])
+                        attn_path = os.path.join(output_dir, 'id{}_{}_attn.png'.format(len(data_dict), 
+                                                                                opt.max_strokes_added))
+                        save_image(attn[None,None].float().repeat((1,3,1,1)), attn_path)
+                        salience_path = os.path.join(output_dir, 'id{}_{}_salience.png'.format(len(data_dict), 
+                                                                                opt.max_strokes_added))
+                        save_image(salient[None,None].float().repeat((1,3,1,1)), salience_path)
+                        
                     elif method == 'not_salience':
                         # Remove strokes by region
-                        start_painting = remove_strokes_by_region(copy.deepcopy(painting), 
-                                                                target_img, keep_important=True)
+                        start_painting, attn, salient = remove_strokes_by_region(copy.deepcopy(painting), 
+                                                                target_img, datum["TEXT"], keep_important=True)
                     elif method == 'object':
-                        start_painting = remove_strokes_by_object(copy.deepcopy(painting), 
+                        start_painting, mask_img = remove_strokes_by_object(copy.deepcopy(painting), 
                                                                 target_img)
+                        mask_path = os.path.join(output_dir, 'id{}_{}_mask.png'.format(len(data_dict), 
+                                                                                opt.max_strokes_added))
+                        Image.fromarray((mask_img*254).astype(np.uint8)).save(mask_path)
                     elif method == 'all':
                         start_painting = painting.background_img
                     else:
@@ -518,13 +556,14 @@ if __name__ == '__main__':
                         1/0
 
                     # Don't save if the start painting is too similar to final painting
-                    diff = torch.mean(torch.abs(start_painting[:,:3] - final_painting[:,:3]))
+                    diff = torch.mean(torch.abs(transforms.Resize((256,256))(start_painting[:,:3]) \
+                                - transforms.Resize((256,256))(final_painting[:,:3])))
                     # print(diff)
-                    if diff < 0.025:
-                        # print('not different enough')
-                        continue
+                    # if diff < 0.025:
+                    #     # print('not different enough')
+                    #     continue
 
-                    start_img_path = os.path.join(output_dir, 'id{}_start.jpg'.format(len(data_dict)))
+                    start_img_path = os.path.join(output_dir, 'id{}_start.png'.format(len(data_dict)))
                     save_image(start_painting[:,:3],start_img_path)
 
                     d = {'id':len(data_dict),

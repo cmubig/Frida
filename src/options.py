@@ -186,11 +186,14 @@ class Options(object):
         parser.add_argument("--colors", type=str,
             default=None, help='Specify a fixed palette of paint colors.')
         parser.add_argument("--turn_takes", type=int,
-            default=3, help='How many turns for generating pix2pix training data.')
+            default=0, help='How many turns for generating pix2pix training data.')
         parser.add_argument("--codraw_metric_data_dir", type=str,
             default=None, help='Where to store evaluation data.')
         parser.add_argument("--codraw_eval_setting", type=str,
             default=None, help='[same_text_fill_in,same_text_add_detail_different_text,add_background,something_from_nothing]')
+        
+        parser.add_argument("--abstract_planner_model", type=str,
+            default=None, help='path to pre-trained instruct-pix2pix abstract planning model')
         
         ### Argument is not used, but is allowed for flask compatability ###
         parser.add_argument("--app", type=str, nargs='*',
