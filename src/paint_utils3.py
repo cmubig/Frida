@@ -266,7 +266,10 @@ def init_brush_strokes(diff, n_strokes, ink):
     if not IN_COLAB: matplotlib.use('TkAgg')
     brush_strokes = []
     
-    diff[diff < 0.15] = 0
+    if ink:
+        diff[diff < 0.15] = 0
+    else:
+        diff[diff < 0.15] = 0.0001
     diff = diff.cpu().detach().numpy()
     points = (np.array(np.nonzero(diff))).astype(int)
 
