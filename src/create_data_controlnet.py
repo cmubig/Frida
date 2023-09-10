@@ -347,13 +347,15 @@ def remove_strokes_by_object(painting, target_img):
     # show_img(masked)
     # masks.area
     background = transforms.Resize((h*4, w*4), bicubic)(painting.background_img.detach().clone())
+    boolean_mask = torch.zeros(background[:,:3].shape).to(device).float()
     with torch.no_grad():
         p = painting(h*4,w*4, use_alpha=False)
     if len(masks) > 0:
         # for i in range(min(max(1, int(len(masks)/2)), len(masks)-1)):
         for i in range(max(1, min(int(len(masks)/2), len(masks)-1))):
             p[0,:3,masks[i]['segmentation']] = background[0,:3,masks[i]['segmentation']]
-    return p[:,:3], mask_img
+            boolean_mask[0,:3,masks[i]['segmentation']] = 1
+    return p[:,:3], mask_img, boolean_mask
 
 
 clip_model, _ = clip.load("ViT-B/32", device=device, jit=False)
@@ -544,11 +546,15 @@ if __name__ == '__main__':
                         start_painting, attn, salient = remove_strokes_by_region(copy.deepcopy(painting), 
                                                                 target_img, datum["TEXT"], keep_important=True)
                     elif method == 'object':
-                        start_painting, mask_img = remove_strokes_by_object(copy.deepcopy(painting), 
+                        start_painting, mask_img, boolean_mask = remove_strokes_by_object(copy.deepcopy(painting), 
                                                                 target_img)
                         mask_path = os.path.join(output_dir, 'id{}_{}_mask.png'.format(len(data_dict), 
                                                                                 opt.max_strokes_added))
                         Image.fromarray((mask_img*254).astype(np.uint8)).save(mask_path)
+                        boolean_mask_path = os.path.join(output_dir, 'id{}_{}_bool_obj_mask.png'.format(len(data_dict), 
+                                                                                opt.max_strokes_added))
+                        boolean_mask = boolean_mask[0].cpu().numpy().transpose(1,2,0)
+                        Image.fromarray((boolean_mask*254).astype(np.uint8)).save(boolean_mask_path)
                     elif method == 'all':
                         start_painting = painting.background_img
                     else:
