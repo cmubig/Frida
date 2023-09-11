@@ -77,9 +77,16 @@ class FridaControlNetDataset(Dataset):
         # filtered_dict = []
         # for d in self.data_dict:
         #     # if d['clip_score'] > 0.65:
-        #     if d['photo_to_sketch_diff'] > 0.05:
+        #     if d['photo_to_sketch_diff'] > 0.03 and d['clip_score'] > 0.60:
         #         filtered_dict.append(d)
         # self.data_dict = filtered_dict
+        # Only use examples with good clipscores
+        filtered_dict = []
+        for d in self.data_dict:
+            # if d['clip_score'] > 0.65:
+            if d['photo_to_sketch_diff'] > 0.03 and d['clip_score'] > 0.50:
+                filtered_dict.append(d)
+        self.data_dict = filtered_dict
 
     def __len__(self):
         return len(self.data_dict)
