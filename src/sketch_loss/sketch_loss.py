@@ -102,17 +102,7 @@ class OutputTransform(nn.Module):
 #working_dir = pathlib.Path().resolve()
 #path = '/home/frida/ros_ws/src/intera_sdk/SawyerPainter/src/sketch_loss/pretrained/photosketch.pth'#os.path.join(working_dir, 'pretrained/photosketch.pth')
 
-try: # If running ros, get the painting code dir
-    import rospkg
-    rospack = rospkg.RosPack()
-    # get the file path for painter code
-    ros_dir = rospack.get_path('paint')
-    path = os.path.join(ros_dir,'src','sketch_loss', 'pretrained', 'photosketch.pth')
-except:
-    path = 'sketch_loss/pretrained/photosketch.pth'
-t_real = 'toSketch'
-tf_real = OutputTransform(path, process=t_real).to(device)
-
+tf_real = None
 
 def compute_sketch_loss(sketch, painting, comparator=torch.nn.MSELoss(), writer=None, it=0):
     # path = '/mnt/Data1/vmisra/Frida/scripts/pretrained/photosketch.pth'
@@ -127,6 +117,18 @@ def compute_sketch_loss(sketch, painting, comparator=torch.nn.MSELoss(), writer=
     from plan import format_img
     # print(painting.min().item(), painting.max().item(), sketch.min().item(), sketch.max().item())
 
+    if tf_real is None:
+        
+        try: # If running ros, get the painting code dir
+            import rospkg
+            rospack = rospkg.RosPack()
+            # get the file path for painter code
+            ros_dir = rospack.get_path('paint')
+            path = os.path.join(ros_dir,'src','sketch_loss', 'pretrained', 'photosketch.pth')
+        except:
+            path = 'sketch_loss/pretrained/photosketch.pth'
+        t_real = 'toSketch'
+        tf_real = OutputTransform(path, process=t_real).to(device)
     sketch_tensor = (tf_real(sketch*2-1)+1)/2
 
     # image_transform = transforms.Compose([
