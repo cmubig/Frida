@@ -10,43 +10,56 @@
 Create a dataset to be used to fine-tune Stable Diffusion using LoRA
 """
 
-import argparse
+import sys 
+sys.path.insert(0, '../src/')
+
+import os 
+import torch
+import random
+import numpy as np
+import copy
+import cv2
 from datasets import load_dataset
 from PIL import Image
 import requests
 from io import BytesIO
 import kornia
+from tqdm import tqdm
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode 
 bicubic = InterpolationMode.BICUBIC
+from torchvision.utils import save_image
+
+import matplotlib
+import matplotlib.pyplot as plt
+import pickle
+import shutil
+
+
+# from plan import *
+from paint_utils3 import format_img, initialize_painting, \
+        discretize_colors, sort_brush_strokes_by_color, \
+        add_strokes_to_painting, create_tensorboard, \
+        load_img, get_colors
+from clip_attn import get_attention
+from plan import parse_objective
+from options import Options
+
+from transformers import CLIPProcessor, CLIPModel, CLIPTokenizer, CLIPTextModel
+import torchvision.transforms as transforms
+
 try:
   import google.colab
   IN_COLAB = True
 except:
   IN_COLAB = False
-
-import tkinter
-import matplotlib
-import matplotlib.pyplot as plt
-import pickle
-import shutil
 if not IN_COLAB: matplotlib.use('TkAgg')
-
-import sys 
-import os 
-sys.path.insert(0, '..')
-
-from plan import *
-
-from transformers import CLIPProcessor, CLIPModel, CLIPTokenizer, CLIPTextModel
-import torchvision.transforms as transforms
-
 
 
 import clip 
-if not os.path.exists('./clipscore/'):
+if not os.path.exists('../src/clipscore/'):
     print('You have to clone the clipscore repo here from Github.')
-sys.path.append('./clipscore')
+sys.path.append('../src/clipscore')
 from clipscore import get_clip_score, extract_all_images
 
 # Load the CLIP model
@@ -97,30 +110,9 @@ def image_text_similarity_local(pil_image, text):
         probs = logits_per_image#logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
     return probs
 
-
-
-def log_progress(painting, opt, log_freq=5, force_log=False, title='plan'):
-    global local_it, plans
-    local_it +=1
-    if (local_it %log_freq==0) or force_log:
-        with torch.no_grad():
-            p = painting(h,w, use_alpha=False)
-            p = format_img(p)
-            opt.writer.add_image('images/{}'.format(title), p, local_it)
-            
-            plans.append((p*255.).astype(np.uint8))
-
 def plan_from_image(opt, num_strokes, target_img, current_canvas, clip_lr=1.0):
     global colors
-    painting = random_init_painting(current_canvas, num_strokes, ink=opt.ink)
-
-    painting = initialize_painting(num_strokes, target_img, current_canvas, opt.ink)
     
-    attn = get_attention(target_img)
-    opt.writer.add_image('target/attention', format_img(torch.from_numpy(attn)[None,None,:,:]), 0)
-    opt.writer.add_image('target/target', format_img(target_img), 0)
-
-
     painting = initialize_painting(0, target_img, current_canvas, opt.ink)
     painting.to(device)
 
@@ -166,7 +158,7 @@ def plan_from_image(opt, num_strokes, target_img, current_canvas, clip_lr=1.0):
         if (it % 10 == 0 and it > (0.5*opt.n_iters)) or it > 0.9*opt.n_iters:
             if not opt.ink:
                 discretize_colors(painting, colors)
-        # log_progress(painting, opt, log_freq=opt.log_frequency)#, force_log=True)
+
         # with torch.no_grad():
         #     p = p[:,:3]
         #     p = format_img(p)
@@ -258,7 +250,7 @@ def remove_strokes_randomly(painting, min_strokes_added, max_strokes_added):
     to_delete = set(random.sample(range(len(painting.brush_strokes)), max_strokes_added-min_strokes_added))
     enumerate(painting.brush_strokes)
     bs = [x for i,x in enumerate(painting.brush_strokes) if not i in to_delete]
-    painting.brush_strokes = nn.ModuleList(bs)
+    painting.brush_strokes = torch.nn.ModuleList(bs)
     # return painting
     with torch.no_grad():
         p = painting(h*4,w*4)
@@ -290,9 +282,9 @@ def remove_strokes_by_region(painting, target_img, prompt, keep_important=False)
             output[0,c][salient] = background[0,c][salient]
     return output, attn, salient
 
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
 
-sam_checkpoint = "sam_vit_b_01ec64.pth"
+sam_checkpoint = "../src/sam_vit_b_01ec64.pth"
 model_type = "vit_b"
 try:
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
@@ -417,60 +409,6 @@ if __name__ == '__main__':
 
     for i in range(opt.max_images):
 
-        # # Time to do the examples where content is changed
-        # output_dir = os.path.join(opt.output_parent_dir,
-        #                         str(int(np.floor(len(data_dict)/100))),)
-        # if not os.path.exists(output_dir): os.mkdir(output_dir)
-        
-        # try:
-        #     datum0 = get_image_text_pair(dataset)
-        # except:
-        #     continue
-        # target_img0 = crop(datum0['img']).to(device)
-        # try:
-        #     datum1 = get_image_text_pair(dataset)
-        # except:
-        #     continue
-        # target_img1 = crop(datum1['img']).to(device)
-        
-        # colors = get_colors(cv2.resize(target_img0.cpu().numpy()[0].transpose(1,2,0), (256, 256))*255., 
-        #         n_colors=opt.n_colors)
-        # # print(datum)
-        # datum_no_img = copy.deepcopy(datum1)
-        # datum_no_img['img'] = None # Don't save the image directly, just path
-        # current_canvas = default_current_canvas
-
-        # painting0 = plan_from_image(opt, opt.min_strokes_added, target_img0, 
-        #                                      current_canvas)
-        # with torch.no_grad():
-        #     start_painting = painting0(h,w)
-        # current_canvas = start_painting
-        # painting1 = plan_from_image(opt, opt.max_strokes_added - opt.min_strokes_added, target_img1, 
-        #                                    current_canvas[:,:3])
-        # with torch.no_grad():
-        #     final_painting = painting1(h,w)
-
-        # start_img_path = os.path.join(output_dir, 'id{}_start.jpg'.format(len(data_dict)))
-        # save_image(start_painting[:,:3],start_img_path)
-        # dst = torch.cat([target_img0, target_img1], dim=3)
-        # target_img_path = os.path.join(output_dir, 'id{}_target.jpg'.format(len(data_dict)))
-        # save_image(dst[:,:3],target_img_path)
-        # final_img_path = os.path.join(output_dir, 'id{}_{}strokes.jpg'.format(len(data_dict), opt.max_strokes_added))
-        # save_image(final_painting[:,:3],final_img_path)
-
-        # d = {'id':len(data_dict),
-        #     'num_strokes_added':opt.max_strokes_added+opt.min_strokes_added,
-        #     'num_prev_strokes':opt.max_strokes_added,
-        #     'start_img':start_img_path,
-        #     'final_img':final_img_path,
-        #     'target_img':target_img_path,
-        #     'method':'img2img',
-        #     # 'text':datum['edit_prompt'],
-        #     'text':datum1['TEXT'],
-        #     'dataset_info':datum_no_img}
-        # data_dict.append(d)
-
-
         # Get a new image
         try:
             datum = get_image_text_pair(dataset)
@@ -502,6 +440,7 @@ if __name__ == '__main__':
             with torch.no_grad():
                 final_painting = painting(h*4,w*4)
             output_dir = os.path.join(opt.output_parent_dir, str(int(np.floor(len(data_dict)/100))),)
+            output_rel_dir = os.path.join(str(int(np.floor(len(data_dict)/100))),)
             if not os.path.exists(output_dir): os.mkdir(output_dir)
             final_img_path = os.path.join(output_dir, 'id{}_{}strokes.png'.format(len(data_dict), opt.max_strokes_added))
             save_image(final_painting[:,:3],final_img_path)
@@ -518,12 +457,14 @@ if __name__ == '__main__':
                     if not os.path.exists(output_dir): os.mkdir(output_dir)
                     
                     target_img_path = os.path.join(output_dir, 'id{}_target.png'.format(len(data_dict)))
+                    target_img_rel_path = os.path.join(output_rel_dir, 'id{}_target.png'.format(len(data_dict)))
                     save_image(target_img_full[:,:3],target_img_path)
                                 
                     with torch.no_grad():
                         final_painting = painting(h*4,w*4)
                     
                     final_img_path = os.path.join(output_dir, 'id{}_{}strokes.png'.format(len(data_dict), opt.max_strokes_added))
+                    final_img_rel_path = os.path.join(output_rel_dir, 'id{}_{}strokes.png'.format(len(data_dict), opt.max_strokes_added))
                     save_image(final_painting[:,:3],final_img_path)
 
                     if method == 'random':
@@ -570,14 +511,15 @@ if __name__ == '__main__':
                     #     continue
 
                     start_img_path = os.path.join(output_dir, 'id{}_start.png'.format(len(data_dict)))
+                    start_img_rel_path = os.path.join(output_rel_dir, 'id{}_start.png'.format(len(data_dict)))
                     save_image(start_painting[:,:3],start_img_path)
 
                     d = {'id':len(data_dict),
                             'num_strokes_added':opt.max_strokes_added-opt.min_strokes_added,
                             'num_prev_strokes':opt.min_strokes_added,
-                            'start_img':start_img_path,
-                            'final_img':final_img_path,
-                            'target_img':target_img_path,
+                            'start_img':start_img_rel_path,
+                            'final_img':final_img_rel_path,
+                            'target_img':target_img_rel_path,
                             'method':method,
                         #  'text':datum['text'],#sketches
                             'text':datum['TEXT'],
@@ -589,6 +531,7 @@ if __name__ == '__main__':
                     # start_img_path = final_img_path
 
                     current_canvas = final_painting.detach()
+                    current_canvas = transforms.Resize((h,w))(current_canvas)
 
                     data_dict.append(d)
 

@@ -8,27 +8,27 @@
 
 import numpy as np
 import torch
-from torchvision import transforms
+from torch import nn
 import matplotlib
 try:
   import google.colab
   IN_COLAB = True
 except:
   IN_COLAB = False
-# matplotlib.use('Agg')
+  
 import matplotlib.pyplot as plt
 from PIL import Image
 import cv2
 import os
 import colour
 import random
-# import gzip
 
-# from torch_painting_models_continuous_concerted import *
-from torch_painting_models_continuous import *
+from torch_painting_models_continuous import Painting, BrushStroke
 from clip_attn.clip_attn import get_attention
 
 from my_tensorboard import TensorBoard
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def load_img(path, h=None, w=None):
     im = Image.open(path)
@@ -169,38 +169,6 @@ def save_colors(allowed_colors):
         i += 1
 
     return big_img
-
-def save_painting_strokes(painting, opt):
-    # brush_stroke = BrushStroke(random.choice(strokes_small)).to(device)
-    canvas = transforms.Resize(size=(h,w))(painting.background_img)
-
-    individual_strokes = torch.empty((len(painting.brush_strokes),canvas.shape[1], canvas.shape[2], canvas.shape[3]))
-    running_strokes = torch.empty((len(painting.brush_strokes),canvas.shape[1], canvas.shape[2], canvas.shape[3]))
-
-    with torch.no_grad():
-        for i in range(len(painting.brush_strokes)):                
-            single_stroke = painting.brush_strokes[i](h,w)
-
-            canvas = canvas[:,:3] * (1 - single_stroke[:,3:]) + single_stroke[:,3:] * single_stroke[:,:3]
-            
-            running_strokes[i] = canvas 
-            individual_strokes[i] = single_stroke
-
-    running_strokes = (running_strokes.detach().cpu().numpy().transpose(0,2,3,1)*255).astype(np.uint8)
-    individual_strokes = (individual_strokes.detach().cpu().numpy().transpose(0,2,3,1)*255).astype(np.uint8)
-
-    with open(os.path.join(painter.opt.cache_dir, 'running_strokes.npy'), 'wb') as f:
-        np.save(f, running_strokes)
-    with open(os.path.join(painter.opt.cache_dir, 'individual_strokes.npy'), 'wb') as f:
-        np.save(f, individual_strokes)
-
-    for i in range(len(running_strokes)):
-        if i % 5 == 0 or i == len(running_strokes)-1:
-            opt.writer.add_image('images/plan', running_strokes[i], i)
-    for i in range(len(individual_strokes)):
-        if i % 5 == 0 or i == len(running_strokes)-1:
-            opt.writer.add_image('images/individual_strokes', individual_strokes[i], i)
-
 
 
 def random_init_painting(background_img, n_strokes, ink=False):

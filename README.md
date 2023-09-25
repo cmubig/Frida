@@ -32,12 +32,17 @@ execution of that plan.
 ```
 git clone https://github.com/pschaldenbrand/Frida.git
 
-# Frida's robot code is in python2.7 and planning code is in python 3.6
-pip install --r [requirements.txt|requirements_windows.txt]
-pip3 install --r requirements_python3.txt
+# We use Python 3.8
+pip3 install --r requirements.txt
 
 # Camera installation
 sudo apt install gphoto2 libgphoto2*
+
+# (optional) For training CoFRIDA, you'll need additional installation steps
+cd Frida/src
+pip3 install git+https://github.com/facebookresearch/segment-anything.git
+wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
+git clone https://github.com/jmhessel/clipscore.git
 ```
 
 # Run in Simulation

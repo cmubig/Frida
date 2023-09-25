@@ -41,7 +41,8 @@ class FridaControlNetDataset(Dataset):
             print('could not find data pickle file', data_dict_path)
         self.transform = lambda x : x
         self.data_source = self.data_dict
-        self.parent_dir = os.path.dirname(os.path.dirname(data_dict_path))
+        self.parent_dir = os.path.dirname(data_dict_path)
+        print('\n\n\n\nparent dir', self.parent_dir)
         # Only from zero prev strokes
         # filtered_dict = []
         # for d in self.data_dict:
@@ -69,6 +70,8 @@ class FridaControlNetDataset(Dataset):
         # Check to make sure the image exists
         filtered_dict = []
         for d in self.data_dict:
+            print(d['start_img'])
+            print(os.path.join(self.parent_dir, d['start_img']))
             if os.path.exists(os.path.join(self.parent_dir, d['start_img'])):
                 filtered_dict.append(d)
         self.data_dict = filtered_dict
