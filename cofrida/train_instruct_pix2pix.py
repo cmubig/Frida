@@ -52,7 +52,7 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
-from controlnet_dataset import FridaControlNetDataset
+from copaint_dataset import CoPaintDataset
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -655,7 +655,7 @@ def main():
     #             f"--edited_image_column' value '{args.edited_image_column}' needs to be one of: {', '.join(column_names)}"
     #         )
 
-    dataset = FridaControlNetDataset(args.data_dict)
+    dataset = CoPaintDataset(args.data_dict)
 
     edited_image_column = 'img_with_strokes'
     original_image_column = 'img_without_strokes'

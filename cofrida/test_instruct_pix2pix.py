@@ -1,30 +1,14 @@
 
-import argparse
-import copy
-import logging
-import math
-import os
-import random
-from pathlib import Path
 
-# import accelerate
+
 import numpy as np
 import torch
-import torch.nn.functional as F
 import torch.utils.checkpoint
-import transformers
-# from accelerate import Accelerator
-# from accelerate.logging import get_logger
-# from accelerate.utils import ProjectConfiguration, set_seed
-from datasets import load_dataset
-from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
-from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
-import diffusers
 from diffusers import (
     AutoencoderKL,
     ControlNetModel,
@@ -34,29 +18,14 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 from diffusers import StableDiffusionInstructPix2PixPipeline
-from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, is_wandb_available
-from diffusers.utils.import_utils import is_xformers_available
-
-from controlnet_dataset import FridaControlNetDataset
-
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
 import torch
-from torch import nn
-# from torch import nn
-# from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from diffusers.models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
-# from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
-
-# from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import StableDiffusionPipelineOutput
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
 
 import matplotlib.pyplot as plt
-
-from diffusers.models.controlnet import zero_module
 
 
 def add_imgs_together(imgs):

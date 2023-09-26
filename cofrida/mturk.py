@@ -250,7 +250,7 @@ for i in tqdm(range(n)):
 
             with torch.no_grad():
                 if eval_setting == 'same_text_fill_in':
-                    from create_data_controlnet import remove_strokes_by_region
+                    from create_copaint_data import remove_strokes_by_region
                     p = remove_strokes_by_region(painting, target_img)
                 else:
                     p = painting(h,w, use_alpha=False)
