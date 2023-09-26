@@ -23,7 +23,7 @@ import os
 import colour
 import random
 
-from torch_painting_models_continuous import Painting, BrushStroke
+from painting import Painting, BrushStroke
 from clip_attn.clip_attn import get_attention
 
 from my_tensorboard import TensorBoard

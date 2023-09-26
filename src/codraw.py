@@ -21,7 +21,7 @@ from options import Options
 from painter import Painter
 from strokes import simple_parameterization_to_real
 
-from torch_painting_models_continuous import *
+from painting import *
 from stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
 
 from clip_loss import clip_conv_loss, clip_model, clip_text_loss
@@ -34,7 +34,7 @@ from torchvision.transforms import Resize
 # from test_controlnet import pipeline as sd_interactive_pipeline
 from test_instruct_pix2pix import pipeline as sd_interactive_pipeline
 
-# from create_data_controlnet import image_text_similarity
+# from create_copaint_data import image_text_similarity
 
 # python3 codraw.py  --use_cache --cache_dir caches/cache_6_6_cvpr/ --dont_retrain_stroke_model --robot xarm --brush_length 0.2 --ink   --lr_multiplier 0.2 --num_strokes 40
 # python3 codraw.py  --use_cache --cache_dir caches/cache_6_6_cvpr/ --dont_retrain_stroke_model --robot xarm --brush_length 0.2 --ink   --lr_multiplier 0.3 --num_strokes 120
