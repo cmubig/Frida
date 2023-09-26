@@ -23,15 +23,15 @@ import os
 from options_hci import Options
 
 from painting import *
-from style_loss import compute_style_loss
-from sketch_loss.sketch_loss import compute_sketch_loss, compute_canny_loss
-from audio_loss.audio_loss import compute_audio_loss, load_audio_file
-from emotion_loss.emotion_loss import emotion_loss
-from face.face_loss import face_loss, parse_face_data
-from stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
-from speech2emotion.speech2emotion import speech2emotion, speech2text
+from losses.style_loss import compute_style_loss
+from losses.sketch_loss.sketch_loss import compute_sketch_loss, compute_canny_loss
+from losses.audio_loss.audio_loss import compute_audio_loss, load_audio_file
+from losses.emotion_loss.emotion_loss import emotion_loss
+from losses.face.face_loss import face_loss, parse_face_data
+from losses.stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
+from losses.speech2emotion.speech2emotion import speech2emotion, speech2text
 
-from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16, clip_fc_loss
+from losses.clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_model_16, clip_fc_loss
 import clip
 from clip_attn.clip_attn import get_attention
 import kornia as K

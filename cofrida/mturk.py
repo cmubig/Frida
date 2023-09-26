@@ -16,8 +16,8 @@ from test_instruct_pix2pix import get_instruct_pix2pix_model
 
 from options import Options
 from painting import *
-# from stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
-from clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip
+# from losses.stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
+from losses.clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip
 
 
 from paint_utils3 import *
