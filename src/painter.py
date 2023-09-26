@@ -892,5 +892,5 @@ class Painter():
         root = os.path.dirname(os.path.realpath(__file__))
 
         exit_code = subprocess.call(['python3', 
-            os.path.join(root, 'continuous_brush_model.py')]\
+            os.path.join(root, 'param2stroke.py')]\
             +sys.argv[1:])

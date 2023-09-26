@@ -9,14 +9,13 @@ import os
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 from options import Options 
-from continuous_brush_model import StrokeParametersToImage, special_sigmoid
+from param2stroke import StrokeParametersToImage, special_sigmoid
 
 opt = Options()
 opt.gather_options()
 
 max_alpha = Options().MAX_ALPHA
 
-# strokes = np.load('/home/frida/ros_ws/src/intera_sdk/SawyerPainter/scripts/extended_stroke_library_intensities.npy') 
 stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
 h, w = stroke_shape[0], stroke_shape[1]
 # print('stroke_shape', stroke_shape)

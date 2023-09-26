@@ -20,7 +20,7 @@ import copy
 from options_hci import Options
 
 # from torch_painting_models_continuous_concerted import *
-from torch_painting_models_continuous import *
+from painting import *
 from style_loss import compute_style_loss
 from sketch_loss.sketch_loss import compute_sketch_loss, compute_canny_loss
 from audio_loss.audio_loss import compute_audio_loss, load_audio_file
