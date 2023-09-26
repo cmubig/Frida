@@ -1,4 +1,4 @@
-python3 create_data_controlnet.py \
+python3 create_copaint_data.py \
         --use_cache \
         --cache_dir ../src/caches/cache_6_6_cvpr \
         --lr_multiplier 0.7  \

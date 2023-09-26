@@ -370,7 +370,7 @@ def clip_score(text_fn, img_fn):
 if __name__ == '__main__':
     global opt
     opt = Options()
-    # python3 create_data_controlnet.py --use_cache --cache_dir caches/cache_6_6_cvpr/  --lr_multiplier 0.7 --output_parent_dir testing
+    # python3 create_copaint_data.py --use_cache --cache_dir caches/cache_6_6_cvpr/  --lr_multiplier 0.7 --output_parent_dir testing
 
     opt.gather_options()
 
