@@ -22,9 +22,9 @@ from painter import Painter
 from strokes import simple_parameterization_to_real
 
 from painting import *
-from stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
+# from losses.stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
 
-from clip_loss import clip_conv_loss, clip_model, clip_text_loss
+from losses.clip_loss import clip_conv_loss, clip_model, clip_text_loss
 
 from paint_utils import canvas_to_global_coordinates, to_video
 from paint_utils3 import *
