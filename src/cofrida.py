@@ -4,7 +4,6 @@
 import numpy as np
 import torch
 import torch.utils.checkpoint
-from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
