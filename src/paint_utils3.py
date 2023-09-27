@@ -28,7 +28,15 @@ from clip_attn.clip_attn import get_attention
 
 from my_tensorboard import TensorBoard
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+def canvas_to_global_coordinates(x,y,z, opt):
+    ''' Canvas coordinates are proportions from the bottom left of canvas 
+        Global coordinates are in meters wrt to the robot's center
+    '''
+    x_new = (x -.5) * opt.CANVAS_WIDTH + opt.CANVAS_POSITION[0]
+    y_new = y*opt.CANVAS_HEIGHT + opt.CANVAS_POSITION[1]
+    z_new = z
+    return x_new, y_new, z_new
 
 def load_img(path, h=None, w=None):
     im = Image.open(path)
@@ -49,6 +57,20 @@ def get_colors(img, n_colors=6):
     colors = [kmeans.cluster_centers_[i] for i in range(len(kmeans.cluster_centers_))]
     colors = (torch.from_numpy(np.array(colors)) / 255.).float().to(device)
     return colors
+
+def to_video(frames, fn='animation{}.mp4'.format(time.time()), frame_rate=10):
+    if len(frames) == 0: return
+    h, w = frames[0].shape[0], frames[0].shape[1]
+    # print(h,w)
+    _fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    # _fourcc = cv2.VideoWriter_fourcc(*'H264')
+    # _fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    out = cv2.VideoWriter(fn, _fourcc, frame_rate, (w,h))
+    for frame in frames:
+        cv2_frame = np.clip(frame, a_min=0, a_max=1) if frame.max() < 2 else frame / 255.
+        cv2_frame = (cv2_frame * 255.).astype(np.uint8)[:,:,::-1]
+        out.write(cv2_frame)
+    out.release()
 
 def show_img(img, display_actual_size=True):
     if type(img) is torch.Tensor:
@@ -122,6 +144,21 @@ def discretize_colors(painting, discrete_colors):
             brush_stroke.color_transform.data *= 0
             brush_stroke.color_transform.data += new_color
 
+def rgb2lab(image_rgb):
+    image_rgb = image_rgb.astype(np.float32)
+    if image_rgb.max() > 2:
+        image_rgb = image_rgb / 255.
+
+    # Also Consider
+    # image_lab = colour.XYZ_to_Lab(colour.sRGB_to_XYZ(image_rgb))
+
+    image_lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2Lab)
+    return image_lab
+
+def lab2rgb(image_lab):
+    image_rgb = cv2.cvtColor(image_lab, cv2.COLOR_LAB2RGB)
+    return image_rgb
+
 def discretize_color(brush_stroke, discrete_colors):
     dc = discrete_colors.cpu().detach().numpy()
     #print('dc', dc.shape)
@@ -147,6 +184,14 @@ def discretize_color(brush_stroke, discrete_colors):
         return discrete_colors[argmin].clone()
 
 
+def nearest_color(color, discrete_colors):
+    ''' Get the most similar color to a given color (np.array([3])) '''
+    #dist = np.mean(np.abs(discrete_colors - color[None,:])**2, axis=1)
+    #argmin = np.argmin(dist)
+    diffs = [compare_images(rgb2lab(c[np.newaxis, np.newaxis]), rgb2lab(color[np.newaxis, np.newaxis])) for c in discrete_colors]
+    color_ind = np.argmin(np.array(diffs))
+    return color_ind, discrete_colors[color_ind]
+
 def save_colors(allowed_colors):
     """
     Save the colors used as an image so you know how to mix the paints
@@ -171,7 +216,48 @@ def save_colors(allowed_colors):
     return big_img
 
 
-def random_init_painting(background_img, n_strokes, ink=False):
+def extract_paint_color(canvas_before, canvas_after, stroke_bool_map):
+    ''' Given a picture of the canvas before and after
+    a brush stroke, extract the rgb color '''
+
+    # Get a boolean map of pixels that changed significantly from the two photos
+    # stroke_bool_map = cv2.resize(stroke_bool_map, (canvas_before.shape[1], canvas_before.shape[0]))
+    # stroke_bool_map = stroke_bool_map > 0.3
+
+
+    # Median filter target image so that it's not detailed
+    og_shape = canvas_before.shape
+    canvas_before_ = cv2.resize(canvas_before, (256,256)) # For scipy memory error
+    canvas_after_ = cv2.resize(canvas_after, (256,256)) # For scipy memory error
+
+    diff = np.max(np.abs(canvas_after_.astype(np.float32) - canvas_before_.astype(np.float32)), axis=2)
+    diff = diff / 255.#diff.max()
+
+    # smooth the diff
+    diff = median_filter(diff, size=(5,5))
+    diff = cv2.resize(diff,  (og_shape[1], og_shape[0]))
+
+    stroke_bool_map = diff > .3
+    if stroke_bool_map.astype(np.float32).sum() < 10: # at least 10 pixels
+        return None
+
+    # ca = canvas_after.copy()
+    # ca[stroke_bool_map] = 0
+    # show_img(ca)
+
+    color = [np.median(canvas_after[:,:,ch][stroke_bool_map]) for ch in range(3)]
+
+
+    # ca = canvas_after.copy()
+    # print(color)
+    # # for i in range(3):
+    # #     ca[stroke_bool_map][i] = 0
+    # # show_img(ca)
+    # ca[stroke_bool_map] = np.array(color) 
+    # show_img(ca)
+    return np.array(color)
+
+def random_init_painting(background_img, n_strokes, ink=False, device='cuda'):
     gridded_brush_strokes = []
     xys = [(x,y) for x in torch.linspace(-.95,.95,int(n_strokes**0.5)) \
                  for y in torch.linspace(-.95,.95,int(n_strokes**0.5))]
@@ -276,14 +362,14 @@ def init_brush_strokes(diff, n_strokes, ink):
         brush_strokes.append(brush_stroke)
     return brush_strokes
 
-def initialize_painting(n_strokes, target_img, background_img, ink):
+def initialize_painting(n_strokes, target_img, background_img, ink, device='cuda'):
     attn = (target_img[0] - background_img[0]).abs().mean(dim=0)
     brush_strokes = init_brush_strokes(attn, n_strokes, ink)
     painting = Painting(0, background_img=background_img, 
         brush_strokes=brush_strokes).to(device)
     return painting
 
-def add_strokes_to_painting(painting, rendered_painting, n_strokes, target_img, background_img, ink):
+def add_strokes_to_painting(painting, rendered_painting, n_strokes, target_img, background_img, ink, device='cuda'):
     attn = (target_img[0] - rendered_painting[0]).abs().mean(dim=0)
     brush_strokes = init_brush_strokes(attn, n_strokes, ink)
     existing_strokes = [painting.brush_strokes[i] for i in range(len(painting.brush_strokes))]

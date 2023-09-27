@@ -36,7 +36,6 @@ import clip
 from clip_attn.clip_attn import get_attention
 import kornia as K
 
-from paint_utils import to_video
 from paint_utils3 import *
 from torchvision.io import write_jpeg
 ###

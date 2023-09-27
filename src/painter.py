@@ -21,9 +21,8 @@ import math
 import gzip
 import subprocess
 
-from paint_utils import canvas_to_global_coordinates#*
+from paint_utils3 import canvas_to_global_coordinates
 from robot import *
-from painting_materials import *
 from strokes import all_strokes, get_random_stroke, simple_parameterization_to_real
 from fill_in import get_random_fill_in
 from camera.dslr import WebCam, SimulatedWebCam

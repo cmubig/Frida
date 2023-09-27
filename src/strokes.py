@@ -12,7 +12,7 @@ import math
 import copy
 import numpy as np
 import time
-from paint_utils import canvas_to_global_coordinates
+from paint_utils3 import canvas_to_global_coordinates
 from options import Options
 
 

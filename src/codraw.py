@@ -15,24 +15,20 @@ from tqdm import tqdm
 import os
 import time
 import copy
-# from paint_utils import save_colors
 
 from options import Options
 from painter import Painter
 from strokes import simple_parameterization_to_real
 
 from painting import *
-# from losses.stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
 
 from losses.clip_loss import clip_conv_loss, clip_model, clip_text_loss
 
-from paint_utils import canvas_to_global_coordinates, to_video
 from paint_utils3 import *
 from torchvision.utils import save_image
 from torchvision.transforms import Resize
 
-# from test_controlnet import pipeline as sd_interactive_pipeline
-from test_instruct_pix2pix import pipeline as sd_interactive_pipeline
+from cofrida import get_instruct_pix2pix_model
 
 # from create_copaint_data import image_text_similarity
 
@@ -151,7 +147,11 @@ if __name__ == '__main__':
 
     opt.writer = create_tensorboard(log_dir=opt.tensorboard_dir)
 
-    global h, w, colors, current_canvas, text_features, style_img, sketch
+    sd_interactive_pipeline = get_instruct_pix2pix_model(
+                instruct_pix2pix_path=opt.cofrida_model, 
+                device=device)
+
+    global h, w, colors, current_canvas
     stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
     h, w = stroke_shape[0], stroke_shape[1]
     w = int((opt.max_height/h)*w)
