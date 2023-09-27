@@ -365,3 +365,218 @@ class SimulatedRobot(Robot, object):
     def go_to_cartesian_pose(self, position, orientation):
         pass
 
+
+
+class Sawyer(Robot, object):
+    def __init__(self, debug=True):
+        super(Sawyer, self).__init__(debug)
+        import rospy
+
+
+        from intera_core_msgs.srv import (
+            SolvePositionIK,
+            SolvePositionIKRequest,
+            SolvePositionFK,
+            SolvePositionFKRequest,
+        )
+        import intera_interface
+        from intera_interface import CHECK_VERSION
+        import PyKDL
+        from tf_conversions import posemath
+
+        self.limb = intera_interface.Limb(synchronous_pub=False)
+        # print(self.limb)
+
+        self.ns = "ExternalTools/right/PositionKinematicsNode/IKService"
+        self.iksvc = rospy.ServiceProxy(self.ns, SolvePositionIK, persistent=True)
+        rospy.wait_for_service(self.ns, 5.0)
+
+    def good_morning_robot(self):
+        import intera_interface
+        import rospy
+        self.debug("Getting robot state... ")
+        rs = intera_interface.RobotEnable(False)
+        init_state = rs.state().enabled
+        self.debug("Enabling robot... ")
+        rs.enable()
+
+        def clean_shutdown():
+            """
+            Exits example cleanly by moving head to neutral position and
+            maintaining start state
+            """
+            self.debug("\nExiting example...")
+            limb = intera_interface.Limb(synchronous_pub=True)
+            limb.move_to_neutral(speed=.2)
+            # 1/0
+
+        rospy.on_shutdown(clean_shutdown)
+        self.debug("Excecuting... ")
+
+        # neutral_pose = rospy.get_param("named_poses/{0}/poses/neutral".format(self.name))
+        # angles = dict(list(zip(self.joint_names(), neutral_pose)))
+        # self.set_joint_position_speed(0.1)
+        # self.move_to_joint_positions(angles, timeout)
+        intera_interface.Limb(synchronous_pub=True).move_to_neutral(speed=.2)
+        
+        return rs
+
+    def good_night_robot(self):
+        import rospy
+        """ Tuck it in, read it a story """
+        rospy.signal_shutdown("Example finished.")
+        self.debug("Done")
+
+    def go_to_cartesian_pose(self, position, orientation):
+        #if len(position)
+        position, orientation = np.array(position), np.array(orientation)
+        if len(position.shape) == 1:
+            position = position[None,:]
+            orientation = orientation[None,:]
+
+        # import rospy
+        # import argparse
+        from intera_motion_interface import (
+            MotionTrajectory,
+            MotionWaypoint,
+            MotionWaypointOptions
+        )
+        from intera_motion_msgs.msg import TrajectoryOptions
+        from geometry_msgs.msg import PoseStamped
+        import PyKDL
+        # from tf_conversions import posemath
+        # from intera_interface import Limb
+
+        limb = self.limb#Limb()
+
+        traj_options = TrajectoryOptions()
+        traj_options.interpolation_type = TrajectoryOptions.CARTESIAN
+        traj = MotionTrajectory(trajectory_options = traj_options, limb = limb)
+
+        wpt_opts = MotionWaypointOptions(max_linear_speed=0.8*1.5,
+                                         max_linear_accel=0.8*1.5,
+                                         # joint_tolerances=0.05,
+                                         corner_distance=0.005,
+                                         max_rotational_speed=1.57,
+                                         max_rotational_accel=1.57,
+                                         max_joint_speed_ratio=1.0)
+
+        for i in range(len(position)):
+            waypoint = MotionWaypoint(options = wpt_opts.to_msg(), limb = limb)
+
+            joint_names = limb.joint_names()
+
+            endpoint_state = limb.tip_state("right_hand")
+            pose = endpoint_state.pose
+
+            pose.position.x = position[i,0]
+            pose.position.y = position[i,1]
+            pose.position.z = position[i,2]
+
+            pose.orientation.x = orientation[i,0]
+            pose.orientation.y = orientation[i,1]
+            pose.orientation.z = orientation[i,2]
+            pose.orientation.w = orientation[i,3]
+
+            poseStamped = PoseStamped()
+            poseStamped.pose = pose
+
+            joint_angles = limb.joint_ordered_angles()
+            waypoint.set_cartesian_pose(poseStamped, "right_hand", joint_angles)
+
+            traj.append_waypoint(waypoint.to_msg())
+
+        result = traj.send_trajectory(timeout=None)
+        # print(result.result)
+        success = result.result
+        # if success != True:
+        #     print(success)
+        if not success:
+            import time
+            # print('sleeping')
+            time.sleep(2)
+            # print('done sleeping. now to neutral')
+            # Go to neutral and try again
+            limb.move_to_neutral(speed=.3)
+            # print('done to neutral')
+            result = traj.send_trajectory(timeout=None)
+            # print('just tried to resend trajectory')
+            if result.result:
+                print('second attempt successful')
+            else:
+                print('failed second attempt')
+            success = result.result
+        return success
+
+    def move_to_joint_positions(self, position, timeout=3, speed=0.1):
+        """
+        args:
+            dict{'right_j0',float} - dictionary of joint to joint angle
+        """
+        # rate = rospy.Rate(100)
+        #try:
+        # print('Positions:', position)
+        self.limb.set_joint_position_speed(speed=speed)
+        self.limb.move_to_joint_positions(position, timeout=timeout,
+                                     threshold=0.008726646)
+        self.limb.set_joint_position_speed(speed=.1)
+        # rate.sleep()
+        # except Exception as e:
+        #     print('Exception while moving robot:\n', e)
+        #     import traceback
+        #     import sys
+        #     print(traceback.format_exc())
+
+
+    def display_image(self, file_path):
+        import intera_interface
+        head_display = intera_interface.HeadDisplay()
+        # display_image params:
+        # 1. file Path to image file to send. Multiple files are separated by a space, eg.: a.png b.png
+        # 2. loop Display images in loop, add argument will display images in loop
+        # 3. rate Image display frequency for multiple and looped images.
+        head_display.display_image(file_path, False, 100)
+    def display_frida(self):
+        import rospkg
+        rospack = rospkg.RosPack()
+        # get the file path for rospy_tutorials
+        ros_dir = rospack.get_path('paint')
+        self.display_image(os.path.join(str(ros_dir), 'src', 'frida.jpg'))
+
+    def take_picture(self):
+        import cv2
+        from cv_bridge import CvBridge, CvBridgeError
+        import matplotlib.pyplot as plt
+        def show_image_callback(img_data):
+            """The callback function to show image by using CvBridge and cv
+            """
+            bridge = CvBridge()
+            try:
+                cv_image = bridge.imgmsg_to_cv2(img_data, "bgr8")
+            except CvBridgeError as err:
+                rospy.logerr(err)
+                return
+
+            # edge_str = ''
+            # cv_win_name = ' '.join(['heyyyy', edge_str])
+            # cv2.namedWindow(cv_win_name, 0)
+            # refresh the image on the screen
+            # cv2.imshow(cv_win_name, cv_image)
+            # cv2.waitKey(3)
+            plt.imshow(cv_image[:,:,::-1])
+            plt.show()
+        rp = intera_interface.RobotParams()
+        valid_cameras = rp.get_camera_names()
+        print('valid_cameras', valid_cameras)
+
+        camera = 'head_camera'
+        # camera = 'right_hand_camera'
+        cameras = intera_interface.Cameras()
+        if not cameras.verify_camera_exists(camera):
+            rospy.logerr("Could not detect the specified camera, exiting the example.")
+            return
+        rospy.loginfo("Opening camera '{0}'...".format(camera))
+        cameras.start_streaming(camera)
+        cameras.set_callback(camera, show_image_callback,
+            rectify_image=False)
+        raw_input('Attach the paint brush now. Press enter to continue:')
