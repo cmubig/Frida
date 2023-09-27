@@ -15,7 +15,6 @@ from tqdm import tqdm
 import os
 import time
 import copy
-# from paint_utils import save_colors
 
 from options import Options
 
@@ -34,7 +33,6 @@ import clip
 from clip_attn.clip_attn import get_attention
 import kornia as K
 
-from paint_utils import to_video
 from paint_utils3 import *
 from torchvision.utils import save_image
 

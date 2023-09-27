@@ -192,8 +192,8 @@ class Options(object):
         parser.add_argument("--codraw_eval_setting", type=str,
             default=None, help='[same_text_fill_in,same_text_add_detail_different_text,add_background,something_from_nothing]')
         
-        parser.add_argument("--abstract_planner_model", type=str,
-            default=None, help='path to pre-trained instruct-pix2pix abstract planning model')
+        parser.add_argument("--cofrida_model", type=str,
+            default=None, help='path to pre-trained instruct-pix2pix CoFRIDA model')
         
         ### Argument is not used, but is allowed for flask compatability ###
         parser.add_argument("--app", type=str, nargs='*',

@@ -380,7 +380,7 @@ class Painting(nn.Module):
         colors = np.stack(colors)[None,:,:]
 
         from sklearn.cluster import KMeans
-        from paint_utils import rgb2lab, lab2rgb
+        from paint_utils3 import rgb2lab, lab2rgb
         # Cluster in LAB space
         colors = rgb2lab(colors)
         kmeans = KMeans(n_clusters=n_colors, random_state=0)

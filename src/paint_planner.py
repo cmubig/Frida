@@ -19,7 +19,8 @@ from PIL import Image
 
 from painter import canvas_to_global_coordinates
 from strokes import all_strokes, simple_parameterization_to_real, StrokeBD
-from paint_utils import *
+
+from paint_utils3 import nearest_color, to_video, save_colors, show_img, extract_paint_color
 
 def parse_csv_line(line, painter, colors):
     toks = line.split(',')

@@ -10,15 +10,11 @@ from tqdm import tqdm
 
 from diffusers import StableDiffusionInstructPix2PixPipeline, StableDiffusionImg2ImgPipeline, StableDiffusionPipeline
 
-# from test_controlnet import pipeline as controlnet
-from test_instruct_pix2pix import pipeline as instruct_pix2pix_ours, get_instruct_pix2pix_model
-
-
+from cofrida import pipeline as get_instruct_pix2pix_model
 
 
 from options import Options
 from painting import *
-# from losses.stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
 from losses.clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip
 from paint_utils3 import *
 
@@ -130,7 +126,6 @@ h = int(opt.max_height)
 
 
 # controlnet.set_progress_bar_config(disable=True)
-instruct_pix2pix_ours.set_progress_bar_config(disable=True)
 # if opt.ink:
 #     from test_lora import pipeline as lora
 #     lora.set_progress_bar_config(disable=True)
@@ -507,10 +502,9 @@ for i in tqdm(range(n)):
                 & (df['method'] == method_name)).any():
             del instruct_pix2pix_ours
             instruct_pix2pix_ours = get_instruct_pix2pix_model(
-                "timbrooks/instruct-pix2pix", 
                 "./controlnet_models_35_70//checkpoint-{}/unet".format(checkpoint), 
                 # "./controlnet_models_1000_500_color_small//checkpoint-{}/unet".format(checkpoint), 
-                device)
+                device=device)
             with torch.no_grad():
                 instruct_pix2pix_ours_img = instruct_pix2pix_ours(
                     text_next, x_start_drawn_pil_img, num_inference_steps=20, num_images_per_prompt=1,
@@ -560,9 +554,8 @@ for i in tqdm(range(n)):
     #     method_name = 'instruct_pix2pix_ours_ckpt_{}'.format(checkpoint)
     #     del instruct_pix2pix_ours
     #     instruct_pix2pix_ours = get_instruct_pix2pix_model(
-    #         "timbrooks/instruct-pix2pix", 
     #         "./controlnet_models//checkpoint-{}/unet".format(checkpoint), 
-    #         device)
+    #         device=device)
     #     if not ((df['text_start'] == text_start) 
     #             & (df['text_next'] == text_next)
     #             & (df['method'] == method_name)).any():

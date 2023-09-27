@@ -35,11 +35,11 @@ def add_imgs_together(imgs):
     return PIL.Image.fromarray(img)
 
 
-# controlnet_model_name_or_path = "./controlnet_models/checkpoint-12000_good/controlnet"
-controlnet_model_name_or_path = "./controlnet_models/checkpoint-1500/unet"
-pretrained_model_name_or_path = "timbrooks/instruct-pix2pix"
-weight_dtype = torch.float16
-device = 'cuda'
+# # controlnet_model_name_or_path = "./controlnet_models/checkpoint-12000_good/controlnet"
+# controlnet_model_name_or_path = "./controlnet_models/checkpoint-1500/unet"
+# pretrained_model_name_or_path = "timbrooks/instruct-pix2pix"
+# weight_dtype = torch.float16
+# device = 'cuda'
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision=None):
     text_encoder_config = PretrainedConfig.from_pretrained(
@@ -60,7 +60,8 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
     else:
         raise ValueError(f"{model_class} is not supported.")
 
-def get_instruct_pix2pix_model(original_model_name_or_path, instruct_pix2pix_path, device):
+def get_instruct_pix2pix_model(instruct_pix2pix_path, original_model_name_or_path="timbrooks/instruct-pix2pix", 
+                               device="cuda", weight_dtype=torch.float16):
     tokenizer = AutoTokenizer.from_pretrained(
         original_model_name_or_path,
         subfolder="tokenizer",
@@ -96,8 +97,6 @@ def get_instruct_pix2pix_model(original_model_name_or_path, instruct_pix2pix_pat
     # pipeline.set_progress_bar_config(disable=True)
     return pipeline
 
-pipeline = get_instruct_pix2pix_model(pretrained_model_name_or_path, 
-                                        controlnet_model_name_or_path, device=device)
 
 if __name__ == '__main__':
     validation_prompts = [
