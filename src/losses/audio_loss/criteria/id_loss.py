@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from audio_loss.models.facial_recognition.model_irse import Backbone
+from losses.audio_loss.models.facial_recognition.model_irse import Backbone
 
 
 class IDLoss(nn.Module):

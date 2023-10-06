@@ -68,7 +68,7 @@ def plan_from_image(opt, target_img, current_canvas):
     iters_per_batch =  400
 
     # painting = initialize_painting(stroke_batch_size, target_img, current_canvas, opt.ink)
-    painting = initialize_painting(1, target_img, current_canvas, opt.ink)
+    painting = initialize_painting(opt, 1, target_img, current_canvas, opt.ink)
     painting.to(device)
     log_progress(painting, log_freq=opt.log_frequency, force_log=True)
 
@@ -77,7 +77,7 @@ def plan_from_image(opt, target_img, current_canvas):
     for i in range(1):#(range(0, opt.num_strokes, stroke_batch_size)):#, desc="Initializing"):
         with torch.no_grad():
             p = painting(h,w)
-        painting = add_strokes_to_painting(painting, p[:,:3], stroke_batch_size, target_img, current_canvas, opt.ink)
+        painting = add_strokes_to_painting(opt, painting, p[:,:3], stroke_batch_size, target_img, current_canvas, opt.ink)
         optims = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
 
         # Learning rate scheduling. Start low, middle high, end low

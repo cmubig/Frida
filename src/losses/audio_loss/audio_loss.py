@@ -15,9 +15,9 @@ import torch.nn.functional as F
 
 import cv2
 
-from audio_loss.criteria.id_loss import IDLoss
-from audio_loss.models.stylegan2.model import Generator
-from audio_loss.criteria.soundclip_loss import audio_loss
+from losses.audio_loss.criteria.id_loss import IDLoss
+from losses.audio_loss.models.stylegan2.model import Generator
+from losses.audio_loss.criteria.soundclip_loss import audio_loss
 
 def get_lr(t, initial_lr, rampdown=0.25, rampup=0.05):
     lr_ramp = min(1, (1 - t) / rampdown)
