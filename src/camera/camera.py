@@ -2,6 +2,8 @@
 import cv2
 import numpy as np
 import pyrealsense2 as rs
+import torch
+from torchvision.transforms import Resize
 # https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/opencv_viewer_example.py
 
 class WebCam():
@@ -39,6 +41,13 @@ class WebCam():
             self.calibrate_canvas()
         img = self.get_rgb_image()
         canvas = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
+        return canvas
+    
+    def get_canvas_tensor(self, h=None, w=None):
+        canvas = self.get_canvas()
+        canvas = torch.from_numpy(canvas).permute(2,0,1).unsqueeze(0)
+        if h is not None and w is not None:
+            canvas = Resize((h,w))(canvas)
         return canvas
 
     def calibrate_canvas(self):

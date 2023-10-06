@@ -6,8 +6,10 @@
 ################ All rights reserved. ####################
 ##########################################################
 
+import math
 import numpy as np
 import torch
+import time
 from torch import nn
 import matplotlib
 try:
@@ -23,7 +25,8 @@ import os
 import colour
 import random
 
-from painting import Painting, BrushStroke
+from painting import Painting
+from brush_stroke import BrushStroke
 from clip_attn.clip_attn import get_attention
 
 from my_tensorboard import TensorBoard
@@ -33,8 +36,8 @@ def canvas_to_global_coordinates(x,y,z, opt):
     ''' Canvas coordinates are proportions from the bottom left of canvas 
         Global coordinates are in meters wrt to the robot's center
     '''
-    x_new = (x -.5) * opt.CANVAS_WIDTH + opt.CANVAS_POSITION[0]
-    y_new = y*opt.CANVAS_HEIGHT + opt.CANVAS_POSITION[1]
+    x_new = (x -.5) * opt.CANVAS_WIDTH_M + opt.CANVAS_POSITION[0]
+    y_new = y*opt.CANVAS_HEIGHT_M + opt.CANVAS_POSITION[1]
     z_new = z
     return x_new, y_new, z_new
 
@@ -72,7 +75,7 @@ def to_video(frames, fn='animation{}.mp4'.format(time.time()), frame_rate=10):
         out.write(cv2_frame)
     out.release()
 
-def show_img(img, display_actual_size=True):
+def show_img(img, display_actual_size=True, title=""):
     if type(img) is torch.Tensor:
         img = img.detach().cpu().numpy()
 
@@ -99,6 +102,7 @@ def show_img(img, display_actual_size=True):
     else:
         plt.imshow(img)
     plt.xticks([]), plt.yticks([])
+    plt.title(title)
     #plt.scatter(img.shape[1]/2, img.shape[0]/2)
     plt.show()
 
@@ -257,22 +261,22 @@ def extract_paint_color(canvas_before, canvas_after, stroke_bool_map):
     # show_img(ca)
     return np.array(color)
 
-def random_init_painting(background_img, n_strokes, ink=False, device='cuda'):
+def random_init_painting(opt, background_img, n_strokes, ink=False, device='cuda'):
     gridded_brush_strokes = []
     xys = [(x,y) for x in torch.linspace(-.95,.95,int(n_strokes**0.5)) \
                  for y in torch.linspace(-.95,.95,int(n_strokes**0.5))]
     random.shuffle(xys)
     for x,y in xys:
         # Random brush stroke
-        brush_stroke = BrushStroke(xt=x, yt=y, ink=ink)
+        brush_stroke = BrushStroke(opt, xt=x, yt=y, ink=ink)
         gridded_brush_strokes.append(brush_stroke)
 
-    painting = Painting(0, background_img=background_img, 
+    painting = Painting(opt, 0, background_img=background_img, 
         brush_strokes=gridded_brush_strokes).to(device)
     return painting
 
 
-def create_tensorboard(log_dir='painting'):
+def create_tensorboard(log_dir='painting_log'):
     def new_tb_entry():
         import datetime
         date_and_time = datetime.datetime.now()
@@ -362,17 +366,18 @@ def init_brush_strokes(diff, n_strokes, ink):
         brush_strokes.append(brush_stroke)
     return brush_strokes
 
-def initialize_painting(n_strokes, target_img, background_img, ink, device='cuda'):
+def initialize_painting(opt, n_strokes, target_img, background_img, ink, device='cuda'):
     attn = (target_img[0] - background_img[0]).abs().mean(dim=0)
     brush_strokes = init_brush_strokes(attn, n_strokes, ink)
-    painting = Painting(0, background_img=background_img, 
+    painting = Painting(opt, 0, background_img=background_img, 
         brush_strokes=brush_strokes).to(device)
     return painting
 
-def add_strokes_to_painting(painting, rendered_painting, n_strokes, target_img, background_img, ink, device='cuda'):
+def add_strokes_to_painting(opt, painting, rendered_painting, n_strokes, target_img, background_img, ink, device='cuda'):
     attn = (target_img[0] - rendered_painting[0]).abs().mean(dim=0)
     brush_strokes = init_brush_strokes(attn, n_strokes, ink)
     existing_strokes = [painting.brush_strokes[i] for i in range(len(painting.brush_strokes))]
-    painting = Painting(0, background_img=background_img, 
+    painting = Painting(opt, 0, background_img=background_img, 
         brush_strokes=existing_strokes+brush_strokes).to(device)
     return painting
+

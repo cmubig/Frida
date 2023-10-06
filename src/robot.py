@@ -38,11 +38,11 @@ class XArm(Robot, object):
         Low-level action functionality of the robot.
         This is an abstract class, see its children for usage.
     '''
-    def __init__(self, debug):
+    def __init__(self, ip, debug):
         from xarm.wrapper import XArmAPI
         self.debug_bool = debug
 
-        self.arm = XArmAPI('192.168.2.157')
+        self.arm = XArmAPI(ip)
 
     def debug(self, msg):
         if self.debug_bool:

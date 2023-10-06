@@ -1,0 +1,15 @@
+python3 src/paint.py \
+        --use_cache \
+        --cache_dir src/caches/sharpie_short_strokes \
+        --objective clip_conv_loss  \
+        --objective_data src/frida.jpg \
+        --objective_weight 1.0 \
+        --materials_json materials_ink.json \
+        --ink --robot xarm   \
+        --num_strokes 32 \
+        --max_height 196  \
+        --lr_multiplier 0.7  \
+        --optim_iter 50  \
+        --init_optim_iter 500 \
+        --dont_retrain_stroke_model \
+        --simulate

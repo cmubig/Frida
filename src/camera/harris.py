@@ -30,7 +30,7 @@ def find_corners(img, search_size=10, show_search=False):
     
     # show image and take input
     plt.imshow(img)
-    plt.title("Select corners of canvas. First is top-left, then clock-wise.")
+    plt.title("Select corners of canvas. First is top-left WITH RESPECT TO ROBOT'S PERSPECTIVE, then clock-wise.")
     points = np.array(plt.ginput(n=NUM_CORNERS)).astype(np.int64)
 
     # print(points)

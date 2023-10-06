@@ -10,7 +10,10 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
-import os 
+import os
+
+import torch 
+from torchvision.transforms import Resize
 
 # import camera.color_calib
 from camera.color_calib import color_calib, find_calib_params
@@ -68,7 +71,7 @@ class WebCam():
                         try: input('could not calibrate. Move color checker and try again (press enter when ready)')
                         except SyntaxError: pass 
                 try:    
-                    input("Remove color checker from frame.")
+                    input("Remove color checker from frame, then press enter.")
                 except SyntaxError:
                     pass
             else:
@@ -81,7 +84,7 @@ class WebCam():
         # has to be done for some reason
         return cv2.cvtColor(color_calib(img, self.color_tmat, self.greyval), cv2.COLOR_BGR2RGB)
 
-    def get_canvas(self, use_cache=False, max_height=2048):
+    def get_canvas(self, use_cache=False, max_height=None):
         if self.H_canvas is None:
             self.calibrate_canvas(use_cache)
         
@@ -92,11 +95,19 @@ class WebCam():
             _, img = self.get_rgb_image()
 
         canvas = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
-        w = int(img.shape[0] * (self.opt.CANVAS_WIDTH/self.opt.CANVAS_HEIGHT))
+        w = int(img.shape[0] * (self.opt.CANVAS_WIDTH_M/self.opt.CANVAS_HEIGHT_M))
         canvas = canvas[:, :w]
         if max_height is not None and canvas.shape[0] > max_height:
             fact = 1.0 * img.shape[0] / max_height
             canvas = cv2.resize(canvas, (int(canvas.shape[1]/fact), int(canvas.shape[0]/fact)))
+        return canvas
+    
+    def get_canvas_tensor(self, h=None, w=None):
+        canvas = self.get_canvas()
+        canvas = torch.from_numpy(canvas).permute(2,0,1).unsqueeze(0)
+        if h is not None and w is not None:
+            canvas = Resize((h,w))(canvas)
+        canvas = torch.cat([canvas, torch.ones(1,1,h,w)], dim=1)
         return canvas
 
     def calibrate_canvas(self, use_cache=False):
@@ -104,7 +115,7 @@ class WebCam():
         h = img.shape[0]
         # original image shape is too wide of an aspect ratio compared to paper
         # w = int(h * LETTER_WH_RATIO)
-        w = int(h * (self.opt.CANVAS_WIDTH/self.opt.CANVAS_HEIGHT))
+        w = int(h * (self.opt.CANVAS_WIDTH_M/self.opt.CANVAS_HEIGHT_M))
         assert(w <= img.shape[1])
 
         if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, 'cached_H_canvas.pkl')):
@@ -203,10 +214,17 @@ class WebCam():
 class SimulatedWebCam():
     def __init__(self, opt):
         self.opt = opt
-        w_h_ratio = float(opt.CANVAS_WIDTH) / opt.CANVAS_HEIGHT
+        w_h_ratio = float(opt.CANVAS_WIDTH_M) / opt.CANVAS_HEIGHT_M
         h = 1024
         self.canvas = np.ones((h,int(h * w_h_ratio),3), dtype=np.float32) * 255.
     def get_canvas(self):
         return self.canvas
+    def get_canvas_tensor(self, h=None, w=None):
+        canvas = self.get_canvas()
+        canvas = torch.from_numpy(canvas).permute(2,0,1).unsqueeze(0)
+        if h is not None and w is not None:
+            canvas = Resize((h,w))(canvas)
+        canvas = torch.cat([canvas, torch.ones(1,1,h,w)], dim=1)
+        return canvas
     def calibrate_canvas(self, use_cache=False):
         pass

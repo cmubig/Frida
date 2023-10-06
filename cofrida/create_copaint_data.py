@@ -42,7 +42,7 @@ from paint_utils3 import format_img, initialize_painting, \
         add_strokes_to_painting, create_tensorboard, \
         load_img, get_colors
 from clip_attn import get_attention
-from plan import parse_objective
+from painting_optimization import parse_objective
 from options import Options
 
 from transformers import CLIPProcessor, CLIPModel, CLIPTokenizer, CLIPTextModel
