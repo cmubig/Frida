@@ -1,6 +1,8 @@
 import torch
 from torch import nn
 import torchvision.transforms as T
+from torchvision.transforms import InterpolationMode 
+bicubic = InterpolationMode.BICUBIC
 import numpy as np
 from brush_stroke import BrushStroke
 from param2stroke import get_param2img
@@ -68,7 +70,7 @@ class Painting(nn.Module):
         if self.background_img is None:
             canvas = torch.ones((1,4,h,w)).to(device)
         else:
-            canvas = T.Resize(size=(h,w))(self.background_img).detach()
+            canvas = T.Resize((h,w), bicubic)(self.background_img).detach()
         canvas[:,3] = 1 # alpha channel
 
         mostly_opaque = False#True
