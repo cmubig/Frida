@@ -2,6 +2,8 @@ import json
 import numpy as np
 import torch
 from torchvision import transforms
+from torchvision.transforms import InterpolationMode 
+bicubic = InterpolationMode.BICUBIC
 from torch import nn
 
 import matplotlib.pyplot as plt
@@ -40,7 +42,7 @@ def get_param2img(opt, device='cuda'):
         # Figure out what to resize the output of param2image should be based on the desired render size
         w_p2i_render_pix = int((w_p2i_m / w_canvas_m) * w_render_pix)
         h_p2i_render_pix = int((h_p2i_m / h_canvas_m) * h_render_pix)
-        res_to_render = transforms.Resize((h_p2i_render_pix, w_p2i_render_pix))
+        res_to_render = transforms.Resize((h_p2i_render_pix, w_p2i_render_pix), bicubic)
 
         # Pad the output of param2image such that the start of the stroke is directly in the
         # middle of the canvas and the dimensions of the image match the render size
@@ -105,7 +107,7 @@ def log_all_permutations(model, writer, opt):
         row = []
         for j in range(n_img):
             trajectory = to_full_param(lengths[i], bends[j], 0.5)
-            s = 1-model(trajectory)
+            s = 1-special_sigmoid(model(trajectory))
             # print(s.shape)
             s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
             row.append(s)
@@ -124,7 +126,7 @@ def log_all_permutations(model, writer, opt):
         row = []
         for j in range(n_img):
             trajectory = to_full_param(lengths[i], 0.0, zs[j])
-            s = 1-model(trajectory)
+            s = 1-special_sigmoid(model(trajectory))
             # print(s.shape)
             s = np.clip(s.detach().cpu().numpy()[0], a_min=0, a_max=1)
             row.append(s)
@@ -155,7 +157,40 @@ def log_all_permutations(model, writer, opt):
     fig.tight_layout()
     writer.add_figure('images_stroke_modeling/length_vs_alpha', fig, 0)
 
+def remove_background_noise(strokes):
+    # Clear regions that aren't likely strokes. 
+    # i.e. remove the non-stroke data, perceptual issues.
+    # print('mean', strokes.mean())
+    from scipy import ndimage
+    stroke_mean = strokes.mean(dim=0)
+    # plt.imshow(stroke_mean.cpu().numpy())
+    # plt.colorbar()
+    # plt.show()
 
+    stroke_mean = ndimage.maximum_filter(stroke_mean, size=30)
+    stroke_mean = torch.from_numpy(stroke_mean)
+    
+    # plt.imshow(stroke_mean)
+    # plt.colorbar()
+    # plt.show()
+    # print(torch.quantile(stroke_mean, 0.1))
+    unlikely_areas = (stroke_mean < torch.quantile(stroke_mean[stroke_mean > 0.001], 0.5))#[None,:,:]
+    # plt.imshow(unlikely_areas*0.5 + strokes.mean(dim=0))
+    # plt.colorbar()
+    # plt.show()
+    unlikely_areas = ndimage.minimum_filter(unlikely_areas, size=50) # Exapnd the region slightly
+    unlikely_areas = torch.from_numpy(unlikely_areas)
+
+    # plt.imshow(unlikely_areas)
+    # plt.colorbar()
+    # plt.show()
+
+    # plt.imshow(unlikely_areas*0.5 + strokes.mean(dim=0))
+    # plt.colorbar()
+    # plt.show()
+    strokes[:,unlikely_areas] = 0
+    # print('mean', strokes.mean())
+    return strokes
 
 def log_images(imgs, labels, label, writer, step=0):
     fig, ax = plt.subplots(1, len(imgs), figsize=(5*len(imgs),5))
@@ -174,8 +209,8 @@ class StrokeParametersToImage(nn.Module):
         super(StrokeParametersToImage, self).__init__()
         nh = 20
         self.nc = 20
-        self.size_x = 64
-        self.size_y = 32
+        self.size_x = 128
+        self.size_y = 64
         self.main = nn.Sequential(
             nn.BatchNorm1d(4),
             nn.Linear(4, nh),
@@ -185,6 +220,7 @@ class StrokeParametersToImage(nn.Module):
             nn.LeakyReLU(0.2, inplace=True)
         )
         self.conv = nn.Sequential(
+            nn.BatchNorm2d(1),
             nn.Conv2d(1, self.nc, kernel_size=5, padding='same', dilation=1),
             nn.LeakyReLU(0.2, inplace=True),
             nn.BatchNorm2d(self.nc),
@@ -195,7 +231,7 @@ class StrokeParametersToImage(nn.Module):
     def forward(self, x):
         x = self.conv((self.main(x).view(-1, 1, self.size_y, self.size_x)))[:,0]
         return x
-
+    
 
 
 l1_loss = nn.L1Loss()
@@ -228,6 +264,10 @@ def train_param2stroke(opt, device='cuda'):
     # print(x.shape)
     # plt.imshow(x[0].cpu().detach().numpy())
     # plt.show()
+    torch.random.manual_seed(0)
+    np.random.seed(0)
+
+    
 
     with gzip.GzipFile(os.path.join(opt.cache_dir, 'stroke_intensities.npy'),'r') as f:
         strokes = np.load(f).astype(np.float32)/255.
@@ -245,8 +285,9 @@ def train_param2stroke(opt, device='cuda'):
     parameters = parameters[rand_ind]
 
     # Discrete. Makes the model push towards making bolder strokes
-    # strokes[strokes >= 0.5] = 1.
-    # strokes[strokes < 0.5] = 0.
+    strokes[strokes >= 0.5] = 1.
+    strokes[strokes < 0.5] = 0. # Make sure background is very much gone
+
 
     h, w = strokes[0].shape[0], strokes[0].shape[1]
     h_og, w_og = h, w
@@ -263,7 +304,7 @@ def train_param2stroke(opt, device='cuda'):
     pix_per_m = w_og / opt.STROKE_LIBRARY_CANVAS_WIDTH_M
     ws, we, hs, he = ws_m*pix_per_m, we_m*pix_per_m, hs_m*pix_per_m, he_m*pix_per_m
     ws, we, hs, he = int(ws), int(we), int(hs), int(he)
-    print(ws, we, hs, he)
+    # print(ws, we, hs, he)
     strokes = strokes[:, hs:he, ws:we]
 
     # Save the amount of meters that the output of the param2image model represents
@@ -278,15 +319,19 @@ def train_param2stroke(opt, device='cuda'):
         settings['MAX_BEND'] = opt.MAX_BEND
         json.dump(settings, f, indent=4)
 
+
+    strokes = remove_background_noise(strokes)
+
     # Resize strokes the size they'll be predicted at
     t = StrokeParametersToImage()
-    strokes = transforms.Resize((t.size_y,t.size_x))(strokes)
+    strokes = transforms.Resize((t.size_y,t.size_x), bicubic)(strokes)
 
-    for i in range(len(strokes)):
-        strokes[i] -= strokes[i].min()
-        if strokes[i].max() > 0.01:
-            strokes[i] /= strokes[i].max()
-        # strokes[i] *= 0.95
+    # for i in range(len(strokes)):
+    #     strokes[i] -= strokes[i].min()
+    #     if strokes[i].max() > 0.01:
+    #         strokes[i] /= strokes[i].max()
+    #     # strokes[i] *= 0.95
+    #     # print(strokes[i].min(), strokes[i].max())
     
     # Filter out strokes that are bad perception. Avg is too high.
     # One bad apple can really spoil the bunch
@@ -323,12 +368,14 @@ def train_param2stroke(opt, device='cuda'):
     val_parameters = parameters[:int(val_prop*n)]
     print('{} training strokes. {} validation strokes'.format(len(train_strokes), len(val_strokes)))
 
+    param_stds = train_parameters.std(dim=0)
+
     for it in tqdm(range(5000)):
         if best_hasnt_changed_for >= 200 and it > 200:
             break # all done :)
         optim.zero_grad()
 
-        noise = torch.randn(train_parameters.shape).to(device)*0#*0.001 # For robustness
+        noise = torch.randn(train_parameters.shape).to(device)*param_stds[None,:]*0.15 # For robustness
         pred_strokes = trans(train_parameters + noise)
 
         loss = shift_invariant_loss(pred_strokes, train_strokes)
