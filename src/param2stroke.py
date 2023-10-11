@@ -1,3 +1,4 @@
+import glob
 import json
 import numpy as np
 import torch
@@ -258,7 +259,6 @@ def shift_invariant_loss(pred, real, n=8, delta=0.02):
     return loss.mean() + l1_loss(pred, real)
 
 def train_param2stroke(opt, device='cuda'):
-
     # param2img = get_param2img(opt)
     # x = param2img(torch.zeros(1,4, device=device), 200, 400)
     # print(x.shape)
@@ -267,12 +267,45 @@ def train_param2stroke(opt, device='cuda'):
     torch.random.manual_seed(0)
     np.random.seed(0)
 
-    
+    # Load data
+    stroke_img_fns = glob.glob(os.path.join(opt.cache_dir, 'stroke_library', 'stroke_intensities*.npy'))
+    stroke_param_fns = glob.glob(os.path.join(opt.cache_dir, 'stroke_library', 'stroke_parameters*.npy'))
+    stroke_img_fns = sorted(stroke_img_fns)
+    stroke_param_fns = sorted(stroke_param_fns)
+    print(stroke_img_fns, stroke_param_fns)
 
-    with gzip.GzipFile(os.path.join(opt.cache_dir, 'stroke_intensities.npy'),'r') as f:
-        strokes = np.load(f).astype(np.float32)/255.
-    parameters = np.load(os.path.join(opt.cache_dir, 'stroke_parameters.npy'), 
-            allow_pickle=True, encoding='bytes') 
+    strokes = None
+    for stroke_img_fn in stroke_img_fns:
+        with gzip.GzipFile(stroke_img_fn,'r') as f:
+            s = np.load(f).astype(np.float32)/255.
+
+            h_og, w_og = s[0].shape[0], s[0].shape[1]
+            # Crop so that we only predict around the area around the stroke not all the background blank pix
+            xtra_room_horz_m = 0.01 # Added padding to ensure we don't crop out actual paint
+            xtra_room_vert_m = 0.001
+            # Do in meters first. ws_m = width start crop in meters
+            ws_m = (opt.STROKE_LIBRARY_CANVAS_WIDTH_M/2) - xtra_room_horz_m
+            we_m = ws_m + xtra_room_horz_m*2 + opt.MAX_STROKE_LENGTH
+            hs_m = (opt.STROKE_LIBRARY_CANVAS_HEIGHT_M/2) - opt.MAX_BEND - xtra_room_vert_m
+            he_m = hs_m + 2*xtra_room_vert_m + 2*opt.MAX_BEND
+            # Convert from meters to pix
+            pix_per_m = w_og / opt.STROKE_LIBRARY_CANVAS_WIDTH_M
+            ws, we, hs, he = ws_m*pix_per_m, we_m*pix_per_m, hs_m*pix_per_m, he_m*pix_per_m
+            ws, we, hs, he = int(ws), int(we), int(hs), int(he)
+            # print(ws, we, hs, he)
+            s = s[:, hs:he, ws:we]
+
+            strokes = s if strokes is None else np.concatenate([strokes, s])
+
+    parameters = None
+    for stroke_param_fn in stroke_param_fns:
+        p = np.load(stroke_param_fn, allow_pickle=True, encoding='bytes') 
+        parameters = p if parameters is None else np.concatenate([parameters, p]) 
+    
+    # with gzip.GzipFile(os.path.join(opt.cache_dir, 'stroke_intensities.npy'),'r') as f:
+    #     strokes = np.load(f).astype(np.float32)/255.
+    # parameters = np.load(os.path.join(opt.cache_dir, 'stroke_parameters.npy'), 
+    #         allow_pickle=True, encoding='bytes') 
 
     strokes = torch.from_numpy(strokes).float().nan_to_num()
     parameters = torch.from_numpy(parameters.astype(np.float32)).float().nan_to_num()
@@ -289,23 +322,7 @@ def train_param2stroke(opt, device='cuda'):
     strokes[strokes < 0.5] = 0. # Make sure background is very much gone
 
 
-    h, w = strokes[0].shape[0], strokes[0].shape[1]
-    h_og, w_og = h, w
-
-    # Crop so that we only predict around the area around the stroke not all the background blank pix
-    xtra_room_horz_m = 0.01 # Added padding to ensure we don't crop out actual paint
-    xtra_room_vert_m = 0.001
-    # Do in meters first. ws_m = width start crop in meters
-    ws_m = (opt.STROKE_LIBRARY_CANVAS_WIDTH_M/2) - xtra_room_horz_m
-    we_m = ws_m + xtra_room_horz_m*2 + opt.MAX_STROKE_LENGTH
-    hs_m = (opt.STROKE_LIBRARY_CANVAS_HEIGHT_M/2) - opt.MAX_BEND - xtra_room_vert_m
-    he_m = hs_m + 2*xtra_room_vert_m + 2*opt.MAX_BEND
-    # Convert from meters to pix
-    pix_per_m = w_og / opt.STROKE_LIBRARY_CANVAS_WIDTH_M
-    ws, we, hs, he = ws_m*pix_per_m, we_m*pix_per_m, hs_m*pix_per_m, he_m*pix_per_m
-    ws, we, hs, he = int(ws), int(we), int(hs), int(he)
-    # print(ws, we, hs, he)
-    strokes = strokes[:, hs:he, ws:we]
+    
 
     # Save the amount of meters that the output of the param2image model represents
     w_p2i_m = we_m - ws_m 
@@ -350,7 +367,6 @@ def train_param2stroke(opt, device='cuda'):
     strokes = strokes.to(device)
     parameters = parameters.to(device)
 
-    # for model_ind in range(opt.n_stroke_models):
     trans = StrokeParametersToImage() 
     trans = trans.to(device)
     print('# parameters in Param2Image model:', get_n_params(trans))

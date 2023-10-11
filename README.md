@@ -71,12 +71,11 @@ rosrun paint paint.py // If running with a robot
     [--simulate] Run in only simulation
     [--use_cache] Use cached calibration files. Necessary if --simulation
     [--cache_dir path] Where the cached calibration files are stored if using them
-    [--max_height int] Height of the sim. canvases. Decrease for CUDA memory errors. Default 256
+    [--render_height int] Height of the sim. canvases. Decrease for CUDA memory errors. Default 256
     [--num_papers int] Number of full sheets of paper to fill with training brush strokes (30 per paper)
     [--n_colors int] Number of discrete paint colors to use
     [--use_colors_from path] If specified, use K-means to get paint colors from this image. Default None
     [--num_strokes int] The desired number of strokes in the painting
-    [--n_stroke_models int] Number of different trained param2stroke models to use and randomly sample from
     [--adaptive] Use the perception for replanning
     [--strokes_before_adapting int] # strokes to perform before replanning
     [--remove_prop float] proportion of strokes exectued from plan to remove when replanning

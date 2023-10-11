@@ -54,7 +54,9 @@ class Painter():
         use_cache = opt.use_cache
 
         self.robot = None
-        if opt.robot == "franka":
+        if opt.simulate:
+            self.robot = SimulatedRobot(debug=True)
+        elif opt.robot == "franka":
             self.robot = Franka(debug=True)
         elif opt.robot == "xarm":
             self.robot = XArm(opt.xarm_ip, debug=True)
@@ -152,7 +154,7 @@ class Painter():
         # self.paint_fill_in_library() ######################################################
 
         # Get brush strokes from stroke library
-        if not os.path.exists(os.path.join(self.opt.cache_dir, 'stroke_intensities.npy')) or not use_cache:
+        if not os.path.exists(os.path.join(self.opt.cache_dir, 'stroke_library')) or not use_cache:
             if not opt.simulate:
                 try:
                     input('Need to create stroke library. Press enter to start.')
@@ -533,7 +535,7 @@ class Painter():
 
 
 
-    def paint_extended_stroke_library(self):
+    def paint_extended_stroke_library(self, save_batch_size=10):
         w = self.opt.CANVAS_WIDTH_PIX
         h = self.opt.CANVAS_HEIGHT_PIX
 
@@ -542,6 +544,8 @@ class Painter():
         strokes_without_getting_new_paint = 999 
         strokes_without_cleaning = 9999
 
+        lib_dir = os.path.join(self.opt.cache_dir, 'stroke_library')
+        if not os.path.exists(lib_dir): os.mkdir(lib_dir)
 
         # Figure out how many strokes can be made on the given canvas size
         n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT_M/(self.opt.MAX_BEND+0.01)))
@@ -550,6 +554,7 @@ class Painter():
 
         stroke_parameters = [] # list of length, bend, z, alpha
         stroke_intensities = [] # list of 2D numpy arrays 0-1 where 1 is paint
+        n_strokes = 0
         for paper_it in range(self.opt.num_papers):
             for y_offset_pix_og in np.linspace((.03/self.opt.CANVAS_HEIGHT_M), 0.99-(.02/self.opt.CANVAS_HEIGHT_M), n_strokes_y)*h:
                 # for x_offset_pix in np.linspace(0.02, 0.99-(self.opt.MAX_STROKE_LENGTH/self.opt.CANVAS_WIDTH), n_strokes_x)*w:
@@ -563,7 +568,7 @@ class Painter():
                     if stroke_length_pix + x_offset_pix > 0.98*w:
                         break # No room left on the page width
                     
-                    if len(stroke_parameters) % 2 == 0:
+                    if n_strokes % 2 == 0:
                         y_offset_pix = y_offset_pix_og + 0.0 * (h/self.opt.CANVAS_HEIGHT_M) # Offset y by 1cm every other stroke
                     else:
                         y_offset_pix = y_offset_pix_og
@@ -626,7 +631,7 @@ class Painter():
                     # stroke /= stroke.max()
                     # show_img(stroke)
 
-                    if len(stroke_intensities) % 5 == 0:
+                    if n_strokes % 3 == 0:
                         import matplotlib
                         # matplotlib.use('Agg')
                         import matplotlib.pyplot as plt
@@ -637,18 +642,11 @@ class Painter():
                         ax.imshow(stroke, cmap='gray', vmin=0, vmax=1)
                         ax.set_xticks([]), ax.set_yticks([])
                         fig.tight_layout()
-                        self.writer.add_figure('stroke_library/{}'.format(len(stroke_intensities)), fig, 0)
-
-                    # stroke[:int(.3*h)] = 0 
-                    # stroke[int(.6*h)] = 0
-                    # stroke[:,:int(.4*w)] = 0 
-                    # stroke[:,int(.8*w):] = 0
-
+                        self.writer.add_figure('stroke_library/{}'.format(n_strokes), fig, 0)
 
                     # plt.scatter(int(w*.5), int(h*.5))
                     # show_img(stroke)
 
-                    #traj = np.array(random_stroke.trajectory).flatten()
                     parameter = np.array([random_stroke.stroke_length.item(), 
                                           random_stroke.stroke_bend.item(), 
                                           random_stroke.stroke_z.item(), 
@@ -656,21 +654,18 @@ class Painter():
 
                     stroke_intensities.append(stroke)
                     stroke_parameters.append(parameter)
+                    n_strokes += 1
 
                     canvas_without_stroke = canvas_with_stroke.copy()
 
-                    if len(stroke_intensities) % 5 == 0:
-                        # Make a copy of the data just in case
-                        if os.path.exists(os.path.join(self.opt.cache_dir, 'stroke_parameters.npy')):
-                            shutil.copyfile(os.path.join(self.opt.cache_dir, 'stroke_parameters.npy'),
-                                        os.path.join(self.opt.cache_dir, 'stroke_parameters_copy.npy'))
-                            shutil.copyfile(os.path.join(self.opt.cache_dir, 'stroke_intensities.npy'),
-                                        os.path.join(self.opt.cache_dir, 'stroke_intensities_copy.npy'))
+                    if n_strokes % save_batch_size == 0:
                         # Save data
-                        with open(os.path.join(self.opt.cache_dir, 'stroke_parameters.npy'), 'wb') as f:
+                        param_fn = os.path.join(lib_dir, 'stroke_parameters{:05d}.npy'.format(n_strokes))
+                        with open(param_fn, 'wb') as f:
                             np.save(f, np.stack(stroke_parameters, axis=0))
                             
-                        with gzip.GzipFile(os.path.join(self.opt.cache_dir, 'stroke_intensities.npy'), 'w') as f:
+                        image_fn = os.path.join(lib_dir, 'stroke_intensities{:05d}.npy'.format(n_strokes))
+                        with gzip.GzipFile(image_fn, 'w') as f:
                             intensities = np.stack(np.stack(stroke_intensities, axis=0), axis=0)
                             intensities = (intensities * 255).astype(np.uint8)
                             np.save(f, intensities)
@@ -685,6 +680,11 @@ class Painter():
                             settings['CANVAS_WIDTH_M'] = self.opt.CANVAS_WIDTH_M
                             settings['CANVAS_HEIGHT_M'] = self.opt.CANVAS_HEIGHT_M
                             json.dump(settings, f, indent=4)
+                    
+                        # Go back to empty because memory gets too large
+                        stroke_parameters = []
+                        stroke_intensities = [] 
+                    
                     
                     gap = 0.02*w if self.opt.ink else 0.05*w
                     x_offset_pix += stroke_length_pix + gap

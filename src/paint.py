@@ -45,8 +45,8 @@ if __name__ == '__main__':
 
     painter.to_neutral()
 
-    w_render = int(opt.max_height * (opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
-    h_render = int(opt.max_height)
+    w_render = int(opt.render_height * (opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
+    h_render = int(opt.render_height)
     opt.w_render, opt.h_render = w_render, h_render
 
     consecutive_paints = 0
