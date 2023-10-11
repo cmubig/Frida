@@ -113,11 +113,11 @@ def image_text_similarity_local(pil_image, text):
 def plan_from_image(opt, num_strokes, target_img, current_canvas, clip_lr=1.0):
     global colors
     
-    painting = initialize_painting(0, target_img, current_canvas, opt.ink)
+    painting = initialize_painting(opt, 0, target_img, current_canvas, opt.ink)
     painting.to(device)
 
     c = 0
-    painting = add_strokes_to_painting(painting, painting(h,w)[:,:3], num_strokes, 
+    painting = add_strokes_to_painting(opt, painting, painting(h,w)[:,:3], num_strokes, 
                                         target_img, current_canvas, opt.ink)
     painting.validate()
     optims = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
@@ -368,11 +368,11 @@ def clip_score(text_fn, img_fn):
     return per_instance_image_text[0]
 
 if __name__ == '__main__':
-    global opt
+    global opt, h, w
     opt = Options()
+    opt.gather_options()
     # python3 create_copaint_data.py --use_cache --cache_dir caches/cache_6_6_cvpr/  --lr_multiplier 0.7 --output_parent_dir testing
 
-    opt.gather_options()
 
     if not os.path.exists(opt.output_parent_dir): os.mkdir(opt.output_parent_dir)
 
@@ -380,28 +380,20 @@ if __name__ == '__main__':
 
     opt.writer = create_tensorboard(log_dir=opt.tensorboard_dir)
 
-    # global h, w, colors, current_canvas, text_features, style_img, sketch
-    stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
-    h, w = stroke_shape[0], stroke_shape[1]
-    w = int((opt.render_height/h)*w)
+    w = int(opt.render_height * (opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
     h = int(opt.render_height)
 
     # Get the background of painting to be the current canvas
-    if os.path.exists(os.path.join(opt.cache_dir, 'current_canvas.jpg')):
-        current_canvas = load_img(os.path.join(opt.cache_dir, 'current_canvas.jpg'), h=h, w=w).to(device)/255.
+    if os.path.exists(opt.cofrida_background_image):
+        current_canvas = load_img(opt.cofrida_background_image, h=h, w=w).to(device)/255.
     else:
         current_canvas = torch.ones(1,3,h,w).to(device)
     default_current_canvas = copy.deepcopy(current_canvas)
 
-    # dataset = load_dataset("laion/laion-art")['train']
-    # dataset = load_dataset("zoheb/sketch-scene")['train']
-    dataset = load_dataset(opt.controlnet_dataset)['train']
-    # dataset_add = load_dataset(opt.controlnet_dataset_addition)['train']
+    dataset = load_dataset(opt.cofrida_dataset)['train']
     
     crop = transforms.RandomResizedCrop((h*4, w*4), scale=(0.7, 1.0), 
                                         ratio=(0.95,1.05))
-    
-    
     
     data_dict = []
     if os.path.exists(data_dict_fn):
@@ -426,7 +418,7 @@ if __name__ == '__main__':
             colors = (torch.from_numpy(colors) / 255.).to(device)
         else:
             colors = get_colors(cv2.resize(target_img.cpu().numpy()[0].transpose(1,2,0), (256, 256))*255., 
-                n_colors=opt.n_colors)
+                n_colors=opt.n_colors).to(device)
 
         # print(datum)
         datum_no_img = copy.deepcopy(datum)
@@ -542,6 +534,6 @@ if __name__ == '__main__':
                     with open(data_dict_fn,'wb') as f:
                         pickle.dump(data_dict, f)
                 except Exception as e:
-                    print(e)
+                    print('Exception', e)
                     continue
         

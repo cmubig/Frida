@@ -133,7 +133,12 @@ class BrushStroke(nn.Module):
                 a=None, xt=None, yt=None,
                 device='cuda'):
         super(BrushStroke, self).__init__()
-        self.opt = opt
+
+        self.MAX_STROKE_LENGTH = opt.MAX_STROKE_LENGTH
+        self.MIN_STROKE_LENGTH = opt.MIN_STROKE_LENGTH
+        self.MIN_STROKE_Z = opt.MIN_STROKE_Z
+        self.MAX_ALPHA = opt.MAX_ALPHA
+        self.MAX_BEND = opt.MAX_BEND
 
         if color is None: color=(torch.rand(3).to(device)*.4)+0.3
         if a is None: a=(torch.rand(1)*2-1)*3.14
@@ -141,10 +146,10 @@ class BrushStroke(nn.Module):
         if yt is None: yt=(torch.rand(1)*2-1)
 
 
-        if stroke_length is None: stroke_length=torch.rand(1)*self.opt.MAX_STROKE_LENGTH
-        if stroke_z is None: stroke_z = torch.rand(1).clamp(self.opt.MIN_STROKE_Z, 0.95)
-        if stroke_alpha is None: stroke_alpha=(torch.rand(1)*2-1)*self.opt.MAX_ALPHA
-        if stroke_bend is None: stroke_bend = (torch.rand(1)*2 - 1) * self.opt.MAX_BEND
+        if stroke_length is None: stroke_length=torch.rand(1)*self.MAX_STROKE_LENGTH
+        if stroke_z is None: stroke_z = torch.rand(1).clamp(self.MIN_STROKE_Z, 0.95)
+        if stroke_alpha is None: stroke_alpha=(torch.rand(1)*2-1)*self.MAX_ALPHA
+        if stroke_bend is None: stroke_bend = (torch.rand(1)*2 - 1) * self.MAX_BEND
         stroke_bend = min(stroke_bend, stroke_length) if stroke_bend > 0 else max(stroke_bend, -1*stroke_length)
 
         self.transformation = RigidBodyTransformation(a, xt, yt)
@@ -233,17 +238,17 @@ class BrushStroke(nn.Module):
     def make_valid(stroke):
         with torch.no_grad():
             og_len = stroke.stroke_length.item()
-            stroke.stroke_length.data.clamp_(stroke.opt.MIN_STROKE_LENGTH+0.002, 
-                                             stroke.opt.MAX_STROKE_LENGTH-0.002)
+            stroke.stroke_length.data.clamp_(stroke.MIN_STROKE_LENGTH+0.002, 
+                                             stroke.MAX_STROKE_LENGTH-0.002)
             # if stroke.stroke_length.item() != og_len:
             #     print('length constrained')
             
             stroke.stroke_bend.data.clamp_(-1*stroke.stroke_length, stroke.stroke_length)
-            stroke.stroke_bend.data.clamp_(-1.0*stroke.opt.MAX_BEND, stroke.opt.MAX_BEND)
+            stroke.stroke_bend.data.clamp_(-1.0*stroke.MAX_BEND, stroke.MAX_BEND)
 
-            stroke.stroke_alpha.data.clamp_(-1.0*stroke.opt.MAX_ALPHA, stroke.opt.MAX_ALPHA)
+            stroke.stroke_alpha.data.clamp_(-1.0*stroke.MAX_ALPHA, stroke.MAX_ALPHA)
 
-            stroke.stroke_z.data.clamp_(stroke.opt.MIN_STROKE_Z,1.0-0.01)
+            stroke.stroke_z.data.clamp_(stroke.MIN_STROKE_Z,1.0-0.01)
 
             # stroke.transformation.weights[1:3].data.clamp_(-1.,1.)
             stroke.transformation.xt.data.clamp_(-1.,1.)

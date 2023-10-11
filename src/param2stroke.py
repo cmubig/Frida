@@ -22,7 +22,7 @@ def get_param2img(opt, device='cuda'):
     # Load how many meters the param2image model output represents
     with open(os.path.join(opt.cache_dir, 'param2stroke_settings.json'), 'r') as f:
         settings = json.load(f)
-        print(settings)
+        print('Param2Stroke Settings:', settings)
         w_p2i_m = settings['w_p2i_m']
         h_p2i_m = settings['h_p2i_m']
         xtra_room_horz_m = settings['xtra_room_horz_m']

@@ -13,8 +13,8 @@ accelerate launch train_instruct_pix2pix.py \
  --tracker_project_name="cofrida_log_0" \
  --validation_steps=400 \
  --num_train_epochs=100 \
- --validation_image "../src/caches/cache_6_6_cvpr/current_canvas.jpg" \
-                    "../src/caches/cache_6_6_cvpr/current_canvas.jpg" \
+ --validation_image "./blank_canvas.jpg" \
+                    "./blank_canvas.jpg" \
  --validation_prompt "A frog astronaut" \
                      "A drawing of a dinosaur" \
  --use_8bit_adam \
