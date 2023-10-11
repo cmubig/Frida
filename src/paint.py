@@ -59,7 +59,7 @@ if __name__ == '__main__':
                 n_colors=opt.n_colors)
         opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(color_palette), 0)
 
-    current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device)
+    current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device) / 255.
 
     load_objectives_data(opt)
 
@@ -113,7 +113,7 @@ if __name__ == '__main__':
         ### Update the plan ###
         #######################
         painter.to_neutral()
-        current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device)
+        current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device) / 255.
         painting.background_img = current_canvas
         painting, _ = optimize_painting(opt, painting, 
                     optim_iter=opt.optim_iter, color_palette=color_palette)

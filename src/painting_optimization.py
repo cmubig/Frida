@@ -161,7 +161,8 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
                 weight=opt.objective_weight[k],
                 num_augs=opt.num_augs)
         #loss += (1-alphas).mean() * opt.fill_weight
-        loss += torch.abs(1-alphas).mean() * opt.fill_weight
+        if opt.fill_weight > 0:
+            loss += torch.abs(1-alphas).mean() * opt.fill_weight
         loss.backward()
 
         for o in optims: o.step() if o is not None else None
