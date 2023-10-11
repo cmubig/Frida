@@ -29,8 +29,16 @@ execution of that plan.
 
 # Installation
 
+### System Requirements
+
+We recommend running FRIDA on a machine with Python 3.8 and Ubuntu (we use 20.04). FRIDA's core functionality uses CUDA, so it is recommended to have an NVIDIA GPU with 8+Gb vRAM. Because CoFRIDA uses Stable Diffusion, it is recommended to have 12+Gb for running and 16+Gb vRam for training CoFRIDA.
+
+### Code Installation
+
 ```
 git clone https://github.com/pschaldenbrand/Frida.git
+
+# Install CUDA
 
 # We use Python 3.8
 cd Frida
@@ -45,6 +53,10 @@ pip3 install git+https://github.com/facebookresearch/segment-anything.git
 wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
 git clone https://github.com/jmhessel/clipscore.git
 ```
+
+### Run with a robot
+
+We currently support UFactory XArm and Franka Emika robots. To use a Rethink Sawyer robot, please install the "ICRA 2023" tag version of the github repository.
 
 # Physical Setup `--materials_json`
 
@@ -110,9 +122,8 @@ python3 paint.py --simulate --use_cache --cache_dir caches/sharpie_short_strokes
    --objective_weight 0.2  1.0
 ```
 
-# Run with a robot
 
-We currently support UFactory XArm and Franka Emika robots. To use a Rethink Sawyer robot, please install the "ICRA 2023" tag version of the github repository.
+
 
 ## Acknowledgements
 
