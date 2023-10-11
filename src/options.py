@@ -83,10 +83,10 @@ class Options(object):
             default=None, help='path to pre-trained instruct-pix2pix CoFRIDA model')
 
         # CoFRIDA Training Parameters
-        parser.add_argument("--controlnet_dataset", type=str,
-            default="laion/laion-art", help='A dataset for training controlnet')
-        parser.add_argument("--controlnet_dataset_addition", type=str,
-            default="fusing/instructpix2pix-1000-samples", help='A dataset for training controlnet to add material')
+        parser.add_argument("--cofrida_dataset", type=str,
+            default="laion/laion-art", help='A dataset for training CoFRIDA')
+        parser.add_argument("--cofrida_background_image", type=str,
+            default='./blank_canvas.jpg', help='path to image to use as background for cofrida drawings/paintings')
         parser.add_argument("--output_parent_dir", type=str,
             help='Where to save the data. Can continue if partially complete.')
         parser.add_argument("--removal_method", type=str,
@@ -137,6 +137,19 @@ class Options(object):
         self.Y_CANVAS_MIN = self.CANVAS_POSITION[1] - thresh
         self.X_CANVAS_MAX = self.CANVAS_POSITION[0] + self.CANVAS_WIDTH_M/2 + thresh
         self.X_CANVAS_MIN = self.CANVAS_POSITION[0] - self.CANVAS_WIDTH_M/2 - thresh
+
+        if self.use_cache and os.path.exists(os.path.join(self.cache_dir, 'stroke_settings_during_library.json')):
+            print("Retrieving settings from stroke library for consistency:")
+            with open(os.path.join(self.cache_dir, 'stroke_settings_during_library.json'), 'r') as f:
+                settings = json.load(f)
+                print(settings)
+                self.MAX_BEND = settings['MAX_BEND']
+                self.MIN_STROKE_Z = settings['MIN_STROKE_Z']
+                self.MIN_STROKE_LENGTH = settings['MIN_STROKE_LENGTH']
+                self.MAX_STROKE_LENGTH = settings['MAX_STROKE_LENGTH']
+                self.MAX_ALPHA = settings['MAX_ALPHA']
+                self.STROKE_LIBRARY_CANVAS_WIDTH_M = settings['CANVAS_WIDTH_M']
+                self.STROKE_LIBRARY_CANVAS_HEIGHT_M = settings['CANVAS_HEIGHT_M']
 
     def __getattr__(self, attr_name):
         return self.opt[attr_name]

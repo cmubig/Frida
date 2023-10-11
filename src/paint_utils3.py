@@ -58,7 +58,7 @@ def get_colors(img, n_colors=6):
     kmeans = KMeans(n_clusters=n_colors, random_state=0)
     kmeans.fit(img.reshape((img.shape[0]*img.shape[1],3)))
     colors = [kmeans.cluster_centers_[i] for i in range(len(kmeans.cluster_centers_))]
-    colors = (torch.from_numpy(np.array(colors)) / 255.).float().to(device)
+    colors = (torch.from_numpy(np.array(colors)) / 255.).float()
     return colors
 
 def to_video(frames, fn='animation{}.mp4'.format(time.time()), frame_rate=10):
@@ -320,7 +320,7 @@ def format_img(tensor_img):
     return np.clip(np_painting, a_min=0, a_max=1)
 
 
-def init_brush_strokes(diff, n_strokes, ink):
+def init_brush_strokes(opt, diff, n_strokes, ink):
     if not IN_COLAB: matplotlib.use('TkAgg')
     brush_strokes = []
     
@@ -361,21 +361,21 @@ def init_brush_strokes(diff, n_strokes, ink):
     for i in range(points.shape[1]):
         x, y = points[1,i]/diff.shape[1]*2-1, points[0,i]/diff.shape[0]*2-1
         # Random brush stroke
-        brush_stroke = BrushStroke(xt=x, yt=y, ink=ink, 
+        brush_stroke = BrushStroke(opt, xt=x, yt=y, ink=ink, 
                                    stroke_length=torch.Tensor([0.001]))
         brush_strokes.append(brush_stroke)
     return brush_strokes
 
 def initialize_painting(opt, n_strokes, target_img, background_img, ink, device='cuda'):
     attn = (target_img[0] - background_img[0]).abs().mean(dim=0)
-    brush_strokes = init_brush_strokes(attn, n_strokes, ink)
+    brush_strokes = init_brush_strokes(opt, attn, n_strokes, ink)
     painting = Painting(opt, 0, background_img=background_img, 
         brush_strokes=brush_strokes).to(device)
     return painting
 
 def add_strokes_to_painting(opt, painting, rendered_painting, n_strokes, target_img, background_img, ink, device='cuda'):
     attn = (target_img[0] - rendered_painting[0]).abs().mean(dim=0)
-    brush_strokes = init_brush_strokes(attn, n_strokes, ink)
+    brush_strokes = init_brush_strokes(opt, attn, n_strokes, ink)
     existing_strokes = [painting.brush_strokes[i] for i in range(len(painting.brush_strokes))]
     painting = Painting(opt, 0, background_img=background_img, 
         brush_strokes=existing_strokes+brush_strokes).to(device)
