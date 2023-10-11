@@ -33,7 +33,7 @@ class AudioEncoder(torch.nn.Module):
 
 class SoundCLIPLoss(torch.nn.Module):
 
-    def __init__(self, opts):
+    def __init__(self):
         super(SoundCLIPLoss, self).__init__()
         self.model, self.preprocess = clip.load("ViT-B/32", device="cuda")
         self.upsample = torch.nn.Upsample(scale_factor=7)
@@ -72,10 +72,10 @@ augment_trans = get_image_augmentation()
 num_augs = 10
 clip_audio_loss = None
 
-def audio_loss(img, audio, args):
+def audio_loss(img, audio):
     global clip_audio_loss
     if clip_audio_loss is None:
-        clip_audio_loss = SoundCLIPLoss(args)
+        clip_audio_loss = SoundCLIPLoss()
 
     img_batch = torch.cat([augment_trans(img) for n in range(num_augs)])
     loss = 0

@@ -53,11 +53,11 @@ def load_audio_file(audio_path):
     audio_inputs = torch.from_numpy(audio_inputs.reshape((1, 1, n_mels, resize_resolution))).float().cuda()
     return audio_inputs
 
-def compute_audio_loss(args, audio_inputs, painting): 
+def compute_audio_loss(audio_inputs, painting): 
     resize_resolution = 256
     painting = torchvision.transforms.Resize((resize_resolution, resize_resolution))(painting)
 
-    cosine_distance_loss = audio_loss(painting, audio_inputs, args)
+    cosine_distance_loss = audio_loss(painting, audio_inputs)
 
 
     return cosine_distance_loss

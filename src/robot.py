@@ -3,6 +3,8 @@ import os
 import numpy as np
 import time
 
+from brush_stroke import euler_from_quaternion
+
 ##########################################################
 #################### Copyright 2022 ######################
 ################ by Peter Schaldenbrand ##################
@@ -71,7 +73,7 @@ class XArm(Robot, object):
             x,y,z = positions[i][1], positions[i][0], positions[i][2]
             x,y,z = x*1000, y*-1000, z*1000 #m to mm
             q = orientations[i]
-            from strokes import euler_from_quaternion
+            
             euler= euler_from_quaternion(q[0], q[1], q[2], q[3])#quaternion.as_quat_array(orientations[i])
             roll, pitch, yaw = 180, 0, 0#euler[0], euler[1], euler[2]
             # https://github.com/xArm-Developer/xArm-Python-SDK/blob/0fd107977ee9e66b6841ea9108583398a01f227b/xarm/x3/xarm.py#L214

@@ -130,8 +130,8 @@ matplotlib.use('TkAgg')
 global h, w, colors, current_canvas, text_features, style_img, sketch
 stroke_shape = np.load(os.path.join(opt.cache_dir, 'stroke_size.npy'))
 h, w = stroke_shape[0], stroke_shape[1]
-w = int((opt.max_height/h)*w)
-h = int(opt.max_height)
+w = int((opt.render_height/h)*w)
+h = int(opt.render_height)
 
 
 
