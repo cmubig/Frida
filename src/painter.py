@@ -249,43 +249,43 @@ class Painter():
         self.hover_above(p[0], p[1], p[2])
 
     def dip_brush_in_water(self):
-        self.move_to(self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]+self.opt.HOVER_FACTOR)
+        self.move_to(self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR)
         positions = []
-        positions.append([self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
-        positions.append([self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]])
+        positions.append([self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
+        positions.append([self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]])
         for i in range(5):
             noise = np.clip(np.random.randn(2)*0.01, a_min=-.02, a_max=0.02)
-            positions.append([self.WATER_POSITION[0]+noise[0],self.WATER_POSITION[1]+noise[1],self.WATER_POSITION[2]])
-        positions.append([self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
+            positions.append([self.opt.WATER_POSITION[0]+noise[0],self.opt.WATER_POSITION[1]+noise[1],self.opt.WATER_POSITION[2]])
+        positions.append([self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
         self.move_to_trajectories(positions, orientations)
 
     def rub_brush_on_rag(self):
-        self.move_to(self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]+self.opt.HOVER_FACTOR, speed=0.3)
+        self.move_to(self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR, speed=0.3)
         positions = []
-        positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
-        positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]])
+        positions.append([self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
+        positions.append([self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]])
         for i in range(5):
             noise = np.clip(np.random.randn(2)*0.06, a_min=-.06, a_max=0.06)
-            positions.append([self.RAG_POSTITION[0]+noise[0],self.RAG_POSTITION[1]+noise[1],self.RAG_POSTITION[2]])
-        positions.append([self.RAG_POSTITION[0],self.RAG_POSTITION[1],self.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
+            positions.append([self.opt.RAG_POSTITION[0]+noise[0],self.opt.RAG_POSTITION[1]+noise[1],self.opt.RAG_POSTITION[2]])
+        positions.append([self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
         self.move_to_trajectories(positions, orientations)
 
     def clean_paint_brush(self):
         if self.opt.simulate: return
-        self.move_to(self.WATER_POSITION[0],self.WATER_POSITION[1],self.WATER_POSITION[2]+0.09, speed=0.3)
+        self.move_to(self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]+0.09, speed=0.3)
         self.dip_brush_in_water()
         self.rub_brush_on_rag()
 
     def get_paint(self, paint_index):
         if self.opt.simulate: return
-        x_offset = self.PAINT_DIFFERENCE * np.floor(paint_index/6)
-        y_offset = self.PAINT_DIFFERENCE * (paint_index%6)
+        x_offset = self.opt.PAINT_DIFFERENCE * np.floor(paint_index/6)
+        y_offset = self.opt.PAINT_DIFFERENCE * (paint_index%6)
 
-        x = self.PALLETTE_POSITION[0] + x_offset
-        y = self.PALLETTE_POSITION[1] + y_offset
-        z = self.PALLETTE_POSITION[2] 
+        x = self.opt.PALLETTE_POSITION[0] + x_offset
+        y = self.opt.PALLETTE_POSITION[1] + y_offset
+        z = self.opt.PALLETTE_POSITION[2] 
         
         self.move_to(x,y,z+self.opt.HOVER_FACTOR)
 
