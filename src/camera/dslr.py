@@ -53,7 +53,7 @@ class WebCam():
 
     # return RGB image, color corrected
     def get_color_correct_image(self, use_cache=False):
-        if not self.has_color_info:
+        if not self.has_color_info and self.opt.calib_colors:
             if not use_cache or not os.path.exists(os.path.join(self.opt.cache_dir, 'cached_color_calibration.pkl')):
                 try:
                     input('No color info found. Beginning color calibration. Ensure you have placed Macbeth color checker in camera frame and press ENTER to continue.')
@@ -82,14 +82,17 @@ class WebCam():
         path, img = self.get_rgb_image()
 
         # has to be done for some reason
-        return cv2.cvtColor(color_calib(img, self.color_tmat, self.greyval), cv2.COLOR_BGR2RGB)
+        if self.opt.calib_colors:
+            return cv2.cvtColor(color_calib(img, self.color_tmat, self.greyval), cv2.COLOR_BGR2RGB)
+        else:
+            return img
 
     def get_canvas(self, use_cache=False, max_height=None):
         if self.H_canvas is None:
             self.calibrate_canvas(use_cache)
         
         # use corrected image if possible
-        if (self.has_color_info):
+        if (self.has_color_info and self.opt.calib_colors):
             img = self.get_color_correct_image(use_cache)
         else:
             _, img = self.get_rgb_image()

@@ -38,6 +38,7 @@ class Options(object):
         parser.add_argument('--paint_from_image', action='store_true')
 
         # Color parameters
+        parser.add_argument('--calib_colors', action='store_true', help='Use this to calibrate colors using MacBeth color checker')
         parser.add_argument('--n_colors', default=12, type=int, help='Number of colors of paint to use')
         parser.add_argument('--use_colors_from', type=str, default=None, help="Get the colors from this image. \
                 None if you want the colors to come from the optimized painting.")

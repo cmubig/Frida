@@ -272,12 +272,11 @@ def train_param2stroke(opt, device='cuda'):
     stroke_param_fns = glob.glob(os.path.join(opt.cache_dir, 'stroke_library', 'stroke_parameters*.npy'))
     stroke_img_fns = sorted(stroke_img_fns)
     stroke_param_fns = sorted(stroke_param_fns)
-    print(stroke_img_fns, stroke_param_fns)
 
     strokes = None
     for stroke_img_fn in stroke_img_fns:
         with gzip.GzipFile(stroke_img_fn,'r') as f:
-            s = np.load(f).astype(np.float32)/255.
+            s = np.load(f, allow_pickle=True).astype(np.float32)/255.
 
             h_og, w_og = s[0].shape[0], s[0].shape[1]
             # Crop so that we only predict around the area around the stroke not all the background blank pix
