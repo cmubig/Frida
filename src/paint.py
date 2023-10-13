@@ -89,7 +89,8 @@ if __name__ == '__main__':
             
             # Clean paint brush and/or get more paint
             if not painter.opt.ink:
-                color_ind, _ = nearest_color(stroke.color_transform.detach().cpu().numpy(), color_palette)
+                color_ind, _ = nearest_color(stroke.color_transform.detach().cpu().numpy(), 
+                                             color_palette.detach().cpu().numpy())
                 new_paint_color = color_ind != curr_color
                 if new_paint_color or consecutive_strokes_no_clean > 12:
                     painter.clean_paint_brush()

@@ -20,6 +20,7 @@ from losses.face.face_loss import face_loss, parse_face_data
 from losses.stable_diffusion.stable_diffusion_loss2 import stable_diffusion_loss, encode_text_stable_diffusion
 from losses.speech2emotion.speech2emotion import speech2emotion, speech2text
 
+from losses.dino_loss import dino_loss
 from losses.clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_fc_loss
 import clip
 
@@ -59,6 +60,8 @@ def parse_objective(objective_type, objective_data, p, weight=1.0, num_augs=30):
         return compute_style_loss(p, objective_data) * weight
     elif objective_type == 'clip_conv_loss':
         return clip_conv_loss(p, objective_data) * weight
+    elif objective_type == 'dino':
+        return dino_loss(p, objective_data) * weight
     elif objective_type == 'l2':
         return ((p - objective_data)**2).mean() * weight
     elif objective_type == 'clip_fc_loss':

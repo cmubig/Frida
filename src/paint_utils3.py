@@ -188,6 +188,12 @@ def discretize_color(brush_stroke, discrete_colors):
         return discrete_colors[argmin].clone()
 
 
+def compare_images(img1, img2):
+    ''' Pixel wise comparison '''
+    # Input images are Lab
+    delta_E = colour.delta_E(img1, img2)
+    return delta_E
+
 def nearest_color(color, discrete_colors):
     ''' Get the most similar color to a given color (np.array([3])) '''
     #dist = np.mean(np.abs(discrete_colors - color[None,:])**2, axis=1)
