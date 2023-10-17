@@ -154,7 +154,10 @@ class Painter():
         # self.paint_fill_in_library() ######################################################
 
         # Get brush strokes from stroke library
-        if not os.path.exists(os.path.join(self.opt.cache_dir, 'stroke_library')) or not use_cache:
+        stroke_lib_exists = os.path.exists(os.path.join(self.opt.cache_dir, 'stroke_library'))
+        if stroke_lib_exists:
+            stroke_lib_exists = len(os.listdir(os.path.join(self.opt.cache_dir, 'stroke_library')))
+        if not stroke_lib_exists or not use_cache:
             if not opt.simulate:
                 try:
                     input('Need to create stroke library. Press enter to start.')
@@ -563,7 +566,8 @@ class Painter():
                 while(True): # x loop
                     random_stroke = BrushStroke(self.opt)
                     
-                    stroke_length_m = random_stroke.stroke_length.item()#random_stroke.trajectory[-1][0]
+                    #stroke_length_m = random_stroke.stroke_length.item()#random_stroke.trajectory[-1][0]
+                    stroke_length_m = random_stroke.path[:,0].max().item()
                     stroke_length_pix = stroke_length_m * (w / self.opt.CANVAS_WIDTH_M)
                     if stroke_length_pix + x_offset_pix > 0.98*w:
                         break # No room left on the page width
@@ -647,10 +651,11 @@ class Painter():
                     # plt.scatter(int(w*.5), int(h*.5))
                     # show_img(stroke)
 
-                    parameter = np.array([random_stroke.stroke_length.item(), 
-                                          random_stroke.stroke_bend.item(), 
-                                          random_stroke.stroke_z.item(), 
-                                          random_stroke.stroke_alpha.item(),])
+                    # parameter = np.array([random_stroke.stroke_length.item(), 
+                    #                       random_stroke.stroke_bend.item(), 
+                    #                       random_stroke.stroke_z.item(), 
+                    #                       random_stroke.stroke_alpha.item(),])
+                    parameter = random_stroke.path.detach().cpu().numpy()
 
                     stroke_intensities.append(stroke)
                     stroke_parameters.append(parameter)
