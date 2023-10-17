@@ -138,11 +138,11 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
     use_input_palette =  color_palette is not None
     if len(painting) == 0: return painting, color_palette
 
-    position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
+    position_opt, rotation_opt, color_opt, path_opt \
                 = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
     if not change_color:
         color_opt.param_groups[0]['lr'] = 0.0
-    optims = (position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt)
+    optims = (position_opt, rotation_opt, color_opt, path_opt)
     # optims = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
     # Learning rate scheduling. Start low, middle high, end low
     og_lrs = [o.param_groups[0]['lr'] if o is not None else None for o in optims]
