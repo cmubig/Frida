@@ -17,7 +17,7 @@ from torchvision.transforms.functional import affine
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class BezierRenderer(nn.Module):
-    def __init__(self, size_x, size_y, ctrl_pts):
+    def __init__(self, size_x, size_y, num_ctrl_pts):
         super(BezierRenderer, self).__init__()
         self.size_x = size_x # grid dimensions (size_x x size_y)
         self.size_y = size_y 
@@ -27,26 +27,26 @@ class BezierRenderer(nn.Module):
         x_coords, y_coords = torch.meshgrid(idxs_y, idxs_x, indexing='ij') # G x G
         self.grid_coords = torch.stack((x_coords, y_coords), dim=2).reshape(1,size_y, size_x,2).to(device) # 1 x G x G x 2
 
-        self.ctrl_pts = ctrl_pts
+        self.num_ctrl_pts = num_ctrl_pts
 
         # torch.set_printoptions(precision=3, sci_mode=False)
-        self.weights = torch.zeros((self.ctrl_pts, self.P)).to(device)
+        self.weights = torch.zeros((self.num_ctrl_pts, self.P)).to(device)
         gaus = torch.signal.windows.gaussian(self.P*2, std=2.0)
-        for i in range(self.ctrl_pts):
-            start_ind = int(self.P - self.P*(i/(self.ctrl_pts-1)))
+        for i in range(self.num_ctrl_pts):
+            start_ind = int(self.P - self.P*(i/(self.num_ctrl_pts-1)))
             self.weights[i,:] = gaus[start_ind:start_ind+self.P]
         # print(self.weights)
         
-        self.thicc_fact = torch.ones((self.P,self.ctrl_pts), dtype=torch.float).to(device)
+        self.thicc_fact = torch.ones((self.P, self.num_ctrl_pts), dtype=torch.float).to(device)
 
 
     def forward(self, trajectories, thicknesses):        
-        # print('strokes', trajectories.shape)
-        # print('thicknesses', thicknesses.shape)
+        # trajectories: (n, 2, num_ctrl_pts)
+        # thicknesses: (n, 1, num_ctrl_pts)
         strokes = []
         for i in range(len(trajectories)):
-            # Expand ctrl_pts to self.P (smooths the curve)
-            stroke = self.curve_to_stroke(trajectories[i])
+            # Expand num_ctrl_pts to self.P (smooths the curve)
+            stroke = self.curve_to_stroke(trajectories[i]) # (P+1, 2)
             stroke[:,0] *= self.size_y
             stroke[:,1] *= self.size_x
 
@@ -57,31 +57,36 @@ class BezierRenderer(nn.Module):
         strokes = torch.stack(strokes, dim=0)
         return strokes
 
-    def curve_to_stroke(self, curve): # curve is n x 4        
-        p1 = curve[:,0:1].T
-        p2 = curve[:,1:2].T
-        p3 = curve[:,2:3].T
-        p4 = curve[:,3:4].T
+    def curve_to_stroke(self, curve):
+        # curve: (2, num_ctrl_pts)
+        p1 = curve[:,0:1].T # (2, 1)
+        p2 = curve[:,1:2].T # (2, 1)
+        p3 = curve[:,2:3].T # (2, 1)
+        p4 = curve[:,3:4].T # (2, 1)
 
-        control_pts = torch.stack([p1, p2, p3, p4], dim=2) # (n-1) x 2 x 4
-        sample_pts = torch.matmul(control_pts, self.weights.to(device)) # (n-1) x 2 x P
+        control_pts = torch.stack([p1, p2, p3, p4], dim=2) # (2, 1, num_ctrl_pts)
+        sample_pts = torch.matmul(control_pts, self.weights.to(device)) # (2, 1, P)
 
-        sample_pts = torch.permute(sample_pts, (0, 2, 1)) # (n-1) x P x 2
-        sample_pts = torch.reshape(sample_pts, (-1, 2)) # (n-1)P x 2
+        sample_pts = torch.permute(sample_pts, (0, 2, 1)) # (2, P, 1)
+        sample_pts = torch.reshape(sample_pts, (-1, 2)) # (P, 2)
 
-        sample_pts = torch.cat([sample_pts, curve[:,3:4].T]) # [(n-1)P + 1] x 2
+        sample_pts = torch.cat([sample_pts, curve[:,3:4].T]) # (P+1, 2)
         return sample_pts
 
     def render_stroke(self, stroke, t):
+        # stroke: (P+1, 2)
+        # t: (1, num_ctrl_points)
         n = len(stroke)
-        vs = stroke[:-1].reshape((-1,1,1,2)) # (n-1) x 1 x 1 x 2
-        vs = torch.tile(vs, (1, self.size_y, self.size_x, 1)) # (n-1) x G x G x 2
+        vs = stroke[:-1].reshape((-1,1,1,2)) # (P, 1, 1, 2)
+        vs = torch.tile(vs, (1, self.size_y, self.size_x, 1)) # (P, size_y, size_x, 2)
 
-        ws = stroke[1:].reshape((-1,1,1,2)) # (n-1) x 1 x 1 x 2
-        ws = torch.tile(ws, (1, self.size_y, self.size_x, 1)) # (n-1) x G x G x 2
+        ws = stroke[1:].reshape((-1,1,1,2)) # (P, 1, 1, 2)
+        ws = torch.tile(ws, (1, self.size_y, self.size_x, 1)) # (P, size_y, size_x, 2)
 
-        coords = torch.tile(self.grid_coords, (n-1,1,1,1)) # (n-1) x G x G x 2
-        distances = self.dist_line_segment(coords, vs, ws) # (n-1) x G x G
+        coords = torch.tile(self.grid_coords, (n-1,1,1,1)) # (P, size_y, size_x, 2)
+
+        # For each of the P segments, compute distance from every point to the line as well as the fraction along the line
+        distances, fraction = self.dist_line_segment(coords, vs, ws) # (P, size_y, size_x)
         # darknesses = torch.clamp((2*t - distances)/(2*t), min=0.0, max=1.0) # (n-1) x G x G
         # print(distances.shape)
         # for i in range(len(distances)):
@@ -89,8 +94,8 @@ class BezierRenderer(nn.Module):
         #     plt.show()
         
         # Scale the thicknesses by learnable factor
-        thick = 2 * self.thicc_fact @ t.T
-        thick = thick[:,:,None]
+        thick = 2 * self.thicc_fact @ t.T # (P, 1, 1)
+        thick = thick[:,:,None] # (P, 1)
         
         # Incorporate the thickness params with the distance from line matrices to compute darknesses
         darknesses = torch.clamp((thick - distances)/(thick), 
@@ -102,6 +107,7 @@ class BezierRenderer(nn.Module):
         return darknesses 
     
     # distance from point p to line segment v--w
+    # also returns the fraction of the length of v--w that the point p is along
     def dist_line_segment(self, p, v, w):
         d = torch.linalg.norm(v-w, dim=3) # (n-1) x G x G
         # print(d.shape)
@@ -122,7 +128,7 @@ class BezierRenderer(nn.Module):
         proj = v + t * (w-v) # (n-1) x G x G x 2
         # plt.matshow((proj)[0].detach().cpu()[:,:,0])
         # plt.show()
-        return torch.linalg.norm(p-proj, dim=3)
+        return torch.linalg.norm(p-proj, dim=3), t
 
     def validate(self):
         # Ensure that parameters are within some valid range
