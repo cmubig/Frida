@@ -99,10 +99,10 @@ class BezierRenderer(nn.Module):
         
         # Incorporate the thickness params with the distance from line matrices to compute darknesses
         darknesses = torch.clamp((thick - distances)/(thick), 
-                                 min=0.0, max=1.0) # (n-1) x G x G
+                                 min=0.0, max=1.0) # (P, size_y, size_x)
         
         # Max across channels to get final stroke
-        darknesses = torch.max(darknesses, dim=0).values # G x G
+        darknesses = torch.max(darknesses, dim=0).values # (size_y, size_x)
         
         return darknesses 
     
@@ -289,7 +289,7 @@ class StrokeParametersToImage(nn.Module):
         
         self.renderer = BezierRenderer(size_x=self.size_x, 
                                        size_y=self.size_y,
-                                       ctrl_pts=4).to(device)
+                                       num_ctrl_pts=4).to(device)
 
         self.renderer.thicc_fact.requires_grad = True
         self.thicc_fact = nn.Parameter(self.renderer.thicc_fact)
