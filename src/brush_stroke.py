@@ -174,7 +174,7 @@ class BrushStroke(nn.Module):
         if path is None: 
             path = torch.rand((ctrl_pts,4))
             path[:,0] *= self.MAX_STROKE_LENGTH
-            path[:,1] *= self.MAX_BEND
+            path[:,1] = (path[:,1]*2 - 1) * self.MAX_BEND
             path[:,2] = torch.clamp(path[:,0], self.MIN_STROKE_Z, 0.95)
             path[:,3] *= self.MAX_ALPHA
 
@@ -192,93 +192,42 @@ class BrushStroke(nn.Module):
 
     def forward(self, h, w, param2img):
         # # Do rigid body transformation
-        # full_param = torch.zeros((1,16)).to(self.stroke_length.device)
-        
-        # # X
-        # full_param[0,0] = 0
-        # full_param[0,4] = self.stroke_length/3 
-        # full_param[0,8] = 2*self.stroke_length/3
-        # full_param[0,12] = self.stroke_length
-        # # Y
-        # full_param[0,1] = 0
-        # full_param[0,5] = self.stroke_bend
-        # full_param[0,9] = self.stroke_bend
-        # full_param[0,13] = 0
-        # # Z
-        # full_param[0,2] = 0.2
-        # full_param[0,6] = self.stroke_z
-        # full_param[0,10] = self.stroke_z
-        # full_param[0,14] = 0.2
-        # # alpha
-        # full_param[0,3] = self.stroke_alpha
-        # full_param[0,7] = self.stroke_alpha
-        # full_param[0,11] = self.stroke_alpha
-        # full_param[0,15] = self.stroke_alpha
-
-        # full_param = torch.zeros((1,16)).to(self.stroke_length.device)
-        # full_param = torch.cat([self.stroke_length, self.stroke_bend, self.stroke_z, self.stroke_alpha]).to(self.stroke_length.device)
-        # full_param = full_param.unsqueeze(0)
         full_param = self.path.unsqueeze(0)
-
-        # model_ind = np.random.randint(len(param2imgs))
-        # # print(model_ind)
-        # stroke = param2imgs[model_ind](full_param).unsqueeze(0)
-        # stroke = pad_for_full(stroke)
         stroke = param2img(full_param, h, w).unsqueeze(0)
 
         # Pad 1 or two to make it fit
-        # print('ffff', stroke.shape, h, w)
         if stroke.shape[2] != h or stroke.shape[3] != w:
             stroke = T.Resize((h, w), bicubic)(stroke)
 
-        # x = self.transformation(strokes[self.stroke_ind].permute(2,0,1).unsqueeze(0))
-        # from plan import show_img
+        # from paint_utils3 import show_img
         # show_img(stroke)
         x = self.transformation(stroke)
+        # show_img(x)
 
         # Remove stray color from the neural network being sloppy
-        # x[x < 0.1] = 0
-        # # x[x >= 0.1] = 1
-        #x = 1/(1+torch.exp(-1.*((x*2-1)+0.5) / 0.05))
         x = special_sigmoid(x)
         # import kornia as K
         # x = K.filters.median_blur(x, (3,3))
         
-
         # show_img(x)
         x = torch.cat([x,x,x,x], dim=1)
-        # print('forawrd brush', x.shape)
+
         # Color change
         x = torch.cat((x[:,:3]*0 + self.color_transform[None,:,None,None], x[:,3:]), dim=1)
         return x
 
     def make_valid(stroke):
         with torch.no_grad():
-            # og_len = stroke.stroke_length.item()
-            # stroke.stroke_length.data.clamp_(stroke.MIN_STROKE_LENGTH+0.002, 
-            #                                  stroke.MAX_STROKE_LENGTH-0.002)
-            # # if stroke.stroke_length.item() != og_len:
-            # #     print('length constrained')
-            
-            # stroke.stroke_bend.data.clamp_(-1*stroke.stroke_length, stroke.stroke_length)
-            # stroke.stroke_bend.data.clamp_(-1.0*stroke.MAX_BEND, stroke.MAX_BEND)
-
-            # stroke.stroke_alpha.data.clamp_(-1.0*stroke.MAX_ALPHA, stroke.MAX_ALPHA)
-
-            # stroke.stroke_z.data.clamp_(stroke.MIN_STROKE_Z,1.0-0.01)
-
             stroke.path[:,0].data.clamp_(stroke.MIN_STROKE_LENGTH, stroke.MAX_STROKE_LENGTH)
             stroke.path[:,1].data.clamp_(-1.0*stroke.MAX_BEND, stroke.MAX_BEND)
-            stroke.path[:,2].data.clamp_(stroke.MIN_STROKE_Z, 0.98)
+            stroke.path[:,2].data.clamp_(stroke.MIN_STROKE_Z, 0.95)
             stroke.path[:,3].data.clamp_(-1.0*stroke.MAX_ALPHA, stroke.MAX_ALPHA)
 
-            stroke.path[0,:] = 0
+            stroke.path[0,:2] = 0
             stroke.path[-1,1] = 0
 
-            # stroke.transformation.weights[1:3].data.clamp_(-1.,1.)
             stroke.transformation.xt.data.clamp_(-1.,1.)
             stroke.transformation.yt.data.clamp_(-1.,1.)
-
 
             #stroke.color_transform.data.clamp_(0.02,0.75)
             if stroke.color_transform.min() < 0.35:
@@ -317,12 +266,6 @@ class BrushStroke(nn.Module):
 
         z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
 
-        # trajectory = BrushStroke.simple_parameterization_to_bezier_points(
-        #         self.stroke_length.detach().cpu().item(),
-        #         self.stroke_bend.detach().cpu().item(),
-        #         self.stroke_z.detach().cpu().item(),
-        #         self.stroke_alpha.detach().cpu().item(),
-        #     )
         from scipy.interpolate import make_interp_spline
         path = self.path.detach().cpu().numpy()
         t = range(0, len(path))
@@ -335,7 +278,7 @@ class BrushStroke(nn.Module):
         approx_len = 0.0
         for i in range(len(path)-1):
             approx_len += ((path[i,0]-path[i+1,0])**2 + (path[i,1] - path[i+1,1])**2)**0.5
-        print('approx_len', approx_len)
+        # print('approx_len', approx_len)
         steps = int(max(3, approx_len/step_size))
         
         t_new = np.linspace(0, len(path)-1, steps)
@@ -344,22 +287,15 @@ class BrushStroke(nn.Module):
         z_new = b_z(t_new)
         alpha_new = b_alpha(t_new)
 
-        trajectory = np.stack((x_new, y_new, z_new, alpha_new)).T
+        path = np.stack((x_new, y_new, z_new, alpha_new)).T
 
-        path = BrushStroke.get_rotated_trajectory(rotation, trajectory)
-        
+        path = BrushStroke.get_rotated_trajectory(rotation, path)
+
         painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.03, speed=0.4)
         painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.005, speed=0.1)
 
-        # p0 = path[0,0], path[0,1], path[0,2]
-        # p3 = None
-
-        # alpha = self.stroke_alpha.item() # Same alpha throughout stroke, for now.
-        # # print('alpha', alpha)
-
-
         for step in range(steps):
-            x, y, z, alpha = trajectory[step,0], trajectory[step,1], trajectory[step,2], trajectory[step,3]
+            x, y, z, alpha = path[step,0], path[step,1], path[step,2], path[step,3]
             x_next = x_start + x 
             y_next = y_start + y
             z = painter.Z_CANVAS - z * z_range
@@ -397,127 +333,6 @@ class BrushStroke(nn.Module):
                     painter.move_to(x_next, y_next, z+0.01, q=q, method='direct', speed=0.03)
                     painter.move_to(x_next, y_next, z+0.02, q=q, method='direct', speed=0.1)
 
-        # for i in range(1, len(path)-1, 3):
-        #     p1 = path[i+0,0], path[i+0,1], path[i+0,2]
-        #     p2 = path[i+1,0], path[i+1,1], path[i+1,2]
-        #     p3 = path[i+2,0], path[i+2,1], path[i+2,2]
-
-        #     stroke_length = ((p3[0]-p0[0])**2 + (p3[1] - p0[1])**2)**.5
-        #     n = max(2, int(stroke_length/step_size))
-        #     n=10#5#30 # TODO: something more than this? see previous line
-        #     for t in np.linspace(0,1,n):
-        #         x = (1-t)**3 * p0[0] \
-        #               + 3*(1-t)**2*t*p1[0] \
-        #               + 3*(1-t)*t**2*p2[0] \
-        #               + t**3*p3[0]
-        #         y = (1-t)**3 * p0[1] \
-        #               + 3*(1-t)**2*t*p1[1] \
-        #               + 3*(1-t)*t**2*p2[1] \
-        #               + t**3*p3[1]
-        #         if t < 0.333:
-        #             z = (1 - t/.333) * p0[2] + (t/.333)*p1[2]
-        #         elif t < 0.666:
-        #             z = (1 - (t-.333)/.333) * p1[2] + ((t-.333)/.333)*p2[2]
-        #         else:
-        #             z = (1 - (t-.666)/.333) * p2[2] + ((t-.666)/.333)*p3[2]
-
-        #         def deriv_cubic_bez(p0,p1,p2,p3,t):
-        #             return -3*(1-t)**2*p0 \
-        #                     + 3*(1-t)**2*p1 \
-        #                     - 6*t*(1-t)*p1 \
-        #                     - 3*t**2*p2 \
-        #                     + 6*t*(1-t)*p2 \
-        #                     + 3*t**2*p3
-        #         dx_dt = deriv_cubic_bez(p0[0], p1[0], p2[0], p3[0], t)
-        #         dy_dt = deriv_cubic_bez(p0[1], p1[1], p2[1], p3[1], t)
-        #         dy_dx = dy_dt / dx_dt
-        #         curve_angle = np.arctan(dy_dx)
-        #         # print('curve_angle', curve_angle)
-
-        #         def rad_to_deg(rad):
-        #             return 1.0*rad/math.pi * 180
-        #         def deg_to_rad(deg):
-        #             return 1.0*deg/180*math.pi
-
-        #         theta_sphere = np.arctan2(dy_dt, dx_dt) + np.pi/2 # the pi makes it perpendicular to trajectory
-
-        #         if curve_angle_is_rotation:
-        #             theta_sphere = rotation
-
-        #         phi_sphere = alpha
-        #         # print(theta_sphere, phi_sphere)
-        #         roll = np.cos(theta_sphere)*np.sin(phi_sphere)
-        #         # pitch =  np.pi - np.sin(theta_sphere)*np.cos(phi_sphere)*np.sin(phi_sphere)
-        #         pitch =  np.pi - np.sin(theta_sphere)*np.sin(phi_sphere)
-        #         yaw = deg_to_rad(270.) # Constant yaw
-        #         q = get_quaternion_from_euler(roll,pitch,yaw)
-
-        #         ######
-        #         # TODO: fix the tilt of the brush for the Franka robot
-        #         q = None
-        #         ####
-
-        #         #brush_length = 0.095
-        #         l = painter.opt.brush_length
-                
-        #         if l is not None:
-        #             r = l * np.sin(phi_sphere)
-        #             dx = r * np.cos(theta_sphere)
-        #             dy = r * np.sin(theta_sphere)
-        #             dz = l - l * np.cos(phi_sphere)
-        #             # print('dx dy', dx, dy)
-        #             x += dx
-        #             y += dy
-        #             #z -= dz
-        #             # print('dz', dz)
-        #             new_z_range = z_range * np.abs(np.cos(phi_sphere))
-        #             # print('z range', z_range, new_z_range)
-        #             # print('dz', dz)
-        #             # print('painter.Z_CANVAS', painter.Z_CANVAS)
-        #             # print('painter.Z_MAX_CANVAS', painter.Z_MAX_CANVAS)
-
-        #             z = painter.Z_CANVAS - z * new_z_range - dz #+ 0.07
-        #             # print(x,y,z)
-        #         else:
-        #             z = painter.Z_CANVAS - z * z_range 
-
-        #         x_next = x_start + x 
-        #         y_next = y_start + y
-
-
-        #         # If off the canvas, lift up
-        #         if (x_next > painter.opt.X_CANVAS_MAX) or (x_next < painter.opt.X_CANVAS_MIN) or \
-        #                 (y_next > painter.opt.Y_CANVAS_MAX) or (y_next < painter.opt.Y_CANVAS_MIN):
-        #             z += 0.005
-
-        #         # Don't over shoot the canvas
-        #         x_next = min(max(painter.opt.X_CANVAS_MIN, x_next), painter.opt.X_CANVAS_MAX) 
-        #         y_next = min(max(painter.opt.Y_CANVAS_MIN, y_next), painter.opt.Y_CANVAS_MAX)
-
-        #         if smooth:
-        #             if t == 0 and i==0:
-        #                 all_positions.append([x_next, y_next, z+0.02])
-        #                 all_orientations.append(q)
-        #                 all_positions.append([x_next, y_next, z+0.005])
-        #                 all_orientations.append(q)
-        #             all_positions.append([x_next, y_next, z])
-        #             all_orientations.append(q)
-        #             if t == 1 and (i == len(path)-4):
-        #                 all_positions.append([x_next, y_next, z+0.01])
-        #                 all_orientations.append(q)
-        #                 all_positions.append([x_next, y_next, z+0.02])
-        #                 all_orientations.append(q)
-        #         else:
-        #             if t == 0 and i==0:
-        #                 painter.move_to(x_next, y_next, z+0.02, q=q, method='direct', speed=0.1)
-        #                 painter.move_to(x_next, y_next, z+0.005, q=q, method='direct', speed=0.03)
-        #             painter.move_to(x_next, y_next, z, q=q, method='direct', speed=0.05)
-        #             if t == 1 and (i == len(path)-4):
-        #                 painter.move_to(x_next, y_next, z+0.01, q=q, method='direct', speed=0.03)
-        #                 painter.move_to(x_next, y_next, z+0.02, q=q, method='direct', speed=0.1)
-        #         # time.sleep(0.02)
-        #     p0 = p3
-
 
         if smooth:
             stroke_complete = painter.move_to_trajectories(all_positions, all_orientations)
@@ -547,13 +362,6 @@ class BrushStroke(nn.Module):
     def dot_stroke(self, opt):
         path = torch.zeros((4,4))
         path[:,2] = 0.75
-        # return BrushStroke(
-        #     opt,
-        #     stroke_length=torch.zeros(1), 
-        #     stroke_z=torch.ones(1)*0.5, 
-        #     stroke_bend=torch.zeros(1), 
-        #     stroke_alpha=torch.zeros(1)
-        # )
         return BrushStroke(
             opt,
             path=path,

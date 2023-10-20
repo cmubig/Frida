@@ -189,7 +189,7 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
                 discretize_colors(painting, color_palette)
         log_progress(painting, opt, log_freq=opt.log_frequency)#, force_log=True)
 
-
+    painting.validate()
     if not use_input_palette and not opt.ink:
         color_palette = painting.cluster_colors(opt.n_colors)
 

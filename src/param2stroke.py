@@ -29,13 +29,13 @@ class BezierRenderer(nn.Module):
 
         self.num_ctrl_pts = num_ctrl_pts
 
-        # torch.set_printoptions(precision=3, sci_mode=False)
         self.weights = torch.zeros((self.num_ctrl_pts, self.P)).to(device)
-        gaus = torch.signal.windows.gaussian(self.P*2, std=2.0)
+        gaus = torch.signal.windows.gaussian(self.P*2, std=2.0) * 0.75
         for i in range(self.num_ctrl_pts):
             start_ind = int(self.P - self.P*(i/(self.num_ctrl_pts-1)))
             self.weights[i,:] = gaus[start_ind:start_ind+self.P]
-        # print(self.weights)
+        torch.set_printoptions(precision=3, sci_mode=False)
+        print(self.weights)
         
         self.thicc_fact = torch.ones((self.P, self.num_ctrl_pts), dtype=torch.float).to(device)
 
@@ -503,6 +503,10 @@ def train_param2stroke(opt, device='cuda'):
 
         if not torch.isnan(loss):
             loss.backward()
+            if it < 400:
+                trans.renderer.weights.grad.data *= 0
+            else:
+                trans.renderer.weights.grad.data *= 0.1
             optim.step()
         else:
             print('Nan')

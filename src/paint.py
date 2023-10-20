@@ -12,6 +12,7 @@ import datetime
 import numpy as np
 
 import torch
+from tqdm import tqdm
 from paint_utils3 import canvas_to_global_coordinates, get_colors, nearest_color, random_init_painting, save_colors, show_img
 
 from painter import Painter
@@ -73,9 +74,7 @@ if __name__ == '__main__':
 
     if not painter.opt.simulate:
         show_img(painter.camera.get_canvas()/255., 
-                 title="Initial plan complete. Ready to start painting. \
-                    Ensure mixed paint is provided and then exit this to \
-                    start painting.")
+                 title="Initial plan complete. Ready to start painting. Ensure mixed paint is provided and then exit this to start painting.")
 
 
     strokes_per_adaptation = int(len(painting) / opt.num_adaptations)
@@ -84,7 +83,7 @@ if __name__ == '__main__':
         ################################
         ### Execute some of the plan ###
         ################################
-        for stroke_ind in range(min(len(painting),strokes_per_adaptation)):
+        for stroke_ind in tqdm(range(min(len(painting),strokes_per_adaptation))):
             stroke = painting.pop()            
             
             # Clean paint brush and/or get more paint
@@ -104,6 +103,7 @@ if __name__ == '__main__':
 
             # Convert the canvas proportion coordinates to meters from robot
             x, y = stroke.transformation.xt.item()*0.5+0.5, stroke.transformation.yt.item()*0.5+0.5
+            y = 1-y
             x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
             x_glob, y_glob,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
