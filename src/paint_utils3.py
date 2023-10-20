@@ -269,8 +269,12 @@ def extract_paint_color(canvas_before, canvas_after, stroke_bool_map):
 
 def random_init_painting(opt, background_img, n_strokes, ink=False, device='cuda'):
     gridded_brush_strokes = []
-    xys = [(x,y) for x in torch.linspace(-.95,.95,int(n_strokes**0.5)) \
-                 for y in torch.linspace(-.95,.95,int(n_strokes**0.5))]
+
+    xys = [(x,y) for x in torch.linspace(-.85,.85,int(n_strokes**0.5)) \
+                 for y in torch.linspace(-.85,.85,int(n_strokes**0.5))]
+    if ink:
+        xys = [(x,y) for x in torch.linspace(-.5,.5,int(n_strokes**0.5)) \
+                    for y in torch.linspace(-.5,.5,int(n_strokes**0.5))]
     random.shuffle(xys)
     for x,y in xys:
         # Random brush stroke
