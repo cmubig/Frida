@@ -34,6 +34,7 @@ class BezierRenderer(nn.Module):
         for i in range(self.num_ctrl_pts):
             start_ind = int(self.P - self.P*(i/(self.num_ctrl_pts-1)))
             self.weights[i,:] = gaus[start_ind:start_ind+self.P]
+        self.weights = self.weights / torch.sum(self.weights, dim=0, keepdim=True)
         torch.set_printoptions(precision=3, sci_mode=False)
         print(self.weights)
         
