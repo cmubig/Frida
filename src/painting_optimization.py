@@ -41,7 +41,7 @@ plans = []
 def log_progress(painting, opt, log_freq=5, force_log=False, title='plan'):
     global local_it, plans
     local_it +=1
-    if (local_it %log_freq==0) or force_log:
+    if ((local_it-1) % log_freq==0) or force_log:
         with torch.no_grad():
             #np_painting = painting(h,w, use_alpha=False).detach().cpu().numpy()[0].transpose(1,2,0)
             #opt.writer.add_image('images/{}'.format(title), np.clip(np_painting, a_min=0, a_max=1), local_it)

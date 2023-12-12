@@ -77,6 +77,7 @@ class Options(object):
         parser.add_argument('--plan_gif_dir', type=str, default='../outputs/')
         parser.add_argument('--log_frequency', type=int, default=5, help="Log to TB after this many optim. iters.")
         parser.add_argument("--output_dir", type=str, default="../outputs/", help='Where to write output to.')
+        parser.add_argument('--log_photo_frequency', type=int, default=20, help="Log to TB after this many strokes painted.")
 
 
         # CoFRIDA Run-Time Parameters
@@ -139,9 +140,9 @@ class Options(object):
         self.X_CANVAS_MAX = self.CANVAS_POSITION[0] + self.CANVAS_WIDTH_M/2 + thresh
         self.X_CANVAS_MIN = self.CANVAS_POSITION[0] - self.CANVAS_WIDTH_M/2 - thresh
 
-        if self.use_cache and os.path.exists(os.path.join(self.cache_dir, 'stroke_settings_during_library.json')):
+        if self.use_cache and os.path.exists(os.path.join(self.cache_dir, 'stroke_library', 'stroke_settings_during_library.json')):
             print("Retrieving settings from stroke library for consistency:")
-            with open(os.path.join(self.cache_dir, 'stroke_settings_during_library.json'), 'r') as f:
+            with open(os.path.join(self.cache_dir, 'stroke_library', 'stroke_settings_during_library.json'), 'r') as f:
                 settings = json.load(f)
                 print(settings)
                 self.MAX_BEND = settings['MAX_BEND']
@@ -151,6 +152,13 @@ class Options(object):
                 self.MAX_ALPHA = settings['MAX_ALPHA']
                 self.STROKE_LIBRARY_CANVAS_WIDTH_M = settings['CANVAS_WIDTH_M']
                 self.STROKE_LIBRARY_CANVAS_HEIGHT_M = settings['CANVAS_HEIGHT_M']
+
+        if self.MAX_STROKE_LENGTH is None:
+            self.MAX_STROKE_LENGTH = 0.8 * self.CANVAS_WIDTH_M
+        
+        if not os.path.exists(self.plan_gif_dir): os.mkdir(self.plan_gif_dir)
+        if not os.path.exists(self.output_dir): os.mkdir(self.output_dir)
+
 
     def __getattr__(self, attr_name):
         return self.opt[attr_name]

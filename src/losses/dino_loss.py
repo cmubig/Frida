@@ -145,7 +145,7 @@ class ViTExtractor:
         """
         pil_image = Image.open(image_path).convert('RGB')
         if load_size is not None:
-            pil_image = transforms.Resize(load_size, interpolation=transforms.InterpolationMode.LANCZOS)(pil_image)
+            pil_image = transforms.Resize(load_size, interpolation=transforms.InterpolationMode.LANCZOS, antialias=True)(pil_image)
         prep = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(mean=self.mean, std=self.std)
@@ -344,7 +344,7 @@ mean = (0.485, 0.456, 0.406) #if "dino" in model_type else (0.5, 0.5, 0.5)
 std = (0.229, 0.224, 0.225) #if "dino" in model_type else (0.5, 0.5, 0.5)
 prep = transforms.Compose([
     # transforms.ToTensor(),
-    transforms.Resize((224,224)),
+    transforms.Resize((224,224), antialias=True),
     transforms.Normalize(mean=mean, std=std)
 ])
 
