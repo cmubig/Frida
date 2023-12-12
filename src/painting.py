@@ -56,7 +56,7 @@ class Painting(nn.Module):
         if self.background_img is None:
             canvas = torch.ones((1,4,h,w)).to(device)
         else:
-            canvas = T.Resize((h,w), bicubic)(self.background_img).detach()
+            canvas = T.Resize((h,w), bicubic, antialias=True)(self.background_img).detach()
         canvas[:,3] = 1 # alpha channel
 
         mostly_opaque = False#True

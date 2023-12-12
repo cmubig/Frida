@@ -5,11 +5,12 @@ from torch import nn
 import torchgeometry
 import torchvision.transforms as T
 from torchvision.transforms import InterpolationMode 
+from kornia.geometry.transform import rotate
 bicubic = InterpolationMode.BICUBIC
 import warnings
 import numpy as np
 
-from param2stroke import special_sigmoid
+# from param2stroke import special_sigmoid
 
 
 def get_quaternion_from_euler(roll, pitch, yaw):
@@ -80,49 +81,89 @@ def rigid_body_transform(a, xt, yt, anchor_x, anchor_y):
     A[0,2,2] = 1
     return A
 
+def get_rotation_transform(a, anchor_x, anchor_y):
+    # a is the angle in radians
+    # anchor points are where to rotate around (usually the center of the image)
+    # Blessed be Peter Schorn for the anchor point transform https://stackoverflow.com/a/71405577
+    A = torch.zeros(1, 3, 3).to(a.device)
+    a = -1.*a
+    A[0,0,0] = cos(a)
+    A[0,0,1] = -sin(a)
+    A[0,0,2] = anchor_x - anchor_x * cos(a) + anchor_y * sin(a) 
+    A[0,1,0] = sin(a)
+    A[0,1,1] = cos(a)
+    A[0,1,2] = anchor_y - anchor_x * sin(a) - anchor_y * cos(a) 
+    A[0,2,0] = 0
+    A[0,2,1] = 0
+    A[0,2,2] = 1
+    return A
+
+def get_translation_transform(xt, yt):
+    A = torch.zeros(1, 3, 3).to(xt.device)
+    A[0,0,0] = 1
+    A[0,0,1] = 0
+    A[0,0,2] = xt
+    A[0,1,0] = 0
+    A[0,1,1] = 1
+    A[0,1,2] = yt
+    A[0,2,0] = 0
+    A[0,2,1] = 0
+    A[0,2,2] = 1
+    return A
+
 class RigidBodyTransformation(nn.Module):
     def __init__(self, a, xt, yt):
         super(RigidBodyTransformation, self).__init__()
-        # weights = torch.zeros(3)
-        # weights[0] = a
-        # weights[1] = xt
-        # weights[2] = yt
-        # weights.requires_grad = True
-        # self.weights = nn.Parameter(weights)
-
-        # t = torch.ones(1)
-        # t[0] = xt
-        # t.requires_grad = True
-        # self.xt = nn.Parameter(t)
-
-        # t = torch.ones(1)
-        # t[0] = yt
-        # t.requires_grad = True
-        # self.yt = nn.Parameter(t)
-
-
-        # t = torch.ones(1)
-        # t[0] = a
-        # t.requires_grad = True
-        # self.a = nn.Parameter(t)
-
-        # self.xt.requires_grad = True
-        # self.yt.requires_grad = True
-        # self.a.requires_grad = True
-
         self.xt = nn.Parameter(torch.ones(1)*xt)
         self.yt = nn.Parameter(torch.ones(1)*yt)
         self.a = nn.Parameter(torch.ones(1)*a)
 
     def forward(self, x):
         h, w = x.shape[2], x.shape[3]
-        anchor_x, anchor_y = w/2, h/2
+        # anchor_x, anchor_y = w/2, h/2
+        left_margin = 0.1 # Start stroke 10% away fromm left side
+        anchor_x, anchor_y = left_margin*w, 0.5*h
 
-        # M = rigid_body_transform(self.weights[0], self.weights[1]*(w/2), self.weights[2]*(h/2), anchor_x, anchor_y)
-        M = rigid_body_transform(self.a[0], self.xt[0]*(w/2), self.yt[0]*(h/2), anchor_x, anchor_y)
+        M = rigid_body_transform(self.a[0], 
+                (self.xt[0]+2*(0.5-left_margin))*(w/2), self.yt[0]*(h/2), 
+                anchor_x, anchor_y)
         with warnings.catch_warnings(): # suppress annoing torchgeometry warning
             warnings.simplefilter("ignore")
             return torchgeometry.warp_perspective(x, M, dsize=(h,w))
+        
+    def forward2(self, x):
+        # This is equivalent to forward(), but decouples the rotation and translation.
+        # This is also 30% slower than the other forward()
+        h, w = x.shape[2], x.shape[3]
+        
+        left_margin = 0.1 # Start stroke 10% away fromm left side
+        top_margin = 0.5
+
+        # Must pad x before rotating and translating. 
+        # This to avoid a stroke going off the side of the image after rotating
+        # but before translating 
+        pad_top = max(w-h, 0) # TODO: ASSUMES THAT top_margin==0.5
+        pad_bottom = max(w-h, 0)
+        pad_left = int((1-2*left_margin)*w)
+        pad_right = 0 # TODO ASSUMES THAT left_margin <= 0.5
+        x = T.functional.pad(x, padding=[pad_left, pad_top, pad_right, pad_bottom])
+        
+        h_padded, w_padded = x.shape[2], x.shape[3]
+
+        M_trans = get_translation_transform((self.xt[0]+2*(0.5-left_margin))*(w/2), 
+                                            self.yt[0]*(h/2))
+        
+        with warnings.catch_warnings(): # suppress annoing torchgeometry warning
+            warnings.simplefilter("ignore")
+            # Rotate the stroke about the center (Start of stroke is at center of image)
+            x = rotate(x, angle=torch.rad2deg(self.a[0]))
+
+            # Translate the stroke
+            x = torchgeometry.warp_perspective(x, M_trans, dsize=(h_padded,w_padded))
+
+            # Remove padding
+            x = x[:,:,pad_top:pad_top+h,pad_left:pad_left+w]
+            return x
 
 class BrushStroke(nn.Module):
     def __init__(self, 
@@ -147,35 +188,13 @@ class BrushStroke(nn.Module):
         if xt is None: xt=(torch.rand(1)*2-1)
         if yt is None: yt=(torch.rand(1)*2-1)
 
-
-        # if stroke_length is None: stroke_length=torch.rand(1)*self.MAX_STROKE_LENGTH
-        # if stroke_z is None: stroke_z = torch.rand(1).clamp(self.MIN_STROKE_Z, 0.95)
-        # if stroke_alpha is None: stroke_alpha=(torch.rand(1)*2-1)*self.MAX_ALPHA
-        # if stroke_bend is None: stroke_bend = (torch.rand(1)*2 - 1) * self.MAX_BEND
-        # stroke_bend = min(stroke_bend, stroke_length) if stroke_bend > 0 else max(stroke_bend, -1*stroke_length)
-
         self.transformation = RigidBodyTransformation(a, xt, yt)
         
-        # self.stroke_length = stroke_length
-        # self.stroke_z = stroke_z
-        # self.stroke_bend = stroke_bend
-        # self.stroke_alpha = stroke_alpha
-
-        # self.stroke_length.requires_grad = True
-        # self.stroke_z.requires_grad = True
-        # self.stroke_bend.requires_grad = True
-        # self.stroke_alpha.requires_grad = True
-
-        # self.stroke_length = nn.Parameter(self.stroke_length)
-        # self.stroke_z = nn.Parameter(self.stroke_z)
-        # self.stroke_bend = nn.Parameter(self.stroke_bend)
-        # self.stroke_alpha = nn.Parameter(self.stroke_alpha)
-
         if path is None: 
             path = torch.rand((ctrl_pts,4))
             path[:,0] *= self.MAX_STROKE_LENGTH
             path[:,1] = (path[:,1]*2 - 1) * self.MAX_BEND
-            path[:,2] = torch.clamp(path[:,0], self.MIN_STROKE_Z, 0.95)
+            path[:,2] = torch.clamp(path[:,2], self.MIN_STROKE_Z, 0.95)
             path[:,3] *= self.MAX_ALPHA
 
             path[0,0] = 0
@@ -193,11 +212,12 @@ class BrushStroke(nn.Module):
     def forward(self, h, w, param2img):
         # # Do rigid body transformation
         full_param = self.path.unsqueeze(0)
-        stroke = param2img(full_param, h, w).unsqueeze(0)
+        # stroke = param2img(full_param, h, w).unsqueeze(0)
+        stroke = param2img(full_param).unsqueeze(0)
 
         # Pad 1 or two to make it fit
         if stroke.shape[2] != h or stroke.shape[3] != w:
-            stroke = T.Resize((h, w), bicubic)(stroke)
+            stroke = T.Resize((h, w), bicubic, antialias=True)(stroke)
 
         # from paint_utils3 import show_img
         # show_img(stroke)
@@ -205,7 +225,7 @@ class BrushStroke(nn.Module):
         # show_img(x)
 
         # Remove stray color from the neural network being sloppy
-        x = special_sigmoid(x)
+        # x = special_sigmoid(x)
         # import kornia as K
         # x = K.filters.median_blur(x, (3,3))
         
@@ -236,20 +256,9 @@ class BrushStroke(nn.Module):
             else:
                 # Well balanced RGB, less constraint
                 stroke.color_transform.data.clamp_(0.02,0.85)
-    
-    def simple_parameterization_to_bezier_points(stroke_length, bend, z, alpha=0):
-        xs = (np.arange(4)/3.) * stroke_length
-
-        trajectory=[
-            [xs[0], 0, .2, alpha],
-            [xs[1], bend, z, alpha],
-            [xs[2], bend, z, alpha],
-            [xs[3], 0, .2, alpha],
-        ]
-        return trajectory
 
     def execute(self, painter, x_start, y_start, rotation, 
-                step_size=.005, curve_angle_is_rotation=False):
+                step_size=.0025, curve_angle_is_rotation=False):
         # x_start, y_start in global coordinates. rotation in radians
         # curve_angle_is_rotation if true, then the brush is angled constantly down towards theta
         smooth = True
