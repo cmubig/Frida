@@ -9,6 +9,7 @@ from kornia.geometry.transform import rotate
 bicubic = InterpolationMode.BICUBIC
 import warnings
 import numpy as np
+from scipy.interpolate import make_interp_spline
 
 # from param2stroke import special_sigmoid
 
@@ -168,7 +169,7 @@ class RigidBodyTransformation(nn.Module):
 class BrushStroke(nn.Module):
     def __init__(self, 
                  opt,
-                #stroke_length=None, stroke_z=None, stroke_bend=None, stroke_alpha=None,
+                distance_since_getting_paint=None,
                 path=None,
                 ctrl_pts=4,
                 color=None, 
@@ -182,6 +183,8 @@ class BrushStroke(nn.Module):
         self.MIN_STROKE_Z = opt.MIN_STROKE_Z
         self.MAX_ALPHA = opt.MAX_ALPHA
         self.MAX_BEND = opt.MAX_BEND
+        self.max_length_before_new_paint = opt.max_length_before_new_paint
+        self.ink = ink
 
         if color is None: color=(torch.rand(3).to(device)*.4)+0.3
         if a is None: a=(torch.rand(1)*2-1)*3.14
@@ -191,6 +194,7 @@ class BrushStroke(nn.Module):
         self.transformation = RigidBodyTransformation(a, xt, yt)
         
         if path is None: 
+            # path: ctrl_pts x [x,y,z,alpha,dist_since_get_paint]
             path = torch.rand((ctrl_pts,4))
             path[:,0] *= self.MAX_STROKE_LENGTH
             path[:,1] = (path[:,1]*2 - 1) * self.MAX_BEND
@@ -200,11 +204,19 @@ class BrushStroke(nn.Module):
             path[0,0] = 0
             path[0,1] = 0
             path[-1,1] = 0
+        
+
+        # Add in the distance painted without getting new paint to path parameters
+        if distance_since_getting_paint is None: 
+            distance_since_getting_paint=torch.zeros(1)
+        distance_since_getting_paint = torch.ones((ctrl_pts,1)) * distance_since_getting_paint
+        path = torch.cat([path, distance_since_getting_paint], dim=1)
+        
         self.path = path 
         self.path.requires_grad = True 
         self.path = nn.Parameter(self.path)
 
-        if not ink:
+        if not self.ink:
             self.color_transform = nn.Parameter(color)
         else:
             self.color_transform = torch.zeros(3).to(device)
@@ -238,13 +250,15 @@ class BrushStroke(nn.Module):
 
     def make_valid(stroke):
         with torch.no_grad():
-            stroke.path[:,0].data.clamp_(stroke.MIN_STROKE_LENGTH, stroke.MAX_STROKE_LENGTH)
-            stroke.path[:,1].data.clamp_(-1.0*stroke.MAX_BEND, stroke.MAX_BEND)
-            stroke.path[:,2].data.clamp_(stroke.MIN_STROKE_Z, 0.95)
-            stroke.path[:,3].data.clamp_(-1.0*stroke.MAX_ALPHA, stroke.MAX_ALPHA)
+            stroke.path[:,0].data.clamp_(stroke.MIN_STROKE_LENGTH, stroke.MAX_STROKE_LENGTH) # x
+            stroke.path[:,1].data.clamp_(-1.0*stroke.MAX_BEND, stroke.MAX_BEND) # y
+            stroke.path[:,2].data.clamp_(stroke.MIN_STROKE_Z, 0.95) # z
+            stroke.path[:,3].data.clamp_(-1.0*stroke.MAX_ALPHA, stroke.MAX_ALPHA) # alpha
+            stroke.path[:,4].data.clamp_(0, # distance painted since adding paint to brush
+                        0 if stroke.ink else stroke.max_length_before_new_paint)
 
-            stroke.path[0,:2] = 0
-            stroke.path[-1,1] = 0
+            stroke.path[0,:2] = 0 # start at 0,0
+            stroke.path[-1,1] = 0 # finish on horizontal line from start
 
             stroke.transformation.xt.data.clamp_(-1.,1.)
             stroke.transformation.yt.data.clamp_(-1.,1.)
@@ -258,7 +272,7 @@ class BrushStroke(nn.Module):
                 stroke.color_transform.data.clamp_(0.02,0.85)
 
     def execute(self, painter, x_start, y_start, rotation, 
-                step_size=.0025, curve_angle_is_rotation=False):
+                step_size=.005, curve_angle_is_rotation=False):
         # x_start, y_start in global coordinates. rotation in radians
         # curve_angle_is_rotation if true, then the brush is angled constantly down towards theta
         smooth = True
@@ -275,7 +289,6 @@ class BrushStroke(nn.Module):
 
         z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
 
-        from scipy.interpolate import make_interp_spline
         path = self.path.detach().cpu().numpy()
         t = range(0, len(path))
 
@@ -356,6 +369,30 @@ class BrushStroke(nn.Module):
         # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
 
         return stroke_complete
+    
+    def get_length_differentiable(self):
+        """ Return the approximate length of the stroke in distance (meters) """
+        path = self.path#.detach().cpu().numpy()
+        approx_len = (((path[1:,0] - path[:-1,0])**2 + (path[1:,1] - path[:-1,1])**2)**0.5).sum()
+        return approx_len
+    
+    def get_length(self):
+        """ Return the approximate length of the stroke in distance (meters) """
+        path = self.path.detach().cpu().numpy()
+        t = range(0, len(path))
+
+        b_x = make_interp_spline(t,path[:,0])
+        b_y = make_interp_spline(t,path[:,1])
+
+        steps = 100 # Enough without being too slow
+        
+        t_new = np.linspace(0, len(path)-1, steps)
+        x_new = b_x(t_new)
+        y_new = b_y(t_new)
+        
+        approx_len = (((x_new[1:] - x_new[:-1])**2 + (y_new[1:] - y_new[:-1])**2)**0.5).sum()
+        return approx_len
+
     
     def get_rotated_trajectory(rotation, trajectory):
         # Rotation in radians

@@ -98,7 +98,7 @@ if __name__ == '__main__':
                                              color_palette.detach().cpu().numpy())
                 new_paint_color = color_ind != curr_color
                 if new_paint_color or consecutive_strokes_no_clean > 12:
-                    painter.clean_paint_brush()
+                    if new_paint_color: painter.clean_paint_brush()
                     painter.clean_paint_brush()
                     consecutive_strokes_no_clean = 0
                     curr_color = color_ind
@@ -137,6 +137,9 @@ if __name__ == '__main__':
     painter.to_neutral()
     canvas_photos.append(painter.camera.get_canvas())
     painter.writer.add_image('images/canvas', canvas_photos[-1]/255., strokes_executed)
+
+    if not painter.opt.ink:
+        for i in range(3): painter.clean_paint_brush()
 
     to_video(canvas_photos, fn=os.path.join(opt.plan_gif_dir,'sim_canvases{}.mp4'.format(str(time.time()))))
     # with torch.no_grad():

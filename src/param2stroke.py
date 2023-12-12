@@ -24,7 +24,7 @@ class BezierRenderer(nn.Module):
         super(BezierRenderer, self).__init__()
         self.size_x = size_x # grid dimensions (size_x x size_y)
         self.size_y = size_y 
-        self.P = 10 # number of pieces to split Bezier curve into
+        self.P = 15 # number of pieces to split Bezier curve into
         idxs_x = torch.arange(size_x)
         idxs_y = torch.arange(size_y)
         x_coords, y_coords = torch.meshgrid(idxs_y, idxs_x, indexing='ij') # G x G
@@ -41,11 +41,12 @@ class BezierRenderer(nn.Module):
         
         self.thicc_fact = torch.ones((self.P, self.num_ctrl_pts), dtype=torch.float).to(device)
         # self.thicc_fact = torch.ones((self.P), dtype=torch.float).to(device)
+        self.thick_exp = torch.ones((1), dtype=torch.float).to(device)
 
-
-    def forward(self, trajectories, thicknesses):        
+    def forward(self, trajectories, thicknesses, drynesses):        
         # trajectories: (n, 2, num_ctrl_pts)
         # thicknesses: (n, 1, num_ctrl_pts)
+        # drynesses: (n, 1, num_ctrl_pts)
         strokes = []
         for i in range(len(trajectories)):
             # Expand num_ctrl_pts to self.P (smooths the curve)
@@ -55,7 +56,7 @@ class BezierRenderer(nn.Module):
 
             thickness = thicknesses[i]*2 + 0.5
             # Stroke trajectory to bitmap
-            stroke = self.render_stroke(stroke, thickness)
+            stroke = self.render_stroke(stroke, thickness, drynesses[i])
             strokes.append(stroke)
         strokes = torch.stack(strokes, dim=0)
         return strokes
@@ -76,9 +77,10 @@ class BezierRenderer(nn.Module):
         sample_pts = torch.cat([sample_pts, curve[:,3:4].T]) # (P+1, 2)
         return sample_pts
 
-    def render_stroke(self, stroke, t):
+    def render_stroke(self, stroke, t, dryness):
         # stroke: (P+1, 2)
         # t: (1, num_ctrl_points)
+        # dryness: (1, num_ctrl_points)
         n = len(stroke)
         vs = stroke[:-1].reshape((-1,1,1,2)) # (P, 1, 1, 2)
         vs = torch.tile(vs, (1, self.size_y, self.size_x, 1)) # (P, size_y, size_x, 2)
@@ -107,11 +109,13 @@ class BezierRenderer(nn.Module):
         # Incorporate the thickness params with the distance from line matrices to compute darknesses
         darknesses = torch.clamp((thick - distances)/(thick), 
                                  min=0.0, max=1.0) # (P, size_y, size_x)
+        darknesses = (darknesses+1e-4)**self.thick_exp
 
         # Max across channels to get final stroke
         darknesses = torch.max(darknesses, dim=0).values # (size_y, size_x)
         
-        return darknesses
+        return darknesses * dryness
+
     
     # distance from point p to line segment v--w
     # also returns the fraction of the length of v--w that the point p is along
@@ -212,6 +216,8 @@ class StrokeParametersToImage(nn.Module):
 
         self.thicc_fact = nn.Parameter(self.renderer.thicc_fact)
         self.renderer.thicc_fact = self.thicc_fact
+        self.thick_exp = nn.Parameter(self.renderer.thick_exp)
+        self.renderer.thick_exp = self.thick_exp
 
         self.weights = nn.Parameter(self.renderer.weights)
         self.renderer.weights = self.weights
@@ -224,9 +230,16 @@ class StrokeParametersToImage(nn.Module):
         self.traj_bias = torch.zeros([2,4], device=device)
         self.traj_bias = nn.Parameter(self.traj_bias)
 
+        self.dry_opac_factor = -1.0 * torch.ones([1], device=device)
+        self.dry_opac_factor = nn.Parameter(self.dry_opac_factor)
+        self.dry_opac_bias = torch.ones([1], device=device)
+        self.dry_opac_bias = nn.Parameter(self.dry_opac_bias)
+
+
     def forward(self, parameter):
         traj = parameter[:,:,0:2]
         thicknesses = parameter[:,:,2:3]
+        dryness = parameter[:,:,4].mean(dim=1)
 
         # x,y to y,x
         traj = torch.flip(traj, dims=(2,)) 
@@ -242,7 +255,10 @@ class StrokeParametersToImage(nn.Module):
         thicknesses = torch.permute(thicknesses, (0,2,1))
         
         # Run through Differentiable renderer
-        x = self.renderer(traj * self.traj_factor[None] + self.traj_bias, thicknesses * self.thickness_factor)
+        x = self.renderer(traj * self.traj_factor[None] + self.traj_bias, 
+                          thicknesses * self.thickness_factor,
+                          dryness*self.dry_opac_factor + self.dry_opac_bias)
+        
         x = x[:,None,:,:]
 
         # Below is if using a CNN to combine the distance matrices
@@ -289,7 +305,7 @@ def loss_fcn(pred, real, before, fnl_weight=0.5):
     
     return l1_loss(pred, real) + false_negative_loss
 
-def train_param2stroke(opt, device='cuda', n_log=6, batch_size=32):
+def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     torch.random.manual_seed(0)
     np.random.seed(0)
 
@@ -358,8 +374,8 @@ def train_param2stroke(opt, device='cuda', n_log=6, batch_size=32):
     canvases_before.requires_grad = False 
     canvases_after.requires_grad = False 
     for bs in brush_strokes:
-        bs.requires_grad = False
         bs.color_transform = nn.Parameter(torch.zeros(3)) # Assume black paint
+        bs.requires_grad_(False)
 
     # Train/Validation split
     val_prop = 0.25
@@ -419,7 +435,7 @@ def train_param2stroke(opt, device='cuda', n_log=6, batch_size=32):
     # Main Training Loop
     for it in tqdm(range(3000)):
         # with torch.autograd.set_detect_anomaly(True):
-        if best_hasnt_changed_for >= 400 and it > 1200:
+        if best_hasnt_changed_for >= 400 and it > 800:
             break # all done :)
         optim.zero_grad()
 
@@ -435,18 +451,13 @@ def train_param2stroke(opt, device='cuda', n_log=6, batch_size=32):
                 + isolated_stroke[:,3:] * isolated_stroke[:,:3]
 
             loss += loss_fcn(predicted_canvas, canvas_after, canvas_before,
-                                         fnl_weight=0.5 if it < 600 else 0.1)
+                                         fnl_weight=max(0, 0.5 * ((600-it)/600)))
             ep_loss += loss.item()
 
             if (batch_it+1) % batch_size == 0 or batch_it == len(train_brush_strokes)-1:
                 if not torch.isnan(loss):
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(trans.parameters(), max_norm=1.0)
-                    if it < 1000:
-                        # Optimize other parameters before weights (if optimized too soon it finds bad minima)
-                        trans.renderer.weights.grad.data *= 0
-                    else:
-                        trans.renderer.weights.grad.data *= 0.1
                     optim.step()
                 else:
                     print('Nan')
@@ -456,7 +467,9 @@ def train_param2stroke(opt, device='cuda', n_log=6, batch_size=32):
             opt.writer.add_scalar('loss/train_loss_stroke_model', ep_loss, it)
 
         # Log images
-        if it%100 == 0:
+        if it%50 == 0:
+            # print('dry opac tings', trans.dry_opac_factor, trans.dry_opac_bias)
+            # print(trans.renderer.thick_exp)
             # print(trans.thickness_factor.detach().cpu().numpy(), trans.renderer.thicc_fact.detach().cpu().numpy(), sep='\n')
             for log_bs, log_canvases_before, log_canvases_after, log_name in [
                         [train_brush_strokes, train_canvases_before, train_canvases_after, 'train'],
