@@ -549,6 +549,7 @@ class Painter():
         canvas_without_stroke = self.camera.get_canvas(max_height=image_save_height)
         strokes_without_getting_new_paint = 999 
         strokes_without_cleaning = 9999
+        distance_since_getting_paint = 0
 
         lib_dir = os.path.join(self.opt.cache_dir, 'stroke_library')
         if not os.path.exists(lib_dir): os.mkdir(lib_dir)
@@ -569,7 +570,22 @@ class Painter():
 
                 x_offset_pix = 0.02 * w 
                 while(True): # x loop
-                    random_stroke = BrushStroke(self.opt)
+                    if not self.opt.ink:
+                        if strokes_without_cleaning >= 20:
+                            self.clean_paint_brush()
+                            self.get_paint(0)
+                            strokes_without_cleaning, strokes_without_getting_new_paint = 0, 0
+                            distance_since_getting_paint = 0
+                        # if strokes_without_getting_new_paint >= 6:
+                        if distance_since_getting_paint >= self.opt.max_length_before_new_paint:
+                            self.get_paint(0)
+                            strokes_without_getting_new_paint = 0
+                            distance_since_getting_paint = 0
+                        strokes_without_getting_new_paint += 1
+                        strokes_without_cleaning += 1
+
+                    random_stroke = BrushStroke(self.opt, 
+                        distance_since_getting_paint=None if self.opt.ink else distance_since_getting_paint)
                     
                     stroke_length_m = random_stroke.path[:,0].max().item()
                     stroke_length_pix = stroke_length_m * (w / self.opt.CANVAS_WIDTH_M)
@@ -589,18 +605,9 @@ class Painter():
                     x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
                     x,y,_ = canvas_to_global_coordinates(x,y,None,self.opt)
                     
-                    if not self.opt.ink:
-                        if strokes_without_cleaning >= 12:
-                            self.clean_paint_brush()
-                            self.get_paint(0)
-                            strokes_without_cleaning, strokes_without_getting_new_paint = 0, 0
-                        if strokes_without_getting_new_paint >= 4:
-                            self.get_paint(0)
-                            strokes_without_getting_new_paint = 0
-                        strokes_without_getting_new_paint += 1
-                        strokes_without_cleaning += 1
-
                     random_stroke.execute(self, x, y, 0)
+
+                    distance_since_getting_paint += random_stroke.get_length().item()
 
                     self.to_neutral()
                     canvas_with_stroke = self.camera.get_canvas(max_height=image_save_height)
@@ -619,7 +626,7 @@ class Painter():
                         ax.set_xticks([]), ax.set_yticks([])
                         fig.tight_layout()
                         self.writer.add_figure('stroke_library/{}'.format(n_strokes), fig, 0)
-
+                        plt.close(fig)
 
                     brush_strokes.append(random_stroke)
                     canvases_before.append(canvas_without_stroke)

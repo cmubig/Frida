@@ -70,6 +70,8 @@ class Options(object):
 
         # Painting Parameters
         parser.add_argument('--how_often_to_get_paint', type=int, default=4)
+        parser.add_argument('--max_length_before_new_paint', type=float, default=0.75,
+                            help="Maximum length (in meters) to paint without getting new paint from palette")
 
         # Logging Parameters
         parser.add_argument("--tensorboard_dir", type=str,
@@ -134,7 +136,7 @@ class Options(object):
         
         self.opt = {**self.opt, **materials}
 
-        thresh = 0.001 # 0.1cm tolerance on overshooting the canvas
+        thresh = 0.005 if self.ink else 0.002 # 0.2cm tolerance on overshooting the canvas
         self.Y_CANVAS_MAX = self.CANVAS_POSITION[1] + self.CANVAS_HEIGHT_M + thresh
         self.Y_CANVAS_MIN = self.CANVAS_POSITION[1] - thresh
         self.X_CANVAS_MAX = self.CANVAS_POSITION[0] + self.CANVAS_WIDTH_M/2 + thresh
