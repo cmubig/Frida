@@ -118,6 +118,7 @@ class CLIPConvLoss(torch.nn.Module):
         self.target_transform = transforms.Compose([
             transforms.ToTensor(),
         ])  # clip normalisation
+        clip_preprocess.transforms[0].antialias = True
         self.normalize_transform = transforms.Compose([
             clip_preprocess.transforms[0],  # Resize
             clip_preprocess.transforms[1],  # CenterCrop
@@ -133,7 +134,7 @@ class CLIPConvLoss(torch.nn.Module):
             augemntations.append(transforms.RandomPerspective(
                 fill=0, p=1.0, distortion_scale=0.5))
             augemntations.append(transforms.RandomResizedCrop(
-                224, scale=(0.8, 0.8), ratio=(1.0, 1.0)))
+                224, scale=(0.8, 0.8), ratio=(1.0, 1.0), antialias=True))
         augemntations.append(
             transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)))
         self.augment_trans = transforms.Compose(augemntations)
@@ -213,13 +214,13 @@ class CLIPConvLoss(torch.nn.Module):
 def get_image_augmentation(use_normalized_clip):
     augment_trans = transforms.Compose([
         transforms.RandomPerspective(fill=1, p=1, distortion_scale=0.5),
-        transforms.RandomResizedCrop(224, scale=(0.7,0.9)),
+        transforms.RandomResizedCrop(224, scale=(0.7,0.9), antialias=True),
     ])
 
     if use_normalized_clip:
         augment_trans = transforms.Compose([
         transforms.RandomPerspective(fill=1, p=1, distortion_scale=0.5),
-        transforms.RandomResizedCrop(224, scale=(0.7,0.9)),
+        transforms.RandomResizedCrop(224, scale=(0.7,0.9), antialias=True),
         transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
     ])
     return augment_trans
@@ -268,7 +269,7 @@ augment_trans_text = transforms.Compose([
     # transforms.Resize(64),
     # transforms.Resize(256),
     transforms.RandomPerspective(fill=1, p=1, distortion_scale=0.5),
-    transforms.RandomResizedCrop(224, scale=(0.7,0.9)),
+    transforms.RandomResizedCrop(224, scale=(0.7,0.9), antialias=True),
     transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
 ])
 

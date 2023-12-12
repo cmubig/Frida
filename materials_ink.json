@@ -9,7 +9,7 @@
     "CANVAS_POSITION":[0, 0.1],
     "MAX_ALPHA":0,
     "MIN_STROKE_LENGTH":0.0025,
-    "MAX_STROKE_LENGTH":0.06,
+    "MAX_STROKE_LENGTH":null,
     "MIN_STROKE_Z":0.1,
     "MAX_BEND":0.02
 }

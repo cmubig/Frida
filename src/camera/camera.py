@@ -47,7 +47,7 @@ class WebCam():
         canvas = self.get_canvas()
         canvas = torch.from_numpy(canvas).permute(2,0,1).unsqueeze(0)
         if h is not None and w is not None:
-            canvas = Resize((h,w))(canvas)
+            canvas = Resize((h,w), antialias=True)(canvas)
         return canvas
 
     def calibrate_canvas(self):
