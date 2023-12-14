@@ -194,7 +194,7 @@ def get_image_text_pair(dataset):
     datums = []
     least_complicated_value = 1e9
     best_datum = None
-    resize = transforms.Resize((256,256), bicubic)
+    resize = transforms.Resize((256,256), bicubic, antialias=True)
     while len(datums) < opt.num_images_to_consider_for_simplicity:
         datum = dataset[np.random.randint(len(dataset))]
         img = load_img_internet(datum['URL'])
@@ -267,8 +267,8 @@ def remove_strokes_by_region(painting, target_img, prompt, keep_important=False)
     background = painting.background_img.detach().clone()
     output = p.detach().clone()
 
-    background = transforms.Resize((h*4,w*4), bicubic)(background)
-    attn = transforms.Resize((h*4,w*4), bicubic)(torch.from_numpy(attn[None,None,:,:]))[0,0]
+    background = transforms.Resize((h*4,w*4), bicubic, antialias=True)(background)
+    attn = transforms.Resize((h*4,w*4), bicubic, antialias=True)(torch.from_numpy(attn[None,None,:,:]))[0,0]
 
     salient = attn > 0.25#torch.quantile(attn.float(), q=0.5)
     not_salient = ~salient
@@ -298,7 +298,7 @@ mask_generator = SamAutomaticMaskGenerator(sam)
 
 def remove_strokes_by_object(painting, target_img):
     # print(target_img.shape)
-    target_img = transforms.Resize((h*4, w*4), bicubic)(target_img)
+    target_img = transforms.Resize((h*4, w*4), bicubic, antialias=True)(target_img)
     with torch.no_grad():
         t = target_img[0].permute(1,2,0)
         t = (t.cpu().numpy()*255.).astype(np.uint8)
@@ -338,7 +338,7 @@ def remove_strokes_by_object(painting, target_img):
     # matplotlib.use('TkAgg')
     # show_img(masked)
     # masks.area
-    background = transforms.Resize((h*4, w*4), bicubic)(painting.background_img.detach().clone())
+    background = transforms.Resize((h*4, w*4), bicubic, antialias=True)(painting.background_img.detach().clone())
     boolean_mask = torch.zeros(background[:,:3].shape).to(device).float()
     with torch.no_grad():
         p = painting(h*4,w*4, use_alpha=False)
@@ -373,8 +373,7 @@ if __name__ == '__main__':
     opt.gather_options()
     # python3 create_copaint_data.py --use_cache --cache_dir caches/cache_6_6_cvpr/  --lr_multiplier 0.7 --output_parent_dir testing
 
-
-    if not os.path.exists(opt.output_parent_dir): os.mkdir(opt.output_parent_dir)
+    os.makedirs(opt.output_parent_dir, exist_ok=True)
 
     data_dict_fn = os.path.join(opt.output_parent_dir, 'data_dict.pkl')
 
@@ -393,7 +392,7 @@ if __name__ == '__main__':
     dataset = load_dataset(opt.cofrida_dataset)['train']
     
     crop = transforms.RandomResizedCrop((h*4, w*4), scale=(0.7, 1.0), 
-                                        ratio=(0.95,1.05))
+                                        ratio=(0.95,1.05), antialias=True)
     
     data_dict = []
     if os.path.exists(data_dict_fn):
@@ -407,7 +406,7 @@ if __name__ == '__main__':
         except:
             continue
         target_img_full = crop(datum['img']).to(device)
-        target_img = transforms.Resize((h,w), bicubic)(target_img_full)
+        target_img = transforms.Resize((h,w), bicubic, antialias=True)(target_img_full)
         
         if opt.colors is not None:
             # 209,0,0.241,212,69.39,94,195
@@ -495,8 +494,8 @@ if __name__ == '__main__':
                         1/0
 
                     # Don't save if the start painting is too similar to final painting
-                    diff = torch.mean(torch.abs(transforms.Resize((256,256))(start_painting[:,:3]) \
-                                - transforms.Resize((256,256))(final_painting[:,:3])))
+                    diff = torch.mean(torch.abs(transforms.Resize((256,256), antialias=True)(start_painting[:,:3]) \
+                                - transforms.Resize((256,256), antialias=True)(final_painting[:,:3])))
                     # print(diff)
                     # if diff < 0.025:
                     #     # print('not different enough')
@@ -523,7 +522,7 @@ if __name__ == '__main__':
                     # start_img_path = final_img_path
 
                     current_canvas = final_painting.detach()
-                    current_canvas = transforms.Resize((h,w))(current_canvas)
+                    current_canvas = transforms.Resize((h,w), antialias=True)(current_canvas)
 
                     data_dict.append(d)
 

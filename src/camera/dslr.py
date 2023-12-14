@@ -109,7 +109,7 @@ class WebCam():
         canvas = self.get_canvas()
         canvas = torch.from_numpy(canvas).permute(2,0,1).unsqueeze(0)
         if h is not None and w is not None:
-            canvas = Resize((h,w))(canvas)
+            canvas = Resize((h,w), antialias=True)(canvas)
         canvas = torch.cat([canvas, torch.ones(1,1,h,w)], dim=1)
         return canvas
 
@@ -226,7 +226,7 @@ class SimulatedWebCam():
         canvas = self.get_canvas()
         canvas = torch.from_numpy(canvas).permute(2,0,1).unsqueeze(0)
         if h is not None and w is not None:
-            canvas = Resize((h,w))(canvas)
+            canvas = Resize((h,w), antialias=True)(canvas)
         canvas = torch.cat([canvas, torch.ones(1,1,h,w)], dim=1)
         return canvas
     def calibrate_canvas(self, use_cache=False):

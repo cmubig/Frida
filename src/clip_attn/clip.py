@@ -59,7 +59,7 @@ def _download(url: str, root: str = os.path.expanduser("~/.cache/clip")):
 
 def _transform(n_px):
     return Compose([
-        Resize(n_px, interpolation=Image.BICUBIC),
+        Resize(n_px, interpolation=Image.BICUBIC, antialias=True),
         CenterCrop(n_px),
         lambda image: image.convert("RGB"),
         ToTensor(),
