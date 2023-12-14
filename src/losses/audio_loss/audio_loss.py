@@ -55,7 +55,7 @@ def load_audio_file(audio_path):
 
 def compute_audio_loss(audio_inputs, painting): 
     resize_resolution = 256
-    painting = torchvision.transforms.Resize((resize_resolution, resize_resolution))(painting)
+    painting = torchvision.transforms.Resize((resize_resolution, resize_resolution), antialias=True)(painting)
 
     cosine_distance_loss = audio_loss(painting, audio_inputs)
 

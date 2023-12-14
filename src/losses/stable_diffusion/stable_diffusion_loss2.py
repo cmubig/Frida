@@ -15,7 +15,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 augment_trans = transforms.Compose([
     transforms.RandomPerspective(fill=1, p=1, distortion_scale=0.5),
-    transforms.RandomResizedCrop(512, scale=(0.7,0.9)),
+    transforms.RandomResizedCrop(512, scale=(0.7,0.9), antialias=True),
 ])
 
 def load_stable_pipe():

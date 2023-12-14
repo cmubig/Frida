@@ -63,7 +63,7 @@ class SoundCLIPLoss(torch.nn.Module):
 def get_image_augmentation():
     augment_trans = transforms.Compose([
         transforms.RandomPerspective(fill=1, p=1, distortion_scale=0.5),
-        transforms.RandomResizedCrop(256, scale=(0.7,0.9)),
+        transforms.RandomResizedCrop(256, scale=(0.7,0.9), antialias=True),
     ])
 
     return augment_trans

@@ -740,7 +740,7 @@ def main():
             "original_images":original_images,
             "edited_images":edited_images
         }
-
+    
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,

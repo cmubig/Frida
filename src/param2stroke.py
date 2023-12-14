@@ -43,7 +43,7 @@ def get_param2img(opt, device='cuda'):
         # Figure out what to resize the output of param2image should be based on the desired render size
         w_p2i_render_pix = int((w_p2i_m / w_canvas_m) * w_render_pix)
         h_p2i_render_pix = int((h_p2i_m / h_canvas_m) * h_render_pix)
-        res_to_render = transforms.Resize((h_p2i_render_pix, w_p2i_render_pix), bicubic)
+        res_to_render = transforms.Resize((h_p2i_render_pix, w_p2i_render_pix), bicubic, antialias=True)
 
         # Pad the output of param2image such that the start of the stroke is directly in the
         # middle of the canvas and the dimensions of the image match the render size
@@ -340,7 +340,7 @@ def train_param2stroke(opt, device='cuda'):
 
     # Resize strokes the size they'll be predicted at
     t = StrokeParametersToImage()
-    strokes = transforms.Resize((t.size_y,t.size_x), bicubic)(strokes)
+    strokes = transforms.Resize((t.size_y,t.size_x), bicubic, antialias=True)(strokes)
 
     # for i in range(len(strokes)):
     #     strokes[i] -= strokes[i].min()
