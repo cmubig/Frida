@@ -82,6 +82,23 @@ def rigid_body_transform(a, xt, yt, anchor_x, anchor_y):
     A[0,2,2] = 1
     return A
 
+def rigid_body_transforms(a, xt, yt, anchor_x, anchor_y):
+    # a is the angle in radians, xt and yt are translation terms of pixels
+    # anchor points are where to rotate around (usually the center of the image)
+    # Blessed be Peter Schorn for the anchor point transform https://stackoverflow.com/a/71405577
+    A = torch.zeros(len(a), 3, 3).to(a.device)
+    a = -1.*a
+    A[:,0,0] = cos(a)
+    A[:,0,1] = -sin(a)
+    A[:,0,2] = anchor_x - anchor_x * cos(a) + anchor_y * sin(a) + xt#xt
+    A[:,1,0] = sin(a)
+    A[:,1,1] = cos(a)
+    A[:,1,2] = anchor_y - anchor_x * sin(a) - anchor_y * cos(a) + yt#yt
+    A[:,2,0] = 0
+    A[:,2,1] = 0
+    A[:,2,2] = 1
+    return A
+
 def get_rotation_transform(a, anchor_x, anchor_y):
     # a is the angle in radians
     # anchor points are where to rotate around (usually the center of the image)
@@ -221,11 +238,11 @@ class BrushStroke(nn.Module):
         else:
             self.color_transform = torch.zeros(3).to(device)
 
-    def forward(self, h, w, param2img):
+    def forward(self, h, w, param2img, use_conv=True):
         # # Do rigid body transformation
         full_param = self.path.unsqueeze(0)
         # stroke = param2img(full_param, h, w).unsqueeze(0)
-        stroke = param2img(full_param).unsqueeze(0)
+        stroke = param2img(full_param, use_conv=use_conv).unsqueeze(0)
 
         # Pad 1 or two to make it fit
         if stroke.shape[2] != h or stroke.shape[3] != w:
