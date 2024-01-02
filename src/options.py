@@ -48,7 +48,7 @@ class Options(object):
         parser.add_argument('--render_height', default=256, type=int, help='How much to downscale canvas for simulated environment')
 
         # Stroke Library Parameters
-        parser.add_argument('--num_papers', default=4, type=int, help='How papers of strokes to paint for stroke modelling data.')
+        parser.add_argument('--num_papers', default=40, type=int, help='How papers of strokes to paint for stroke modelling data.')
         parser.add_argument('--dont_retrain_stroke_model', action='store_true')
         parser.add_argument('--brush_length', type=float, default=None)
 
