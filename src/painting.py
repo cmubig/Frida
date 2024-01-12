@@ -34,43 +34,29 @@ class Painting(nn.Module):
         xt = []
         yt = []
         a = []
-        length = []
-        z = []
-        bend = []
         color = []
+        path = []
         
         for n, p in self.named_parameters():
+            if "path" in n.split('.')[-1]: path.append(p)
             if "xt" in n.split('.')[-1]: xt.append(p)
             if "yt" in n.split('.')[-1]: yt.append(p)
             if "a" in n.split('.')[-1]: a.append(p)
-            if "stroke_length" in n.split('.')[-1]: length.append(p)
-            if "stroke_z" in n.split('.')[-1]: z.append(p)
-            if "stroke_bend" in n.split('.')[-1]: bend.append(p)
             if "color_transform" in n.split('.')[-1]: color.append(p)
 
+        path_opt = torch.optim.RMSprop(path, lr=1e-5)
         position_opt = torch.optim.RMSprop(xt + yt, lr=5e-3*multiplier)
         rotation_opt = torch.optim.RMSprop(a, lr=1e-2*multiplier)
         color_opt = None if ink else torch.optim.RMSprop(color, lr=5e-3*multiplier)
-        bend_opt = torch.optim.RMSprop(bend, lr=3e-3*multiplier)
-        length_opt = torch.optim.RMSprop(length, lr=3e-3*multiplier)
-        thickness_opt = torch.optim.RMSprop(z, lr=1e-2*multiplier)
-        
-        # t=5
-        # position_opt = torch.optim.Adam(xt + yt, lr=5e-3*multiplier*t)
-        # rotation_opt = torch.optim.Adam(a, lr=1e-2*multiplier*t)
-        # color_opt = torch.optim.Adam(color, lr=5e-3*multiplier*t)
-        # bend_opt = torch.optim.Adam(bend, lr=3e-3*multiplier*t)
-        # length_opt = torch.optim.Adam(length, lr=1e-2*multiplier*t)
-        # thickness_opt = torch.optim.Adam(z, lr=1e-2*multiplier*t)
 
-        return position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt
+        return position_opt, rotation_opt, color_opt, path_opt 
 
 
     def forward(self, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0, efficient=False):
         if self.background_img is None:
             canvas = torch.ones((1,4,h,w)).to(device)
         else:
-            canvas = T.Resize((h,w), bicubic)(self.background_img).detach()
+            canvas = T.Resize((h,w), bicubic, antialias=True)(self.background_img).detach()
         canvas[:,3] = 1 # alpha channel
 
         mostly_opaque = False#True
@@ -114,27 +100,6 @@ class Painting(nn.Module):
         alphas = torch.cat(stroke_alphas, dim=1)
         alphas, _ = torch.max(alphas, dim=1)#alphas.max(dim=1)
         return alphas
-
-    def to_csv(self):
-        ''' To csv string '''
-        csv = ''
-        for bs in self.brush_strokes:
-            # Translation in proportions from top left
-            # x = str((bs.transformation.weights[1].detach().cpu().item()+1)/2)
-            # y = str((bs.transformation.weights[2].detach().cpu().item()+1)/2)
-            # r = str(bs.transformation.weights[0].detach().cpu().item())
-            x = str((bs.transformation.xt[0].detach().cpu().item()+1)/2)
-            y = str((bs.transformation.yt[0].detach().cpu().item()+1)/2)
-            r = str(bs.transformation.a[0].detach().cpu().item())
-            length = str(bs.stroke_length.detach().cpu().item())
-            thickness = str(bs.stroke_z.detach().cpu().item())
-            bend = str(bs.stroke_bend.detach().cpu().item())
-            alpha = str(bs.stroke_alpha.detach().cpu().item())
-            color = bs.color_transform.detach().cpu().numpy()
-            csv += ','.join([x,y,r,length,thickness,bend,alpha,str(color[0]),str(color[1]),str(color[2])])
-            csv += '\n'
-        csv = csv[:-1] # remove training newline
-        return csv
 
     def validate(self):
         ''' Make sure all brush strokes have valid parameters '''

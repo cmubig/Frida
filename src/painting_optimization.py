@@ -41,7 +41,7 @@ plans = []
 def log_progress(painting, opt, log_freq=5, force_log=False, title='plan'):
     global local_it, plans
     local_it +=1
-    if (local_it %log_freq==0) or force_log:
+    if ((local_it-1) % log_freq==0) or force_log:
         with torch.no_grad():
             #np_painting = painting(h,w, use_alpha=False).detach().cpu().numpy()[0].transpose(1,2,0)
             #opt.writer.add_image('images/{}'.format(title), np.clip(np_painting, a_min=0, a_max=1), local_it)
@@ -138,11 +138,11 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
     use_input_palette =  color_palette is not None
     if len(painting) == 0: return painting, color_palette
 
-    position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt \
+    position_opt, rotation_opt, color_opt, path_opt \
                 = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
     if not change_color:
         color_opt.param_groups[0]['lr'] = 0.0
-    optims = (position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt)
+    optims = (position_opt, rotation_opt, color_opt, path_opt)
     # optims = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
     # Learning rate scheduling. Start low, middle high, end low
     og_lrs = [o.param_groups[0]['lr'] if o is not None else None for o in optims]
@@ -189,7 +189,7 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
                 discretize_colors(painting, color_palette)
         log_progress(painting, opt, log_freq=opt.log_frequency)#, force_log=True)
 
-
+    painting.validate()
     if not use_input_palette and not opt.ink:
         color_palette = painting.cluster_colors(opt.n_colors)
 

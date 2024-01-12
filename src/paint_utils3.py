@@ -103,7 +103,7 @@ def show_img(img, display_actual_size=True, title=""):
         plt.imshow(img)
     plt.xticks([]), plt.yticks([])
     plt.title(title)
-    #plt.scatter(img.shape[1]/2, img.shape[0]/2)
+    # plt.scatter(img.shape[1]/2, img.shape[0]/2)
     plt.show()
 
 
@@ -269,12 +269,18 @@ def extract_paint_color(canvas_before, canvas_after, stroke_bool_map):
 
 def random_init_painting(opt, background_img, n_strokes, ink=False, device='cuda'):
     gridded_brush_strokes = []
-    xys = [(x,y) for x in torch.linspace(-.95,.95,int(n_strokes**0.5)) \
-                 for y in torch.linspace(-.95,.95,int(n_strokes**0.5))]
+
+    xys = [(x,y) for x in torch.linspace(-.85,.85,int(n_strokes**0.5)) \
+                 for y in torch.linspace(-.85,.85,int(n_strokes**0.5))]
+    if ink:
+        xys = [(x,y) for x in torch.linspace(-.5,.5,int(n_strokes**0.5)) \
+                    for y in torch.linspace(-.5,.5,int(n_strokes**0.5))]
     random.shuffle(xys)
     for x,y in xys:
         # Random brush stroke
         brush_stroke = BrushStroke(opt, xt=x, yt=y, ink=ink)
+        brush_stroke.path.data[:,:2].clamp_(0,0.001) # Start with a tiny stroke
+        BrushStroke.make_valid(brush_stroke)
         gridded_brush_strokes.append(brush_stroke)
 
     painting = Painting(opt, 0, background_img=background_img, 
