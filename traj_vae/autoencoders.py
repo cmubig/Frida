@@ -45,6 +45,8 @@ class MLP_VAE(nn.Module):
         return z
     
     def decode(self, z):
+        if z.ndim == 1:
+            z = z.unsqueeze(0)
         decoded = self.decoder(z)
         return decoded
     
