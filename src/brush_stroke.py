@@ -10,6 +10,7 @@ bicubic = InterpolationMode.BICUBIC
 import warnings
 import numpy as np
 from scipy.interpolate import make_interp_spline
+from traj_vae.autoencoders import MLP_VAE
 
 # from param2stroke import special_sigmoid
 
@@ -183,12 +184,18 @@ class RigidBodyTransformation(nn.Module):
             x = x[:,:,pad_top:pad_top+h,pad_left:pad_left+w]
             return x
 
+vae = torch.load("traj_vae/saved_models/model.pt")
+# Bounds for the x/y coordinates the VAE can generate
+# These values are calculated based on the imposed max stroke length of 0.25 in the JSPaint webapp,
+# in conjunction with the fact that the stroke starts at (0,0) and is rotated to be horizontal
+vae_max_stroke_length = 0.25
+vae_x_bounds = (-vae_max_stroke_length/2, vae_max_stroke_length)
+vae_y_bounds = (-vae_max_stroke_length/2, vae_max_stroke_length/2)
+
 class BrushStroke(nn.Module):
     def __init__(self, 
                  opt,
-                distance_since_getting_paint=None,
-                path=None,
-                ctrl_pts=4,
+                latent=None,
                 color=None, 
                 ink=False,
                 a=None, xt=None, yt=None,
@@ -196,10 +203,7 @@ class BrushStroke(nn.Module):
         super(BrushStroke, self).__init__()
 
         self.MAX_STROKE_LENGTH = opt.MAX_STROKE_LENGTH
-        self.MIN_STROKE_LENGTH = opt.MIN_STROKE_LENGTH
         self.MIN_STROKE_Z = opt.MIN_STROKE_Z
-        self.MAX_ALPHA = opt.MAX_ALPHA
-        self.MAX_BEND = opt.MAX_BEND
         self.max_length_before_new_paint = opt.max_length_before_new_paint
         self.ink = ink
 
@@ -210,92 +214,76 @@ class BrushStroke(nn.Module):
 
         self.transformation = RigidBodyTransformation(a, xt, yt)
         
-        if path is None: 
-            # path: ctrl_pts x [x,y,z,alpha,dist_since_get_paint]
-            path = torch.rand((ctrl_pts,4))
-            path[:,0] *= self.MAX_STROKE_LENGTH
-            path[:,1] = (path[:,1]*2 - 1) * self.MAX_BEND
-            path[:,2] = torch.clamp(path[:,2], self.MIN_STROKE_Z, 0.95)
-            path[:,3] *= self.MAX_ALPHA
+        if latent is None: 
+            latent = torch.randn(1, vae.latent_dim)
 
-            path[0,0] = 0
-            path[0,1] = 0
-            path[-1,1] = 0
+        self.latent = latent 
+        self.latent.requires_grad = True 
+        self.latent = nn.Parameter(self.latent)
+
+        # TODO: worry about this after fixing param2img
+        # if not self.ink:
+        #     self.color_transform = nn.Parameter(color)
+        # else:
+        #     self.color_transform = torch.zeros(3).to(device)
+
+    # TODO: worry about this after fixing param2img
+    # def forward(self, h, w, param2img, use_conv=True):
+    #     # # Do rigid body transformation
+    #     full_param = self.path.unsqueeze(0)
+    #     # stroke = param2img(full_param, h, w).unsqueeze(0)
+    #     stroke = param2img(full_param, use_conv=use_conv).unsqueeze(0)
+
+    #     # Pad 1 or two to make it fit
+    #     if stroke.shape[2] != h or stroke.shape[3] != w:
+    #         stroke = T.Resize((h, w), bicubic, antialias=True)(stroke)
+
+    #     # from paint_utils3 import show_img
+    #     # show_img(stroke)
+    #     x = self.transformation(stroke)
+    #     # show_img(x)
+
+    #     # Remove stray color from the neural network being sloppy
+    #     # x = special_sigmoid(x)
+    #     # import kornia as K
+    #     # x = K.filters.median_blur(x, (3,3))
         
+    #     # show_img(x)
+    #     x = torch.cat([x,x,x,x], dim=1)
 
-        # Add in the distance painted without getting new paint to path parameters
-        if distance_since_getting_paint is None: 
-            distance_since_getting_paint=torch.zeros(1)
-        distance_since_getting_paint = torch.ones((ctrl_pts,1)) * distance_since_getting_paint
-        path = torch.cat([path, distance_since_getting_paint], dim=1)
-        
-        self.path = path 
-        self.path.requires_grad = True 
-        self.path = nn.Parameter(self.path)
+    #     # Color change
+    #     x = torch.cat((x[:,:3]*0 + self.color_transform[None,:,None,None], x[:,3:]), dim=1)
+    #     return x
 
-        if not self.ink:
-            self.color_transform = nn.Parameter(color)
-        else:
-            self.color_transform = torch.zeros(3).to(device)
+    # TODO: worry about this after fixing param2img
+    # def make_valid(stroke):
+    #     with torch.no_grad():
+    #         stroke.path[:,0].data.clamp_(stroke.MIN_STROKE_LENGTH, stroke.MAX_STROKE_LENGTH) # x
+    #         stroke.path[:,1].data.clamp_(-1.0*stroke.MAX_BEND, stroke.MAX_BEND) # y
+    #         stroke.path[:,2].data.clamp_(stroke.MIN_STROKE_Z, 0.95) # z
+    #         stroke.path[:,3].data.clamp_(-1.0*stroke.MAX_ALPHA, stroke.MAX_ALPHA) # alpha
+    #         stroke.path[:,4].data.clamp_(0, # distance painted since adding paint to brush
+    #                     0 if stroke.ink else stroke.max_length_before_new_paint)
 
-    def forward(self, h, w, param2img, use_conv=True):
-        # # Do rigid body transformation
-        full_param = self.path.unsqueeze(0)
-        # stroke = param2img(full_param, h, w).unsqueeze(0)
-        stroke = param2img(full_param, use_conv=use_conv).unsqueeze(0)
+    #         stroke.path[0,:2] = 0 # start at 0,0
+    #         stroke.path[-1,1] = 0 # finish on horizontal line from start
 
-        # Pad 1 or two to make it fit
-        if stroke.shape[2] != h or stroke.shape[3] != w:
-            stroke = T.Resize((h, w), bicubic, antialias=True)(stroke)
+    #         stroke.transformation.xt.data.clamp_(-1.,1.)
+    #         stroke.transformation.yt.data.clamp_(-1.,1.)
 
-        # from paint_utils3 import show_img
-        # show_img(stroke)
-        x = self.transformation(stroke)
-        # show_img(x)
+    #         #stroke.color_transform.data.clamp_(0.02,0.75)
+    #         if stroke.color_transform.min() < 0.35:
+    #             # If it's a colored stroke, don't let it go to a flourescent color
+    #             stroke.color_transform.data.clamp_(0.02,0.70)
+    #         else:
+    #             # Well balanced RGB, less constraint
+    #             stroke.color_transform.data.clamp_(0.02,0.85)
 
-        # Remove stray color from the neural network being sloppy
-        # x = special_sigmoid(x)
-        # import kornia as K
-        # x = K.filters.median_blur(x, (3,3))
-        
-        # show_img(x)
-        x = torch.cat([x,x,x,x], dim=1)
-
-        # Color change
-        x = torch.cat((x[:,:3]*0 + self.color_transform[None,:,None,None], x[:,3:]), dim=1)
-        return x
-
-    def make_valid(stroke):
-        with torch.no_grad():
-            stroke.path[:,0].data.clamp_(stroke.MIN_STROKE_LENGTH, stroke.MAX_STROKE_LENGTH) # x
-            stroke.path[:,1].data.clamp_(-1.0*stroke.MAX_BEND, stroke.MAX_BEND) # y
-            stroke.path[:,2].data.clamp_(stroke.MIN_STROKE_Z, 0.95) # z
-            stroke.path[:,3].data.clamp_(-1.0*stroke.MAX_ALPHA, stroke.MAX_ALPHA) # alpha
-            stroke.path[:,4].data.clamp_(0, # distance painted since adding paint to brush
-                        0 if stroke.ink else stroke.max_length_before_new_paint)
-
-            stroke.path[0,:2] = 0 # start at 0,0
-            stroke.path[-1,1] = 0 # finish on horizontal line from start
-
-            stroke.transformation.xt.data.clamp_(-1.,1.)
-            stroke.transformation.yt.data.clamp_(-1.,1.)
-
-            #stroke.color_transform.data.clamp_(0.02,0.75)
-            if stroke.color_transform.min() < 0.35:
-                # If it's a colored stroke, don't let it go to a flourescent color
-                stroke.color_transform.data.clamp_(0.02,0.70)
-            else:
-                # Well balanced RGB, less constraint
-                stroke.color_transform.data.clamp_(0.02,0.85)
-
-    def execute(self, painter, x_start, y_start, rotation, 
-                step_size=.005, curve_angle_is_rotation=False):
+    def execute(self, painter, x_start, y_start, rotation):
         # x_start, y_start in global coordinates. rotation in radians
         # curve_angle_is_rotation if true, then the brush is angled constantly down towards theta
-        smooth = True
-        if smooth:
-            all_positions = []
-            all_orientations = []
+        all_positions = []
+        all_orientations = []
 
         # Need to translate x,y a bit to be accurate according to camera
         if painter.H_coord is not None:
@@ -306,40 +294,25 @@ class BrushStroke(nn.Module):
 
         z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
 
-        path = self.path.detach().cpu().numpy()
-        t = range(0, len(path))
-
-        b_x = make_interp_spline(t,path[:,0])
-        b_y = make_interp_spline(t,path[:,1])
-        b_z = make_interp_spline(t,path[:,2])
-        b_alpha = make_interp_spline(t,path[:,3])
+        path = vae.decode(self.latent).detach().cpu().numpy()
+        path[:,0:2] = path[:,0:2] / vae_max_stroke_length * self.MAX_STROKE_LENGTH
+        path[:,2] = (path[:,2] * self.MAX_STROKE_Z).clamp(self.MIN_STROKE_Z, 1)
 
         approx_len = 0.0
         for i in range(len(path)-1):
             approx_len += ((path[i,0]-path[i+1,0])**2 + (path[i,1] - path[i+1,1])**2)**0.5
-        # print('approx_len', approx_len)
-        steps = int(max(3, approx_len/step_size))
-        
-        t_new = np.linspace(0, len(path)-1, steps)
-        x_new = b_x(t_new)
-        y_new = b_y(t_new)
-        z_new = b_z(t_new)
-        alpha_new = b_alpha(t_new)
-
-        path = np.stack((x_new, y_new, z_new, alpha_new)).T
 
         path = BrushStroke.get_rotated_trajectory(rotation, path)
 
         painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.03, speed=0.4)
         painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.005, speed=0.1)
 
-        for step in range(steps):
-            x, y, z, alpha = path[step,0], path[step,1], path[step,2], path[step,3]
+        for step in range(len(path)):
+            x, y, z = path[step,0], path[step,1], path[step,2]
             x_next = x_start + x 
             y_next = y_start + y
             z = painter.Z_CANVAS - z * z_range
-            q = None # TODO incorporate alpha
-            
+            q = None
 
             # If off the canvas, lift up
             if (x_next > painter.opt.X_CANVAS_MAX) or (x_next < painter.opt.X_CANVAS_MIN) or \
@@ -350,32 +323,21 @@ class BrushStroke(nn.Module):
             x_next = min(max(painter.opt.X_CANVAS_MIN, x_next), painter.opt.X_CANVAS_MAX) 
             y_next = min(max(painter.opt.Y_CANVAS_MIN, y_next), painter.opt.Y_CANVAS_MAX)
 
-            if smooth:
-                if t == 0 and i==0:
-                    all_positions.append([x_next, y_next, z+0.02])
-                    all_orientations.append(q)
-                    all_positions.append([x_next, y_next, z+0.005])
-                    all_orientations.append(q)
-                all_positions.append([x_next, y_next, z])
+            if step == 0: # First point: lower pen down
+                all_positions.append([x_next, y_next, z+0.02])
                 all_orientations.append(q)
-                if t == 1 and (i == len(path)-4):
-                    all_positions.append([x_next, y_next, z+0.01])
-                    all_orientations.append(q)
-                    all_positions.append([x_next, y_next, z+0.02])
-                    all_orientations.append(q)
-            else:
-                if t == 0 and i==0:
-                    painter.move_to(x_next, y_next, z+0.02, q=q, method='direct', speed=0.1)
-                    painter.move_to(x_next, y_next, z+0.005, q=q, method='direct', speed=0.03)
-                painter.move_to(x_next, y_next, z, q=q, method='direct', speed=0.05)
-                if t == 1 and (i == len(path)-4):
-                    painter.move_to(x_next, y_next, z+0.01, q=q, method='direct', speed=0.03)
-                    painter.move_to(x_next, y_next, z+0.02, q=q, method='direct', speed=0.1)
+                all_positions.append([x_next, y_next, z+0.005])
+                all_orientations.append(q)
+            all_positions.append([x_next, y_next, z]) # Move to point
+            all_orientations.append(q)
+            if step == len(path)-1: # Last point: raise pen up
+                all_positions.append([x_next, y_next, z+0.01])
+                all_orientations.append(q)
+                all_positions.append([x_next, y_next, z+0.02])
+                all_orientations.append(q)
 
 
-        if smooth:
-            stroke_complete = painter.move_to_trajectories(all_positions, all_orientations)
-        
+        stroke_complete = painter.move_to_trajectories(all_positions, all_orientations)
 
         # Don't over shoot the canvas
         x_next = x_start+path[-1,0]
@@ -387,29 +349,13 @@ class BrushStroke(nn.Module):
 
         return stroke_complete
     
-    def get_length_differentiable(self):
-        """ Return the approximate length of the stroke in distance (meters) """
-        path = self.path#.detach().cpu().numpy()
-        approx_len = (((path[1:,0] - path[:-1,0])**2 + (path[1:,1] - path[:-1,1])**2)**0.5).sum()
-        return approx_len
-    
     def get_length(self):
         """ Return the approximate length of the stroke in distance (meters) """
         path = self.path.detach().cpu().numpy()
-        t = range(0, len(path))
-
-        b_x = make_interp_spline(t,path[:,0])
-        b_y = make_interp_spline(t,path[:,1])
-
-        steps = 100 # Enough without being too slow
-        
-        t_new = np.linspace(0, len(path)-1, steps)
-        x_new = b_x(t_new)
-        y_new = b_y(t_new)
-        
-        approx_len = (((x_new[1:] - x_new[:-1])**2 + (y_new[1:] - y_new[:-1])**2)**0.5).sum()
+        xs = path[:,0]
+        ys = path[:,1]
+        approx_len = (((xs[1:] - xs[:-1])**2 + (ys[1:] - ys[:-1])**2)**0.5).sum()
         return approx_len
-
     
     def get_rotated_trajectory(rotation, trajectory):
         # Rotation in radians
