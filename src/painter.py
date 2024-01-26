@@ -555,7 +555,7 @@ class Painter():
         if not os.path.exists(lib_dir): os.mkdir(lib_dir)
 
         # Figure out how many strokes can be made on the given canvas size
-        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT_M/(self.opt.MAX_STROKE_LENGTH/3)))
+        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT_M/(0.2*self.opt.MAX_STROKE_LENGTH)))
 
         brush_strokes = [] # list of BrushStroke
         canvases_before = [] # Photos of canvases without stroke
@@ -584,7 +584,7 @@ class Painter():
 
                     random_stroke = BrushStroke(self.opt)
                     
-                    stroke_length_m = random_stroke.path[:,0].max().item()
+                    stroke_length_m = random_stroke.get_path()[:,0].max().item()
                     stroke_length_pix = stroke_length_m * (w / self.opt.CANVAS_WIDTH_M)
                     if stroke_length_pix + x_offset_pix > 0.98*w:
                         break # No room left on the page width

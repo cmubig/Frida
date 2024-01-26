@@ -67,27 +67,22 @@ class MatMulLayer(nn.Module):
         return x
 
 class BezierRenderer(nn.Module):
-    def __init__(self, size_x, size_y, num_ctrl_pts):
+    def __init__(self, size_x, size_y, num_pts):
         super(BezierRenderer, self).__init__()
         self.size_x = size_x # grid dimensions (size_x x size_y)
-        self.size_y = size_y 
-        self.P = 10 # number of pieces to split Bezier curve into
+        self.size_y = size_y
+        self.P = num_pts
+
         idxs_x = torch.arange(size_x)
         idxs_y = torch.arange(size_y)
         x_coords, y_coords = torch.meshgrid(idxs_y, idxs_x, indexing='ij') # G x G
         self.grid_coords = torch.stack((x_coords, y_coords), dim=2).reshape(1,size_y, size_x,2).to(device) # 1 x G x G x 2
 
-        self.num_ctrl_pts = num_ctrl_pts
-
-        self.weights = torch.zeros((self.num_ctrl_pts, self.P)).to(device)
-        gaus = torch.signal.windows.gaussian(self.P*2, std=2.0) * 0.75
-        for i in range(self.num_ctrl_pts):
-            start_ind = int(self.P - self.P*(i/(self.num_ctrl_pts-1)))
-            self.weights[i,:] = gaus[start_ind:start_ind+self.P]
-        self.weights = self.weights / torch.sum(self.weights, dim=0, keepdim=True)
+        self.weights = torch.eye(2).to(device) # multiply each point in trajectory by this
+        self.biases = torch.zeros(2).to(device) # add this to each point
         
-        self.thicc_fact = torch.ones((self.P, self.num_ctrl_pts), dtype=torch.float).to(device)
-        self.thick_exp = torch.ones((1), dtype=torch.float).to(device)
+        self.thick_mult = torch.ones((1), dtype=torch.float).to(device)
+        self.dark_exp = torch.ones((1), dtype=torch.float).to(device)
 
         # self.nc = self.P
         # self.conv = nn.Sequential(
@@ -100,75 +95,60 @@ class BezierRenderer(nn.Module):
         #     nn.Conv2d(self.P, self.P, kernel_size=5, padding='same', dilation=1)
         # )
 
-        self.conv = MatMulLayer(size=(1,self.P,size_y,size_x), layers=1).to(device)
+        self.conv = MatMulLayer(size=(1,self.P-1,size_y,size_x), layers=1).to(device)
 
-    def forward(self, trajectories, thicknesses, drynesses, use_conv):        
-        # trajectories: (n, 2, num_ctrl_pts)
-        # thicknesses: (n, 1, num_ctrl_pts)
-        # drynesses: (n, 1, num_ctrl_pts)
+    def forward(self, trajectories, thicknesses, use_conv):        
+        # trajectories: (n, 2, self.P)
+        # thicknesses: (n, 1, self.P)
         strokes = []
         for i in range(len(trajectories)):
             # Expand num_ctrl_pts to self.P (smooths the curve)
-            stroke = self.curve_to_stroke(trajectories[i]) # (P+1, 2)
+            stroke = self.curve_to_stroke(trajectories[i]) # (P, 2)
             stroke[:,0] *= self.size_y
             stroke[:,1] *= self.size_x
 
             thickness = thicknesses[i]*2 + 0.5
             # Stroke trajectory to bitmap
-            stroke = self.render_stroke(stroke, thickness, drynesses[i], use_conv=use_conv)
+            stroke = self.render_stroke(stroke, thickness, use_conv=use_conv)
             strokes.append(stroke)
         strokes = torch.stack(strokes, dim=0)
         return strokes
 
     def curve_to_stroke(self, curve):
-        # curve: (2, num_ctrl_pts)
-        p1 = curve[:,0:1].T # (2, 1)
-        p2 = curve[:,1:2].T # (2, 1)
-        p3 = curve[:,2:3].T # (2, 1)
-        p4 = curve[:,3:4].T # (2, 1)
+        # curve: (2, self.P)
+        return torch.matmul(self.weights.to(device), curve).T + self.biases # (self.P, 2)
 
-        control_pts = torch.stack([p1, p2, p3, p4], dim=2) # (2, 1, num_ctrl_pts)
-        sample_pts = torch.matmul(control_pts, self.weights.to(device)) # (2, 1, P)
-
-        sample_pts = torch.permute(sample_pts, (0, 2, 1)) # (2, P, 1)
-        sample_pts = torch.reshape(sample_pts, (-1, 2)) # (P, 2)
-
-        sample_pts = torch.cat([sample_pts, curve[:,3:4].T]) # (P+1, 2)
-        return sample_pts
-
-    def render_stroke(self, stroke, t, dryness, use_conv):
-        # stroke: (P+1, 2)
-        # t: (1, num_ctrl_points)
-        # dryness: (1, num_ctrl_points)
+    def render_stroke(self, stroke, t, use_conv):
+        # stroke: (P, 2)
+        # t: (1, P)
         n = len(stroke)
-        vs = stroke[:-1].reshape((-1,1,1,2)) # (P, 1, 1, 2)
-        vs = torch.tile(vs, (1, self.size_y, self.size_x, 1)) # (P, size_y, size_x, 2)
+        vs = stroke[:-1].reshape((-1,1,1,2)) # (P-1, 1, 1, 2)
+        vs = torch.tile(vs, (1, self.size_y, self.size_x, 1)) # (P-1, size_y, size_x, 2)
 
-        ws = stroke[1:].reshape((-1,1,1,2)) # (P, 1, 1, 2)
-        ws = torch.tile(ws, (1, self.size_y, self.size_x, 1)) # (P, size_y, size_x, 2)
+        ws = stroke[1:].reshape((-1,1,1,2)) # (P-1, 1, 1, 2)
+        ws = torch.tile(ws, (1, self.size_y, self.size_x, 1)) # (P-1, size_y, size_x, 2)
 
-        coords = torch.tile(self.grid_coords, (n-1,1,1,1)) # (P, size_y, size_x, 2)
+        coords = torch.tile(self.grid_coords, (n-1,1,1,1)) # (P-1, size_y, size_x, 2)
 
         # For each of the P segments, compute distance from every point to the line as well as the fraction along the line
-        distances, fraction = self.dist_line_segment(coords, vs, ws) # (P, size_y, size_x)
-        # darknesses = torch.clamp((2*t - distances)/(2*t), min=0.0, max=1.0) # (n-1) x G x G
+        distances, fraction = self.dist_line_segment(coords, vs, ws) # (P-1, size_y, size_x)
         
-        # Scale the thicknesses by learnable factor
-        thick = 2 * self.thicc_fact @ t.T # (P, 1, 1)
-        thick = thick[:,:,None] # (P, 1)
-        thick = torch.clamp(thick, min=1e-5)
+        # Compute the start and end thickness of each line segment
+        start_thickness = t[0, :-1].unsqueeze(1).unsqueeze(2) # (P-1, 1, 1)
+        end_thickness = t[0, 1:].unsqueeze(1).unsqueeze(2) # (P-1, 1, 1)
+        
+        # Convert the fractions into thickness values
+        thickness = start_thickness * (1 - fraction) + end_thickness * fraction # (P-1, size_y, size_x)
+        thickness = thickness * self.thick_mult
 
-        # Incorporate the thickness params with the distance from line matrices to compute darknesses
-        darknesses = torch.clamp((thick - distances)/(thick), 
-                                 min=0.0, max=1.0) # (P, size_y, size_x)
-        darknesses = (darknesses+1e-4)**self.thick_exp
+        # Compute darkness for each line segment
+        darkness = torch.clamp((thickness - distances)/(thickness), min=0.0, max=1.0) # (P-1, size_y, size_x)
+        darkness = (darkness+1e-4)**self.dark_exp # (P-1, size_y, size_x)
 
         import torchgeometry
         import warnings
         from brush_stroke import rigid_body_transform, rigid_body_transforms
         
-        darknesses = darknesses * dryness # Incorporate dryness
-
         if use_conv:
             # Compute the angle the stroke segment is tilted at
             angles = torch.atan2((stroke[1:,0]-stroke[:-1,0]), (stroke[1:,1] - stroke[:-1,1]))
@@ -182,57 +162,44 @@ class BezierRenderer(nn.Module):
                                     anchor_y=stroke[:-1,0])
 
             # Rotate and translate strokes
-            with warnings.catch_warnings(): # suppress annoing torchgeometry warning
+            with warnings.catch_warnings(): # suppress annoying torchgeometry warning
                 warnings.simplefilter("ignore")
-                darknesses = torchgeometry.warp_perspective(darknesses[:,None,:,:], 
-                        M, dsize=(self.size_y,self.size_x)) # (P, 1, size_y, size_x)
+                darkness = torchgeometry.warp_perspective(darkness[:,None,:,:], 
+                        M, dsize=(self.size_y,self.size_x)) # (P-1, 1, size_y, size_x)
 
-            darknesses = darknesses[:,0,:,:].unsqueeze(0) # (1, P, size_y, size_x)
+            darkness = darkness[:,0,:,:].unsqueeze(0) # (1, P-1, size_y, size_x)
 
 
-            darknesses = self.conv(darknesses) # (1, P, size_y, size_x)
+            darkness = self.conv(darkness) # (1, P-1, size_y, size_x)
 
-            darknesses = darknesses[0][:,None,:,:] # (P, 1, size_y, size_x)
+            darkness = darkness.swapaxes(0,1) # (P-1, 1, size_y, size_x)
 
             # Undo the translation/rotaiton
             with warnings.catch_warnings(): # suppress annoing torchgeometry warning
                 warnings.simplefilter("ignore")
-                darknesses = torchgeometry.warp_perspective(darknesses, 
+                darkness = torchgeometry.warp_perspective(darkness, 
                         torch.inverse(M), dsize=(self.size_y,self.size_x))
 
-            darknesses = darknesses[:,0]  # (P, size_y, size_x)
+            darkness = darkness.squeeze(1) # (P, size_y, size_x)
 
             # show_img(torch.max(darknesses, dim=0).values * dryness)
 
         # Max across channels to get final stroke
-        darknesses = torch.max(darknesses, dim=0).values # (size_y, size_x)
+        darkness = torch.max(darkness, dim=0).values # (size_y, size_x)
         
-        return darknesses #* dryness
+        return darkness
 
     
     # distance from point p to line segment v--w
     # also returns the fraction of the length of v--w that the point p is along
     def dist_line_segment(self, p, v, w):
         d = torch.linalg.norm(v-w, dim=3) # (n-1) x G x G
-        # print(d.shape)
-        # plt.matshow(d.detach().cpu()[0])
-        # plt.show()
-        # plt.matshow(d.detach().cpu()[5])
-        # plt.show()
         dot = (p-v) * (w-v)
-        # plt.matshow(dot.detach().cpu()[0,:,:,0])
-        # plt.show()
         dot_sum = torch.sum(dot, dim=3) / (d**2 + 1e-5)
-        # print('dot sum', dot_sum.shape)
         t = dot_sum.unsqueeze(3) # (n-1) x G x G x 1
-        t = torch.clamp(t, min=0, max=1) # (n-1) x G x G
-        # print(v.shape, (t*(w-v)).shape)
-        # plt.matshow((t*(w-v))[0].detach().cpu()[:,:,0])
-        # plt.show()
+        t = torch.clamp(t, min=0, max=1) # (n-1) x G x G x 1
         proj = v + t * (w-v) # (n-1) x G x G x 2
-        # plt.matshow((proj)[0].detach().cpu()[:,:,0])
-        # plt.show()
-        return torch.linalg.norm(p-proj, dim=3), t
+        return torch.linalg.norm(p-proj, dim=3), t.squeeze(3)
 
     def validate(self):
         # Ensure that parameters are within some valid range
@@ -296,36 +263,29 @@ class StrokeParametersToImage(nn.Module):
         
         self.renderer = BezierRenderer(size_x=self.size_x, 
                                        size_y=self.size_y,
-                                       num_ctrl_pts=4).to(device)
+                                       num_pts=32).to(device)
 
-        self.thicc_fact = nn.Parameter(self.renderer.thicc_fact)
-        self.renderer.thicc_fact = self.thicc_fact
-        self.thick_exp = nn.Parameter(self.renderer.thick_exp)
-        self.renderer.thick_exp = self.thick_exp
+        self.thick_mult = nn.Parameter(self.renderer.thick_mult)
+        self.renderer.thick_mult = self.thick_mult
+        self.dark_exp = nn.Parameter(self.renderer.dark_exp)
+        self.renderer.dark_exp = self.dark_exp
 
         self.conv = self.renderer.conv
 
         self.weights = nn.Parameter(self.renderer.weights)
         self.renderer.weights = self.weights
-
-        self.thickness_factor = torch.ones([1], device=device)
-        self.thickness_factor = nn.Parameter(self.thickness_factor)
+        self.biases = nn.Parameter(self.renderer.biases)
+        self.renderer.biases = self.biases
 
         self.traj_factor = torch.ones([2,4], device=device)
         self.traj_factor = nn.Parameter(self.traj_factor)
         self.traj_bias = torch.zeros([2,4], device=device)
         self.traj_bias = nn.Parameter(self.traj_bias)
 
-        self.dry_opac_factor = -1.0 * torch.ones([1], device=device)
-        self.dry_opac_factor = nn.Parameter(self.dry_opac_factor)
-        self.dry_opac_bias = torch.ones([1], device=device)
-        self.dry_opac_bias = nn.Parameter(self.dry_opac_bias)
-
-
     def forward(self, parameter, use_conv):
-        traj = parameter[:,:,0:2]
-        thicknesses = parameter[:,:,2:3]
-        dryness = parameter[:,:,4].mean(dim=1)
+        # parameter: (batch, num_pts, 3)
+        traj = parameter[:,:,0:2] # (batch, num_pts, 2)
+        thicknesses = parameter[:,:,2:3] # (batch, num_pts, 1)
 
         # x,y to y,x
         traj = torch.flip(traj, dims=(2,)) 
@@ -341,16 +301,12 @@ class StrokeParametersToImage(nn.Module):
         thicknesses = torch.permute(thicknesses, (0,2,1))
         
         # Run through Differentiable renderer
-        x = self.renderer(traj * self.traj_factor[None] + self.traj_bias, 
-                          thicknesses * self.thickness_factor,
-                          dryness*self.dry_opac_factor + self.dry_opac_bias,
-                          use_conv=use_conv)
+        x = self.renderer(traj,# * self.traj_factor[None] + self.traj_bias, 
+                          thicknesses,
+                          use_conv=use_conv) # (batch, size_y, size_x)
         
-        x = x[:,None,:,:]
-        return x[:,0]
+        return x
     
-
-
 l1_loss = nn.L1Loss()
 # def shift_invariant_loss(pred, real, before, fnl_weight=0.5, n=3, delta=0.02):
 #     losses = None
@@ -483,37 +439,6 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     best_val_loss = 99999
     best_hasnt_changed_for = 0
 
-    
-
-    # Do some pre-training on the weights of the renderer since its init. is bad
-    from scipy.interpolate import make_interp_spline
-    for it in tqdm(range(5000)):
-        weights_optim.zero_grad()
-        loss = 0
-        for batch_it in range(batch_size):
-            bs = BrushStroke(opt).to(device)
-            
-            # Get the robot's trajectory path
-            path = bs.path.detach().cpu().numpy()
-            t = range(0, len(path))
-
-            b_x = make_interp_spline(t,path[:,0])
-            b_y = make_interp_spline(t,path[:,1])
-            steps = trans.renderer.P + 1
-            t_new = np.linspace(0, len(path)-1, steps)
-            x_new = b_x(t_new)
-            y_new = b_y(t_new)
-            true_path = torch.from_numpy(np.stack([x_new, y_new], axis=0).T).float().to(device)
-
-            # Get path defined by renderer weights
-            renderer_path = trans.renderer.curve_to_stroke(bs.path[:,:2].T)
-
-            loss += l1_loss(renderer_path, true_path)
-        loss.backward()
-        weights_optim.step()
-        if loss.item() < 0.001:
-            break
-
     # Main Training Loop
     for it in tqdm(range(3000)):
         # When to start training conv
@@ -531,7 +456,20 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
             canvas_before = train_canvases_before[batch_it:batch_it+1]
             canvas_after = train_canvases_after[batch_it:batch_it+1]
 
-            isolated_stroke = bs(h=h_render_pix, w=w_render_pix, param2img=trans, use_conv=train_conv)
+            full_param = bs.get_path().unsqueeze(0)
+            full_param.retain_grad()
+            stroke = trans(full_param, use_conv=train_conv).unsqueeze(0)
+
+            # Pad 1 or two to make it fit
+            if stroke.shape[2] != h_render_pix or stroke.shape[3] != w_render_pix:
+                stroke = transforms.Resize((h_render_pix, w_render_pix), bicubic, antialias=True)(stroke)
+
+            x = bs.transformation(stroke)
+            x = torch.cat([x,x,x,x], dim=1)
+
+            # Color change
+            isolated_stroke = torch.cat((x[:,:3]*0 + bs.color_transform[None,:,None,None], x[:,3:]), dim=1)
+            # isolated_stroke = bs(h=h_render_pix, w=w_render_pix, param2img=trans, use_conv=train_conv)
             predicted_canvas = canvas_before[:,:3] * (1 - isolated_stroke[:,3:]) \
                 + isolated_stroke[:,3:] * isolated_stroke[:,:3]
 
@@ -541,7 +479,8 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
 
             if (batch_it+1) % batch_size == 0 or batch_it == len(train_brush_strokes)-1:
                 if not torch.isnan(loss):
-                    loss.backward()
+                    # Don't try backprop further than full_param
+                    loss.backward(inputs=(full_param,), retain_graph=True)
                     torch.nn.utils.clip_grad_norm_(trans.parameters(), max_norm=1.0)
                     if train_conv:
                         conv_param_names = []

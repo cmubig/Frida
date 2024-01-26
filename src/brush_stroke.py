@@ -184,7 +184,10 @@ class RigidBodyTransformation(nn.Module):
             x = x[:,:,pad_top:pad_top+h,pad_left:pad_left+w]
             return x
 
-vae = torch.load("traj_vae/saved_models/model.pt")
+vae = MLP_VAE(32, 16, 32)
+vae.load_state_dict(torch.load("traj_vae/saved_models/model.pt"))
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+vae = vae.to(device)
 # Bounds for the x/y coordinates the VAE can generate
 # These values are calculated based on the imposed max stroke length of 0.25 in the JSPaint webapp,
 # in conjunction with the fact that the stroke starts at (0,0) and is rotated to be horizontal
@@ -221,41 +224,38 @@ class BrushStroke(nn.Module):
         self.latent.requires_grad = True 
         self.latent = nn.Parameter(self.latent)
 
-        # TODO: worry about this after fixing param2img
-        # if not self.ink:
-        #     self.color_transform = nn.Parameter(color)
-        # else:
-        #     self.color_transform = torch.zeros(3).to(device)
+        if not self.ink:
+            self.color_transform = nn.Parameter(color)
+        else:
+            self.color_transform = torch.zeros(3).to(device)
 
-    # TODO: worry about this after fixing param2img
-    # def forward(self, h, w, param2img, use_conv=True):
-    #     # # Do rigid body transformation
-    #     full_param = self.path.unsqueeze(0)
-    #     # stroke = param2img(full_param, h, w).unsqueeze(0)
-    #     stroke = param2img(full_param, use_conv=use_conv).unsqueeze(0)
+    def forward(self, h, w, param2img, use_conv=True):
+        # Do rigid body transformation
+        full_param = self.get_path().unsqueeze(0) # 1 x 32 x 3
+        stroke = param2img(full_param, use_conv=use_conv).unsqueeze(0)
 
-    #     # Pad 1 or two to make it fit
-    #     if stroke.shape[2] != h or stroke.shape[3] != w:
-    #         stroke = T.Resize((h, w), bicubic, antialias=True)(stroke)
+        # Pad 1 or two to make it fit
+        if stroke.shape[2] != h or stroke.shape[3] != w:
+            stroke = T.Resize((h, w), bicubic, antialias=True)(stroke)
 
-    #     # from paint_utils3 import show_img
-    #     # show_img(stroke)
-    #     x = self.transformation(stroke)
-    #     # show_img(x)
+        # from paint_utils3 import show_img
+        # show_img(stroke)
+        x = self.transformation(stroke)
+        # show_img(x)
 
-    #     # Remove stray color from the neural network being sloppy
-    #     # x = special_sigmoid(x)
-    #     # import kornia as K
-    #     # x = K.filters.median_blur(x, (3,3))
+        # Remove stray color from the neural network being sloppy
+        # x = special_sigmoid(x)
+        # import kornia as K
+        # x = K.filters.median_blur(x, (3,3))
         
-    #     # show_img(x)
-    #     x = torch.cat([x,x,x,x], dim=1)
+        # show_img(x)
+        x = torch.cat([x,x,x,x], dim=1)
 
-    #     # Color change
-    #     x = torch.cat((x[:,:3]*0 + self.color_transform[None,:,None,None], x[:,3:]), dim=1)
-    #     return x
+        # Color change
+        x = torch.cat((x[:,:3]*0 + self.color_transform[None,:,None,None], x[:,3:]), dim=1)
+        return x
 
-    # TODO: worry about this after fixing param2img
+    # TODO: worry about this when working on painting planning
     # def make_valid(stroke):
     #     with torch.no_grad():
     #         stroke.path[:,0].data.clamp_(stroke.MIN_STROKE_LENGTH, stroke.MAX_STROKE_LENGTH) # x
@@ -279,6 +279,12 @@ class BrushStroke(nn.Module):
     #             # Well balanced RGB, less constraint
     #             stroke.color_transform.data.clamp_(0.02,0.85)
 
+    def get_path(self):
+        path = vae.decode(self.latent)
+        path[:,0:2] = path[:,0:2] / vae_max_stroke_length * self.MAX_STROKE_LENGTH
+        path[:,2] = path[:,2].clamp(self.MIN_STROKE_Z, 0.95)
+        return path
+
     def execute(self, painter, x_start, y_start, rotation):
         # x_start, y_start in global coordinates. rotation in radians
         # curve_angle_is_rotation if true, then the brush is angled constantly down towards theta
@@ -294,9 +300,7 @@ class BrushStroke(nn.Module):
 
         z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
 
-        path = vae.decode(self.latent).detach().cpu().numpy()
-        path[:,0:2] = path[:,0:2] / vae_max_stroke_length * self.MAX_STROKE_LENGTH
-        path[:,2] = (path[:,2] * self.MAX_STROKE_Z).clamp(self.MIN_STROKE_Z, 1)
+        path = self.get_path()
 
         approx_len = 0.0
         for i in range(len(path)-1):
@@ -351,7 +355,7 @@ class BrushStroke(nn.Module):
     
     def get_length(self):
         """ Return the approximate length of the stroke in distance (meters) """
-        path = self.path.detach().cpu().numpy()
+        path = self.get_path()
         xs = path[:,0]
         ys = path[:,1]
         approx_len = (((xs[1:] - xs[:-1])**2 + (ys[1:] - ys[:-1])**2)**0.5).sum()
