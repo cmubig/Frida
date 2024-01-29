@@ -85,7 +85,7 @@ class Options(object):
 
         # CoFRIDA Training Parameters
         parser.add_argument("--cofrida_dataset", type=str,
-            default="laion/laion-art", help='A dataset for training CoFRIDA')
+            default="ChristophSchuhmann/MS_COCO_2017_URL_TEXT", help='A dataset for training CoFRIDA')
         parser.add_argument("--cofrida_background_image", type=str,
             default='./blank_canvas.jpg', help='path to image to use as background for cofrida drawings/paintings')
         parser.add_argument("--output_parent_dir", type=str,
