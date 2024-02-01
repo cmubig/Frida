@@ -183,27 +183,28 @@ class RigidBodyTransformation(nn.Module):
             # Remove padding
             x = x[:,:,pad_top:pad_top+h,pad_left:pad_left+w]
             return x
-
-vae = MLP_VAE(32, 16, 32)
-vae.load_state_dict(torch.load("traj_vae/saved_models/model.pt"))
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-vae = vae.to(device)
-# Bounds for the x/y coordinates the VAE can generate
-# These values are calculated based on the imposed max stroke length of 0.25 in the JSPaint webapp,
-# in conjunction with the fact that the stroke starts at (0,0) and is rotated to be horizontal
-vae_max_stroke_length = 0.25
-vae_x_bounds = (-vae_max_stroke_length/2, vae_max_stroke_length)
-vae_y_bounds = (-vae_max_stroke_length/2, vae_max_stroke_length/2)
-
 class BrushStroke(nn.Module):
+    vae = MLP_VAE(32, 16, 32)
+    vae.load_state_dict(torch.load("traj_vae/saved_models/model.pt"))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Bounds for the x/y coordinates the VAE can generate
+    # These values are calculated based on the imposed max stroke length of 0.25 in the JSPaint webapp,
+    # in conjunction with the fact that the stroke starts at (0,0) and is rotated to be horizontal
+    vae_max_stroke_length = 0.25
+    vae_x_bounds = (-vae_max_stroke_length/2, vae_max_stroke_length)
+    vae_y_bounds = (-vae_max_stroke_length/2, vae_max_stroke_length/2)
+
     def __init__(self, 
                  opt,
                 latent=None,
                 color=None, 
                 ink=False,
                 a=None, xt=None, yt=None,
-                device='cuda'):
+                device='cuda',
+                is_dot=False):
         super(BrushStroke, self).__init__()
+
+        self.is_dot = is_dot
 
         self.MAX_STROKE_LENGTH = opt.MAX_STROKE_LENGTH
         self.MIN_STROKE_Z = opt.MIN_STROKE_Z
@@ -218,7 +219,7 @@ class BrushStroke(nn.Module):
         self.transformation = RigidBodyTransformation(a, xt, yt)
         
         if latent is None: 
-            latent = torch.randn(1, vae.latent_dim)
+            latent = torch.randn(1, BrushStroke.vae.latent_dim)
 
         self.latent = latent 
         self.latent.requires_grad = True 
@@ -280,8 +281,13 @@ class BrushStroke(nn.Module):
     #             stroke.color_transform.data.clamp_(0.02,0.85)
 
     def get_path(self):
-        path = vae.decode(self.latent)
-        path[:,0:2] = path[:,0:2] / vae_max_stroke_length * self.MAX_STROKE_LENGTH
+        if self.is_dot:
+            path = torch.zeros((4,4))
+            path[:,2] = 0.75
+            return path
+        BrushStroke.vae.to(self.latent.device)
+        path = BrushStroke.vae.decode(self.latent)
+        path[:,0:2] = path[:,0:2] / BrushStroke.vae_max_stroke_length * self.MAX_STROKE_LENGTH
         path[:,2] = path[:,2].clamp(self.MIN_STROKE_Z, 0.95)
         return path
 
@@ -363,19 +369,17 @@ class BrushStroke(nn.Module):
     
     def get_rotated_trajectory(rotation, trajectory):
         # Rotation in radians
-        ret = copy.deepcopy(trajectory)
+        ret = trajectory.detach().clone()
         for i in range(len(ret)):
             ret[i][0] = math.cos(rotation) * trajectory[i][0] \
                      - math.sin(rotation) * trajectory[i][1]
             ret[i][1] = math.sin(rotation) * trajectory[i][0] \
                      + math.cos(rotation) * trajectory[i][1]
-        ret = np.array(ret)
+        ret = ret.detach().numpy()
         return ret
     
     def dot_stroke(self, opt):
-        path = torch.zeros((4,4))
-        path[:,2] = 0.75
         return BrushStroke(
             opt,
-            path=path,
+            is_dot=True
         )
