@@ -2,7 +2,7 @@ tqdm
 requests
 getch
 packaging
-Pillow
+Pillow==9.5.0
 opencv-python
 scikit-image
 scikit-learn
