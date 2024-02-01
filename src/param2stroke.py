@@ -76,13 +76,13 @@ class BezierRenderer(nn.Module):
         idxs_x = torch.arange(size_x)
         idxs_y = torch.arange(size_y)
         x_coords, y_coords = torch.meshgrid(idxs_y, idxs_x, indexing='ij') # G x G
-        self.grid_coords = torch.stack((x_coords, y_coords), dim=2).reshape(1,size_y, size_x,2).to(device) # 1 x G x G x 2
+        self.grid_coords = torch.stack((x_coords, y_coords), dim=2).reshape(1,size_y, size_x,2) # 1 x G x G x 2
 
-        self.weights = torch.eye(2).to(device) # multiply each point in trajectory by this
-        self.biases = torch.zeros(2).to(device) # add this to each point
+        self.weights = nn.Parameter(torch.eye(2)) # multiply each point in trajectory by this
+        self.biases = nn.Parameter(torch.zeros(2)) # add this to each point
         
-        self.thick_mult = torch.ones((1), dtype=torch.float).to(device)
-        self.dark_exp = torch.ones((1), dtype=torch.float).to(device)
+        self.thick_mult = nn.Parameter(torch.ones((1)))
+        self.dark_exp = nn.Parameter(torch.ones((1)))
 
         # self.nc = self.P
         # self.conv = nn.Sequential(
@@ -95,7 +95,7 @@ class BezierRenderer(nn.Module):
         #     nn.Conv2d(self.P, self.P, kernel_size=5, padding='same', dilation=1)
         # )
 
-        self.conv = MatMulLayer(size=(1,self.P-1,size_y,size_x), layers=1).to(device)
+        self.conv = MatMulLayer(size=(1,self.P-1,size_y,size_x), layers=1)
 
     def forward(self, trajectories, thicknesses, use_conv):        
         # trajectories: (n, 2, self.P)
@@ -116,7 +116,7 @@ class BezierRenderer(nn.Module):
 
     def curve_to_stroke(self, curve):
         # curve: (2, self.P)
-        return torch.matmul(self.weights.to(device), curve).T + self.biases # (self.P, 2)
+        return torch.matmul(self.weights, curve).T + self.biases # (self.P, 2)
 
     def render_stroke(self, stroke, t, use_conv):
         # stroke: (P, 2)
@@ -128,7 +128,7 @@ class BezierRenderer(nn.Module):
         ws = stroke[1:].reshape((-1,1,1,2)) # (P-1, 1, 1, 2)
         ws = torch.tile(ws, (1, self.size_y, self.size_x, 1)) # (P-1, size_y, size_x, 2)
 
-        coords = torch.tile(self.grid_coords, (n-1,1,1,1)) # (P-1, size_y, size_x, 2)
+        coords = torch.tile(self.grid_coords, (n-1,1,1,1)).to(ws.device) # (P-1, size_y, size_x, 2)
 
         # For each of the P segments, compute distance from every point to the line as well as the fraction along the line
         distances, fraction = self.dist_line_segment(coords, vs, ws) # (P-1, size_y, size_x)
@@ -263,24 +263,19 @@ class StrokeParametersToImage(nn.Module):
         
         self.renderer = BezierRenderer(size_x=self.size_x, 
                                        size_y=self.size_y,
-                                       num_pts=32).to(device)
+                                       num_pts=32)
 
-        self.thick_mult = nn.Parameter(self.renderer.thick_mult)
-        self.renderer.thick_mult = self.thick_mult
-        self.dark_exp = nn.Parameter(self.renderer.dark_exp)
-        self.renderer.dark_exp = self.dark_exp
+        # self.thick_mult = nn.Parameter(self.renderer.thick_mult)
+        # self.renderer.thick_mult = self.thick_mult
+        # self.dark_exp = nn.Parameter(self.renderer.dark_exp)
+        # self.renderer.dark_exp = self.dark_exp
 
-        self.conv = self.renderer.conv
+        # self.conv = self.renderer.conv
 
-        self.weights = nn.Parameter(self.renderer.weights)
-        self.renderer.weights = self.weights
-        self.biases = nn.Parameter(self.renderer.biases)
-        self.renderer.biases = self.biases
-
-        self.traj_factor = torch.ones([2,4], device=device)
-        self.traj_factor = nn.Parameter(self.traj_factor)
-        self.traj_bias = torch.zeros([2,4], device=device)
-        self.traj_bias = nn.Parameter(self.traj_bias)
+        # self.weights = nn.Parameter(self.renderer.weights)
+        # self.renderer.weights = self.weights
+        # self.biases = nn.Parameter(self.renderer.biases)
+        # self.renderer.biases = self.biases
 
     def forward(self, parameter, use_conv):
         # parameter: (batch, num_pts, 3)
@@ -407,8 +402,8 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     canvases_before = canvases_before.to(device)
     canvases_after = canvases_after.to(device)
 
-    canvases_before.requires_grad = False 
-    canvases_after.requires_grad = False 
+    # canvases_before.requires_grad = False 
+    # canvases_after.requires_grad = False 
     for bs in brush_strokes:
         bs.color_transform = nn.Parameter(torch.zeros(3))
         bs.requires_grad_(False)
@@ -428,11 +423,10 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
 
     trans = StrokeParametersToImage(output_dim_meters=(opt.STROKE_LIBRARY_CANVAS_HEIGHT_M, opt.STROKE_LIBRARY_CANVAS_WIDTH_M),
                                     margin_props=(top_margin_prop, left_margin_prop)) 
-    trans.requires_grad_(True)
+    # trans.requires_grad_(True)
     trans = trans.to(device)
     print('# parameters in Param2Image model:', get_n_params(trans))
     optim = torch.optim.Adam(trans.parameters(), lr=1e-3)
-    weights_optim = torch.optim.Adam([trans.renderer.weights], lr=1e-3)
     
     # Keep track of the best model (judged by validation error)
     best_model = copy.deepcopy(trans)
@@ -442,7 +436,7 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     # Main Training Loop
     for it in tqdm(range(3000)):
         # When to start training conv
-        train_conv = it > 100
+        train_conv = it > 1000
 
         # with torch.autograd.set_detect_anomaly(True):
         if best_hasnt_changed_for >= 400 and it > 1000:
@@ -480,17 +474,18 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
             if (batch_it+1) % batch_size == 0 or batch_it == len(train_brush_strokes)-1:
                 if not torch.isnan(loss):
                     # Don't try backprop further than full_param
-                    loss.backward(inputs=(full_param,), retain_graph=True)
+                    loss.backward(inputs=tuple(trans.parameters()), retain_graph=True)
+
                     torch.nn.utils.clip_grad_norm_(trans.parameters(), max_norm=1.0)
-                    if train_conv:
-                        conv_param_names = []
-                        for name, param in trans.renderer.conv.named_parameters():
-                            conv_param_names.append(name)
-                        for name, param in trans.named_parameters():
-                            name = name.replace('renderer.conv.', '')
-                            if name not in conv_param_names:
-                                if param.grad is not None:
-                                    param.grad *= 0
+                    # if train_conv:
+                    #     conv_param_names = []
+                    #     for name, param in trans.renderer.conv.named_parameters():
+                    #         conv_param_names.append(name)
+                    #     for name, param in trans.named_parameters():
+                    #         name = name.replace('renderer.conv.', '')
+                    #         if name not in conv_param_names:
+                    #             if param.grad is not None:
+                    #                 param.grad *= 0
 
                     optim.step()
                 else:

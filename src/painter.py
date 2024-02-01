@@ -408,7 +408,6 @@ class Painter():
             return self.H_coord
 
         import matplotlib
-        # matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         from scipy.ndimage import median_filter
         import cv2
@@ -555,7 +554,7 @@ class Painter():
         if not os.path.exists(lib_dir): os.mkdir(lib_dir)
 
         # Figure out how many strokes can be made on the given canvas size
-        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT_M/(0.2*self.opt.MAX_STROKE_LENGTH)))
+        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT_M/(0.15*self.opt.MAX_STROKE_LENGTH)))
 
         brush_strokes = [] # list of BrushStroke
         canvases_before = [] # Photos of canvases without stroke
@@ -610,6 +609,8 @@ class Painter():
                     canvas_with_stroke = self.camera.get_canvas(max_height=image_save_height)
 
                     if n_strokes % 3 == 0:
+                        import matplotlib
+                        matplotlib.use('Agg')
                         import matplotlib.pyplot as plt
                         fig = plt.figure()
                         ax = fig.gca()
