@@ -95,18 +95,16 @@ class Options(object):
             help='how to make partial sketchs. [random|salience]')
         parser.add_argument("--max_images", type=int,
             default=20000, help='A dataset for training controlnet')
-        parser.add_argument("--max_strokes_added", type=int,
-            default=200, help='Final amount of strokes')
-        parser.add_argument("--min_strokes_added", type=int,
-            default=100, help='Amount of strokes in the partial sketch')
         parser.add_argument("--num_images_to_consider_for_simplicity", type=int,
             default=3, help='Load this many images and take the one with fewest edges for simplicity.')
+        parser.add_argument("--max_strokes_added", type=int,
+            default=200, help='Maximum possible strokes in a cofrida training painting')
+        parser.add_argument("--min_strokes_added", type=int,
+            default=100, help='Minimum number of strokes in a cofrida training painting')
         parser.add_argument("--n_iters", type=int,
             default=300, help='Number of optimization iterations.')
         parser.add_argument("--colors", type=str,
             default=None, help='Specify a fixed palette of paint colors.')
-        parser.add_argument("--turn_takes", type=int,
-            default=0, help='How many turns for generating pix2pix training data.')
         parser.add_argument("--codraw_metric_data_dir", type=str,
             default=None, help='Where to store evaluation data.')
         parser.add_argument("--codraw_eval_setting", type=str,
