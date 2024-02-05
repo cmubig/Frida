@@ -19,4 +19,6 @@ accelerate launch train_instruct_pix2pix.py \
                      "A drawing of a dinosaur" \
  --use_8bit_adam \
  --num_validation_images=2 \
- --seed 0
+ --seed 0 \
+ --max_train_steps 3000 \
+ --lora

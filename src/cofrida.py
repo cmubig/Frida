@@ -1,6 +1,4 @@
-
-
-
+import os
 import numpy as np
 import torch
 import torch.utils.checkpoint
@@ -10,9 +8,7 @@ from transformers import AutoTokenizer, PretrainedConfig
 
 from diffusers import (
     AutoencoderKL,
-    ControlNetModel,
     DDPMScheduler,
-    # StableDiffusionControlNetPipeline,
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
@@ -61,37 +57,50 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
 
 def get_instruct_pix2pix_model(instruct_pix2pix_path, original_model_name_or_path="timbrooks/instruct-pix2pix", 
                                device="cuda", weight_dtype=torch.float16):
-    tokenizer = AutoTokenizer.from_pretrained(
-        original_model_name_or_path,
-        subfolder="tokenizer",
-        # revision=args.revision,
-        use_fast=False,
-    )
+    
+    # Load LoRA if trained using it
+    lora_weights_fn = os.path.join(instruct_pix2pix_path, 'pytorch_lora_weights.bin')
+    if os.path.exists(lora_weights_fn):
+        pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+                        original_model_name_or_path,
+                        torch_dtype=weight_dtype,
+                        safety_checker=None,
+                    )
+        pipeline.unet.load_attn_procs(instruct_pix2pix_path)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(
+            original_model_name_or_path,
+            subfolder="tokenizer",
+            # revision=args.revision,
+            use_fast=False,
+        )
 
-    # import correct text encoder class
-    text_encoder_cls = import_model_class_from_model_name_or_path(original_model_name_or_path)
+        # import correct text encoder class
+        text_encoder_cls = import_model_class_from_model_name_or_path(original_model_name_or_path)
 
-    # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(original_model_name_or_path, subfolder="scheduler")
-    text_encoder = text_encoder_cls.from_pretrained(
-        original_model_name_or_path, subfolder="text_encoder"
-    )
-    vae = AutoencoderKL.from_pretrained(original_model_name_or_path, subfolder="vae")
-    unet = UNet2DConditionModel.from_pretrained(
-        instruct_pix2pix_path, subfolder="unet", in_channels=8, out_channels=4,
-    )
-    unet.register_to_config(in_channels=8)
+        # Load scheduler and models
+        noise_scheduler = DDPMScheduler.from_pretrained(original_model_name_or_path, subfolder="scheduler")
+        text_encoder = text_encoder_cls.from_pretrained(
+            original_model_name_or_path, subfolder="text_encoder"
+        )
+        vae = AutoencoderKL.from_pretrained(original_model_name_or_path, subfolder="vae")
+        unet = UNet2DConditionModel.from_pretrained(
+            instruct_pix2pix_path, subfolder="unet", in_channels=8, out_channels=4,
+        )
+        unet.register_to_config(in_channels=8)
 
-    pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-        original_model_name_or_path,
-        unet=unet,
-        text_encoder=text_encoder,
-        vae=vae,
-        # revision=args.revision,
-        torch_dtype=weight_dtype,
-        safety_checker=None,
-    )
-    pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
+        pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+            original_model_name_or_path,
+            unet=unet,
+            text_encoder=text_encoder,
+            vae=vae,
+            # revision=args.revision,
+            torch_dtype=weight_dtype,
+            safety_checker=None,
+        )
+
+        pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
+    
     pipeline = pipeline.to(device)
     # pipeline.set_progress_bar_config(disable=True)
     return pipeline
