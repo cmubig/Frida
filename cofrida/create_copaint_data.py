@@ -397,6 +397,12 @@ if __name__ == '__main__':
     crop = transforms.RandomResizedCrop((h*4, w*4), scale=(0.7, 1.0), 
                                         ratio=(0.95,1.05), antialias=True)
     
+    bg_aug = transforms.Compose([
+        transforms.RandomResizedCrop((h, w), scale=(0.7, 1.0), 
+                                        ratio=(0.75,1.0), antialias=True),
+        transforms.ColorJitter(brightness=(0.5, 1.25), hue=0.2, contrast=0.1, saturation=0.2)
+    ])
+
     data_dict = []
     if os.path.exists(data_dict_fn):
         data_dict = pickle.load(open(data_dict_fn,'rb'))
@@ -424,7 +430,7 @@ if __name__ == '__main__':
 
         datum_no_img = copy.deepcopy(datum)
         datum_no_img['img'] = None # Don't save the image directly, just path
-        current_canvas = default_current_canvas
+        current_canvas = bg_aug(default_current_canvas)
 
         full_painting_strokes = random.randint(opt.min_strokes_added, opt.max_strokes_added)
     
