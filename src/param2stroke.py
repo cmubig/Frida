@@ -436,7 +436,7 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     # Main Training Loop
     for it in tqdm(range(3000)):
         # When to start training conv
-        train_conv = it > 1000
+        train_conv = it > 300 
 
         # with torch.autograd.set_detect_anomaly(True):
         if best_hasnt_changed_for >= 400 and it > 1000:

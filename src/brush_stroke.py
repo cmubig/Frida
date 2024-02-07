@@ -256,29 +256,20 @@ class BrushStroke(nn.Module):
         x = torch.cat((x[:,:3]*0 + self.color_transform[None,:,None,None], x[:,3:]), dim=1)
         return x
 
-    # TODO: worry about this when working on painting planning
-    # def make_valid(stroke):
-    #     with torch.no_grad():
-    #         stroke.path[:,0].data.clamp_(stroke.MIN_STROKE_LENGTH, stroke.MAX_STROKE_LENGTH) # x
-    #         stroke.path[:,1].data.clamp_(-1.0*stroke.MAX_BEND, stroke.MAX_BEND) # y
-    #         stroke.path[:,2].data.clamp_(stroke.MIN_STROKE_Z, 0.95) # z
-    #         stroke.path[:,3].data.clamp_(-1.0*stroke.MAX_ALPHA, stroke.MAX_ALPHA) # alpha
-    #         stroke.path[:,4].data.clamp_(0, # distance painted since adding paint to brush
-    #                     0 if stroke.ink else stroke.max_length_before_new_paint)
+    def make_valid(stroke):
+        with torch.no_grad():
+            stroke.latent.data.clamp(-2.5, 2.5)
 
-    #         stroke.path[0,:2] = 0 # start at 0,0
-    #         stroke.path[-1,1] = 0 # finish on horizontal line from start
+            stroke.transformation.xt.data.clamp_(-1.,1.)
+            stroke.transformation.yt.data.clamp_(-1.,1.)
 
-    #         stroke.transformation.xt.data.clamp_(-1.,1.)
-    #         stroke.transformation.yt.data.clamp_(-1.,1.)
-
-    #         #stroke.color_transform.data.clamp_(0.02,0.75)
-    #         if stroke.color_transform.min() < 0.35:
-    #             # If it's a colored stroke, don't let it go to a flourescent color
-    #             stroke.color_transform.data.clamp_(0.02,0.70)
-    #         else:
-    #             # Well balanced RGB, less constraint
-    #             stroke.color_transform.data.clamp_(0.02,0.85)
+            #stroke.color_transform.data.clamp_(0.02,0.75)
+            if stroke.color_transform.min() < 0.35:
+                # If it's a colored stroke, don't let it go to a flourescent color
+                stroke.color_transform.data.clamp_(0.02,0.70)
+            else:
+                # Well balanced RGB, less constraint
+                stroke.color_transform.data.clamp_(0.02,0.85)
 
     def get_path(self):
         if self.is_dot:

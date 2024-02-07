@@ -279,7 +279,6 @@ def random_init_painting(opt, background_img, n_strokes, ink=False, device='cuda
     for x,y in xys:
         # Random brush stroke
         brush_stroke = BrushStroke(opt, xt=x, yt=y, ink=ink)
-        brush_stroke.path.data[:,:2].clamp_(0,0.001) # Start with a tiny stroke
         BrushStroke.make_valid(brush_stroke)
         gridded_brush_strokes.append(brush_stroke)
 
