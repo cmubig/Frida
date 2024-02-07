@@ -56,7 +56,7 @@ if __name__ == '__main__':
     color_palette = None
     if opt.use_colors_from is not None:
         color_palette = get_colors(cv2.resize(cv2.imread(opt.use_colors_from)[:,:,::-1], (256, 256)), 
-                n_colors=opt.n_colors)
+                n_colors=opt.n_colors).to(device)
         opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(color_palette), 0)
 
     current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device) / 255.
