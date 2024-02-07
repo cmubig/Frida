@@ -30,7 +30,7 @@ git clone https://github.com/jmhessel/clipscore.git
 
 See `Frida/cofrida/create_copaint_data.sh` for an example on command-line arguments.
 
-In the data creation phase, paintings/drawings are created in the FRIDA simulation from images in the LAION-Art dataset.  Strokes are selectively removed to form partial paintings/drawings.
+In the data creation phase, paintings/drawings are created in the FRIDA simulation either from images in the CoCo dataset or from Stable Diffusion images generated from the Parti Prompts dataset.  Strokes are selectively removed to form partial paintings/drawings.
 
 ```
 python3 create_copaint_data.py 
@@ -46,6 +46,14 @@ python3 create_copaint_data.py
         [--max_images int] Maximum number of training images to create
         [--colors [[r,g,b],]] Specify a specific color palette to use. If None, use any color palette (discretized to --n_colors)
 ```
+
+#### What images to use as training data
+
+CoFRIDA needs a dataset of image-text pairs to use to create full and partial paintings for training.
+
+To use the CoCo dataset image-text pairs for training: `--cofrida_dataset ChristophSchuhmann/MS_COCO_2017_URL_TEXT`
+
+To generate images using Stable Diffusion conditioned on Parti Prompts Dataset: `--generate_cofrida_training_data --cofrida_dataset nateraw/parti-prompts` 
 
 ### Train CoFRIDA Model
 

@@ -86,13 +86,15 @@ class Options(object):
         # CoFRIDA Training Parameters
         parser.add_argument("--cofrida_dataset", type=str,
             default="ChristophSchuhmann/MS_COCO_2017_URL_TEXT", help='A dataset for training CoFRIDA')
+        parser.add_argument("--generate_cofrida_training_data", action='store_true',
+            default=True, help='Generate training images for CoFRIDA. Use with dataset nateraw/parti-prompts')
         parser.add_argument("--cofrida_background_image", type=str,
             default='./blank_canvas.jpg', help='path to image to use as background for cofrida drawings/paintings')
         parser.add_argument("--output_parent_dir", type=str,
             help='Where to save the data. Can continue if partially complete.')
-        parser.add_argument("--removal_method", type=str,
-            default='random',
-            help='how to make partial sketchs. [random|salience]')
+        # parser.add_argument("--removal_method", type=str,
+        #     default='random',
+        #     help='how to make partial sketchs. [random|salience]')
         parser.add_argument("--max_images", type=int,
             default=20000, help='A dataset for training controlnet')
         parser.add_argument("--num_images_to_consider_for_simplicity", type=int,
@@ -109,6 +111,8 @@ class Options(object):
             default=None, help='Where to store evaluation data.')
         parser.add_argument("--codraw_eval_setting", type=str,
             default=None, help='[same_text_fill_in,same_text_add_detail_different_text,add_background,something_from_nothing]')
+        parser.add_argument("--retrain_cofrida_image_generator", type=int,
+            default=10, help='Retrain cofrida image generator every time this many images are generated.')
         
         
         ### Argument is not used, but is allowed for flask compatability ###
