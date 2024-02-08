@@ -135,6 +135,7 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
     kwargs:
         color_palette: if None, then it creates a new one
     """
+    # torch.autograd.set_detect_anomaly(True)
     use_input_palette =  color_palette is not None
     if len(painting) == 0: return painting, color_palette
 
