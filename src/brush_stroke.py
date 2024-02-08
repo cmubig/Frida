@@ -278,9 +278,13 @@ class BrushStroke(nn.Module):
             return path
         BrushStroke.vae.to(self.latent.device)
         path = BrushStroke.vae.decode(self.latent)
-        path[:,0:2] = path[:,0:2] / BrushStroke.vae_max_stroke_length * self.MAX_STROKE_LENGTH
-        path[:,2] = path[:,2].clamp(self.MIN_STROKE_Z, 0.95)
-        return path
+
+        # Clone the path so that the operation is not in-place (PyTorch quirk; allows gradients to flow through)
+        path_clone = path.clone()
+        path_clone[:,0:2] = path[:,0:2] / BrushStroke.vae_max_stroke_length * self.MAX_STROKE_LENGTH
+        path_clone[:,2] = path[:,2].clamp(self.MIN_STROKE_Z, 0.95)
+        
+        return path_clone
 
     def execute(self, painter, x_start, y_start, rotation):
         # x_start, y_start in global coordinates. rotation in radians
