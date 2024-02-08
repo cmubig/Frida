@@ -370,7 +370,7 @@ class BrushStroke(nn.Module):
                      - math.sin(rotation) * trajectory[i][1]
             ret[i][1] = math.sin(rotation) * trajectory[i][0] \
                      + math.cos(rotation) * trajectory[i][1]
-        ret = ret.detach().numpy()
+        ret = ret.cpu().detach().numpy()
         return ret
     
     def dot_stroke(self, opt):
