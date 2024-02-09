@@ -87,7 +87,7 @@ class Options(object):
         parser.add_argument("--cofrida_dataset", type=str,
             default="ChristophSchuhmann/MS_COCO_2017_URL_TEXT", help='A dataset for training CoFRIDA')
         parser.add_argument("--generate_cofrida_training_data", action='store_true',
-            default=True, help='Generate training images for CoFRIDA. Use with dataset nateraw/parti-prompts')
+            default=False, help='Generate training images for CoFRIDA. Use with dataset nateraw/parti-prompts')
         parser.add_argument("--cofrida_background_image", type=str,
             default='./blank_canvas.jpg', help='path to image to use as background for cofrida drawings/paintings')
         parser.add_argument("--output_parent_dir", type=str,
