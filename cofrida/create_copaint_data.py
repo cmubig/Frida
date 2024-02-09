@@ -51,13 +51,6 @@ from options import Options
 from transformers import CLIPProcessor, CLIPModel, CLIPTokenizer, CLIPTextModel
 import torchvision.transforms as transforms
 
-try:
-  import google.colab
-  IN_COLAB = True
-except:
-  IN_COLAB = False
-if not IN_COLAB: matplotlib.use('TkAgg')
-
 
 import clip 
 if not os.path.exists('../src/clipscore/'):

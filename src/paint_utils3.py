@@ -327,7 +327,6 @@ def format_img(tensor_img):
 
 
 def init_brush_strokes(opt, diff, n_strokes, ink):
-    if not IN_COLAB: matplotlib.use('TkAgg')
     brush_strokes = []
     
     if ink:
