@@ -308,6 +308,8 @@ class BrushStroke(nn.Module):
         alpha = self.stroke_alpha.item() # Same alpha throughout stroke, for now.
         # print('alpha', alpha)
 
+        n_points_off_canvas, n_points_total = 0, 0
+
         for i in range(1, len(path)-1, 3):
             p1 = path[i+0,0], path[i+0,1], path[i+0,2]
             p2 = path[i+1,0], path[i+1,1], path[i+1,2]
@@ -400,6 +402,8 @@ class BrushStroke(nn.Module):
                 if (x_next > painter.opt.X_CANVAS_MAX) or (x_next < painter.opt.X_CANVAS_MIN) or \
                         (y_next > painter.opt.Y_CANVAS_MAX) or (y_next < painter.opt.Y_CANVAS_MIN):
                     z += 0.005
+                    n_points_off_canvas += 1
+                n_points_total += 1
 
                 # Don't over shoot the canvas
                 x_next = min(max(painter.opt.X_CANVAS_MIN, x_next), painter.opt.X_CANVAS_MAX) 
@@ -429,8 +433,8 @@ class BrushStroke(nn.Module):
                 # time.sleep(0.02)
             p0 = p3
 
-
-        if smooth:
+        stroke_complete = False
+        if smooth and ((n_points_off_canvas/n_points_total) < 0.9):
             stroke_complete = painter.move_to_trajectories(all_positions, all_orientations)
         
 

@@ -460,7 +460,7 @@ class Painter():
 
                 # Look in the region of the stroke and find the center of the stroke
                 w = int(.1 * canvas_height_pix)
-                window = canvas[y_pix-w:y_pix+w, x_pix-w:x_pix+w,:]
+                window = canvas[max(0,y_pix-w):min(canvas_height_pix,y_pix+w), max(0,x_pix-w):min(x_pix+w, canvas_width_pix),:]
                 window = window.mean(axis=2)
                 window /= 255.
                 window = 1 - window
