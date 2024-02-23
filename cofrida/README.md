@@ -30,7 +30,7 @@ git clone https://github.com/jmhessel/clipscore.git
 
 See `Frida/cofrida/create_copaint_data.sh` for an example on command-line arguments.
 
-In the data creation phase, paintings/drawings are created in the FRIDA simulation from images in the LAION-Art dataset.  Strokes are selectively removed to form partial paintings/drawings.
+In the data creation phase, paintings/drawings are created in the FRIDA simulation either from images in the CoCo dataset or from Stable Diffusion images generated from the Parti Prompts dataset.  Strokes are selectively removed to form partial paintings/drawings.
 
 ```
 python3 create_copaint_data.py 
@@ -39,15 +39,21 @@ python3 create_copaint_data.py
         [--materials_json path] Path to file describing the materials used by FRIDA
         [--lr_multiplier float] Scale the learning rate for data generation
         [--n_iters int] Number of optimization iterations to generate each training image
-        [--max_strokes_added int] Number of strokes in full painting/drawing
-        [--min_strokes_added int] Number of strokes in partial painting/drawing
-        [--turn_takes int] Number of times to draw over an existing drawing
+        [--max_strokes_added int] Max. number of strokes in full painting/drawing
+        [--min_strokes_added int] Min. number of strokes in full painting/drawing
         [--ink] Use just black strokes
         [--output_parent_dir path] Where to save the data
         [--max_images int] Maximum number of training images to create
-        [--num_images_to_consider_for_simplicity int] Seek this many images and take the one with the fewest edges (improves training by avoiding overly complex source images)
         [--colors [[r,g,b],]] Specify a specific color palette to use. If None, use any color palette (discretized to --n_colors)
 ```
+
+#### What images to use as training data
+
+CoFRIDA needs a dataset of image-text pairs to use to create full and partial paintings for training.
+
+To use the CoCo dataset image-text pairs for training: `--cofrida_dataset ChristophSchuhmann/MS_COCO_2017_URL_TEXT`
+
+To generate images using Stable Diffusion conditioned on Parti Prompts Dataset: `--generate_cofrida_training_data --cofrida_dataset nateraw/parti-prompts` 
 
 ### Train CoFRIDA Model
 
@@ -92,7 +98,7 @@ python3 codraw.py
     [--cofrida_model path] Path to trained Instruct-Pix2Pix (see --output_dir used with train_instruct_pix2pix.py)
 python3 codraw.py  
         --use_cache 
-        --cache_dir caches/cache_6_6_cvpr/ 
+        --cache_dir caches/sharpie_short_strokes/ 
         --dont_retrain_stroke_model 
         --robot xarm 
         --brush_length 0.2 
@@ -100,8 +106,12 @@ python3 codraw.py
         --lr_multiplier 0.3 
         --num_strokes 120
 # Example below
-python3 codraw.py --use_cache --cache_dir caches/cache_6_6_cvpr/ --cofrida_model ../cofrida/cofrida_model_ink --dont_retrain_stroke_model --robot xarm --brush_length 0.2 --ink   --lr_multiplier 0.3 --num_strokes 120 --simulate
+python3 codraw.py --use_cache --cache_dir caches/sharpie_short_strokes/ --cofrida_model ../cofrida/cofrida_model_ink --dont_retrain_stroke_model --robot xarm --brush_length 0.2 --ink --lr_multiplier 0.7 --num_strokes 120 --simulate
 ```
+
+### Pretrained CoFRIDA models
+
+We have saved a few pretrained CoFRIDA models to huggingface. You can use them via `--cofrida_model skeeterman/CoFRIDA-Sharpie`
 
 
 ### Test CoFRIDA on the Computer

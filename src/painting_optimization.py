@@ -130,7 +130,7 @@ def load_objectives_data(opt):
     opt.objective_data_loaded = objective_data
 
 def optimize_painting(opt, painting, optim_iter, color_palette=None,
-                      change_color=True, shuffle_strokes=True):
+                      change_color=True, shuffle_strokes=True, log_title='plan'):
     """
     kwargs:
         color_palette: if None, then it creates a new one
@@ -187,7 +187,7 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
 
             if not opt.ink:
                 discretize_colors(painting, color_palette)
-        log_progress(painting, opt, log_freq=opt.log_frequency)#, force_log=True)
+        log_progress(painting, opt, log_freq=opt.log_frequency, title=log_title)#, force_log=True)
 
 
     if not use_input_palette and not opt.ink:
@@ -199,6 +199,6 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
         discretize_colors(painting, color_palette)
         if shuffle_strokes:
             painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
-    log_progress(painting, opt, force_log=True, log_freq=opt.log_frequency)
+    log_progress(painting, opt, force_log=True, log_freq=opt.log_frequency, title=log_title)
 
     return painting, color_palette

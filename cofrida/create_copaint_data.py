@@ -10,7 +10,8 @@
 Create a dataset to be used to fine-tune Stable Diffusion using LoRA
 """
 
-import sys 
+import sys
+import warnings 
 sys.path.insert(0, '../src/')
 
 import os 
@@ -35,6 +36,8 @@ import matplotlib.pyplot as plt
 import pickle
 import shutil
 
+# Avoid annoying warning message. Doesn't slow down loading much.
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # from plan import *
 from paint_utils3 import format_img, initialize_painting, \
@@ -47,13 +50,6 @@ from options import Options
 
 from transformers import CLIPProcessor, CLIPModel, CLIPTokenizer, CLIPTextModel
 import torchvision.transforms as transforms
-
-try:
-  import google.colab
-  IN_COLAB = True
-except:
-  IN_COLAB = False
-if not IN_COLAB: matplotlib.use('TkAgg')
 
 
 import clip 
@@ -129,8 +125,7 @@ def plan_from_image(opt, num_strokes, target_img, current_canvas, clip_lr=1.0):
     for it in tqdm(range(opt.n_iters), desc="Optim. {} Strokes".format(len(painting.brush_strokes))):
         for o in optims: o.zero_grad() if o is not None else None
 
-        # lr_factor = (1 - 2*np.abs(it/opt.n_iters - 0.5)) + 0.1
-        lr_factor = (1 - np.abs(it/opt.n_iters)) + 0.01 # 1.1 -> 0.01
+        lr_factor = (1 - np.abs(it/opt.n_iters)) + 0.001 # 1.001 -> 0.001
         for i_o in range(len(optims)):
             if optims[i_o] is not None:
                 optims[i_o].param_groups[0]['lr'] = og_lrs[i_o]*lr_factor
@@ -189,6 +184,73 @@ def load_img_internet(url, h=None, w=None):
     return process_pil(im, h=h, w=w)
 
 
+def load_lora_data_generator(lora_path=None):
+    """
+        Load a LoRA Stable Diffusion trained on past drawings/paintings
+    """
+    from diffusers import DiffusionPipeline
+    pretrained_model_name_or_path = 'runwayml/stable-diffusion-v1-5'
+
+    weight_dtype = torch.float16
+
+    print('pretrained model', pretrained_model_name_or_path)
+
+    # create pipeline
+    pipeline = DiffusionPipeline.from_pretrained(
+        pretrained_model_name_or_path, revision=None, torch_dtype=weight_dtype,
+        safety_checker=None
+    )
+    pipeline = pipeline.to(device)
+    pipeline.set_progress_bar_config(disable=True)
+
+    # load attention processors
+    if lora_path is not None: 
+        print('Loading LoRA weights', lora_path)
+        pipeline.unet.load_attn_procs(lora_path)
+    return pipeline
+
+def train_lora_data_generator(data_dict_fn, output_dir, pretrained_model="runwayml/stable-diffusion-v1-5"):
+    """
+        Train a LoRA of Stable Diffusion on past drawings/paintings for future training images
+    """
+    import subprocess
+    args = [
+        '--pretrained_model_name_or_path', pretrained_model,
+        '--data_dict', data_dict_fn,
+        '--dataloader_num_workers', '8',
+        '--resolution', '512',
+        '--center_crop', 
+        '--random_flip',
+        '--train_batch_size', '1',
+        '--gradient_accumulation_steps', '4',
+        '--learning_rate', '5e-05',
+        '--max_grad_norm', '1',
+        '--lr_scheduler', 'cosine',
+        '--lr_warmup_steps', '0',
+        '--output_dir', output_dir,
+        '--report_to', 'tensorboard',
+        '--validation_prompt', 'A frog astronaut.', 
+            'The pittsburgh skyline', 
+            'A drawing of the Pittsburgh skyline', 
+            'A robot playing the piano', 
+            'An avocado chair', 
+            'Albert Einstein dancing"',
+        '--validation_steps', '50',
+        '--tracker_project_name', 'lora_create_data2',
+        '--num_validation_images', '3',
+        '--seed', '1337',
+        # '--max_train_steps', '100',
+        '--num_train_epochs', '1',
+        '--resume_from_checkpoint', 'latest',
+    ]
+    process = subprocess.Popen(['accelerate', 'launch', '--mixed_precision=fp16', 'train_lora.py'] + args,
+                        stdout=subprocess.PIPE, 
+                        stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
+    # print(stdout)
+    print(str(stderr).encode('utf-8').decode('unicode_escape'))
+    # print("the commandline is {}".format(process.args))
+
 
 def get_image_text_pair(dataset):
     datums = []
@@ -235,16 +297,21 @@ def get_image_text_pair(dataset):
     return best_datum
 
 
-def get_image_image_text_pair(dataset):
-    datum = dataset[np.random.randint(len(dataset))]
+def generate_image_text_pair(prompt, pipeline):
+    with torch.no_grad():
+        img = pipeline(
+            prompt,
+            num_inference_steps=30,
+            num_images_per_prompt=1,
+            output_type='pt'
+        ).images[0]
+        img = torch.clamp(img, min=0, max=1)
+    return {
+        'img':img.unsqueeze(0), # B, C, H, W 
+        'TEXT':prompt
+    }
 
-    unchanged_image = datum['input_image']
-    changed_image = datum['edited_image']
 
-    datum['unchanged_image'] = process_pil(unchanged_image)
-    datum['changed_image'] = process_pil(changed_image)
-
-    return datum
 
 def remove_strokes_randomly(painting, min_strokes_added, max_strokes_added):
     to_delete = set(random.sample(range(len(painting.brush_strokes)), max_strokes_added-min_strokes_added))
@@ -371,7 +438,6 @@ if __name__ == '__main__':
     global opt, h, w
     opt = Options()
     opt.gather_options()
-    # python3 create_copaint_data.py --use_cache --cache_dir caches/cache_6_6_cvpr/  --lr_multiplier 0.7 --output_parent_dir testing
 
     os.makedirs(opt.output_parent_dir, exist_ok=True)
 
@@ -390,20 +456,53 @@ if __name__ == '__main__':
     default_current_canvas = copy.deepcopy(current_canvas)
 
     dataset = load_dataset(opt.cofrida_dataset)['train']
+
+    if opt.generate_cofrida_training_data:
+        prompts = []
+        for p in dataset:
+            if p['Challenge'] in ['Basic', 'Simple Detail', 'Fine-Grained Detail']:
+                prompts.append(p['Prompt'])
     
     crop = transforms.RandomResizedCrop((h*4, w*4), scale=(0.7, 1.0), 
                                         ratio=(0.95,1.05), antialias=True)
     
+    bg_aug = transforms.Compose([
+        transforms.RandomResizedCrop((h, w), scale=(0.7, 1.0), 
+                                        ratio=(0.75,1.0), antialias=True),
+        transforms.ColorJitter(brightness=(0.5, 1.25), hue=0.2, contrast=0.1, saturation=0.2)
+    ])
+
     data_dict = []
     if os.path.exists(data_dict_fn):
         data_dict = pickle.load(open(data_dict_fn,'rb'))
+    
+    painting = None
+
+    if opt.generate_cofrida_training_data:
+        lora_model_dir = os.path.join(opt.output_parent_dir, 'lora_model')
+        os.makedirs(lora_model_dir, exist_ok=True)
+        lora_pipeline = load_lora_data_generator(
+            lora_path=lora_model_dir if os.path.exists(os.path.join(lora_model_dir, 'pytorch_lora_weights.bin')) else None)
 
     for i in range(opt.max_images):
+        if opt.generate_cofrida_training_data:
+            # Update the LoRA model that generates the images to paint
+            if ((i+1)%opt.retrain_cofrida_image_generator) == 0 and (len(data_dict) > 100):
+                print('Training LoRA model on previously made drawings.')
+                del painting, lora_pipeline # Free up memory
+                train_lora_data_generator(data_dict_fn=data_dict_fn, 
+                                        output_dir=lora_model_dir)
+                lora_pipeline = load_lora_data_generator(lora_path=lora_model_dir)
+
 
         # Get a new image
         try:
-            datum = get_image_text_pair(dataset)
-        except:
+            if opt.generate_cofrida_training_data:
+                datum = generate_image_text_pair(prompts[random.randint(0,len(prompts))], lora_pipeline)
+            else:
+                datum = get_image_text_pair(dataset)
+        except Exception as e:
+            print(e)
             continue
         target_img_full = crop(datum['img']).to(device)
         target_img = transforms.Resize((h,w), bicubic, antialias=True)(target_img_full)
@@ -416,123 +515,132 @@ if __name__ == '__main__':
             colors = np.array([i.split(',') for i in opt.colors.split('.')]).astype(np.float32)
             colors = (torch.from_numpy(colors) / 255.).to(device)
         else:
-            colors = get_colors(cv2.resize(target_img.cpu().numpy()[0].transpose(1,2,0), (256, 256))*255., 
+            colors = get_colors(cv2.resize((target_img.cpu().numpy()[0].transpose(1,2,0)*255.).astype(np.uint8), (256, 256)), 
                 n_colors=opt.n_colors).to(device)
 
-        # print(datum)
         datum_no_img = copy.deepcopy(datum)
         datum_no_img['img'] = None # Don't save the image directly, just path
-        current_canvas = default_current_canvas
+        current_canvas = bg_aug(default_current_canvas)
 
-        for turn in range(opt.turn_takes):
-            painting = plan_from_image(opt, opt.max_strokes_added, target_img, current_canvas[:,:3])
+        full_painting_strokes = random.randint(opt.min_strokes_added, opt.max_strokes_added)
+    
+        painting = plan_from_image(opt, full_painting_strokes, target_img, current_canvas[:,:3])
 
-            # If the painting doesn't fit the text prompt well, just break
-            with torch.no_grad():
-                final_painting = painting(h*4,w*4)
-            output_dir = os.path.join(opt.output_parent_dir, str(int(np.floor(len(data_dict)/100))),)
-            output_rel_dir = os.path.join(str(int(np.floor(len(data_dict)/100))),)
-            if not os.path.exists(output_dir): os.mkdir(output_dir)
-            final_img_path = os.path.join(output_dir, 'id{}_{}strokes.png'.format(len(data_dict), opt.max_strokes_added))
-            save_image(final_painting[:,:3],final_img_path)
+        # If the painting doesn't fit the text prompt well, just break
+        with torch.no_grad():
+            final_painting = painting(h*4,w*4)
+        output_dir = os.path.join(opt.output_parent_dir, str(int(np.floor(len(data_dict)/100))),)
+        output_rel_dir = os.path.join(str(int(np.floor(len(data_dict)/100))),)
+        if not os.path.exists(output_dir): os.mkdir(output_dir)
+        final_img_path = os.path.join(output_dir, 'id{}_{}strokes.png'.format(len(data_dict), full_painting_strokes))
+        save_image(final_painting[:,:3],final_img_path)
+        with warnings.catch_warnings(): # suppress annoing clip_score warning
+            warnings.simplefilter("ignore")
             cs = clip_score(datum['TEXT'], final_img_path)
-            print('cs', cs, datum['TEXT'])
-            # if cs < 0.45:
-            #     break
+        # print('clip score:', cs, datum['TEXT'])
 
-            for method in ['random', 'random', 'salience', 'not_salience', 'object', 'object', 'all']:
-                try:
-                    # Make sub-directories so single directories don't get too big
-                    output_dir = os.path.join(opt.output_parent_dir,
-                                            str(int(np.floor(len(data_dict)/100))),)
-                    if not os.path.exists(output_dir): os.mkdir(output_dir)
-                    
+        target_img_already_saved = False
+        for method in ['random', 'random', 'random', 'random', 
+                       'salience', 'not_salience', 'object', 'object', 'all']:
+            try:
+                # Make sub-directories so single directories don't get too big
+                output_dir = os.path.join(opt.output_parent_dir,
+                                        str(int(np.floor(len(data_dict)/100))),)
+                output_rel_dir = os.path.join(str(int(np.floor(len(data_dict)/100))))
+                if not os.path.exists(output_dir): os.mkdir(output_dir)
+
+                # Save the target image once per stroke removal method (avoid large memory usage)
+                if not target_img_already_saved:
                     target_img_path = os.path.join(output_dir, 'id{}_target.png'.format(len(data_dict)))
                     target_img_rel_path = os.path.join(output_rel_dir, 'id{}_target.png'.format(len(data_dict)))
                     save_image(target_img_full[:,:3],target_img_path)
-                                
-                    with torch.no_grad():
-                        final_painting = painting(h*4,w*4)
+                    target_img_already_saved = True
+                            
+                with torch.no_grad():
+                    final_painting = painting(h*4,w*4)
+
+                final_img_path = os.path.join(output_dir, 'id{}_{}strokes.png'.format(len(data_dict), full_painting_strokes))
+                final_img_rel_path = os.path.join(output_rel_dir, 'id{}_{}strokes.png'.format(len(data_dict), full_painting_strokes))
+                save_image(final_painting[:,:3],final_img_path)
+
+                # How many strokes in the random removal canvas
+                partial_painting_strokes = random.randint(int(0.25*full_painting_strokes), int(0.75*full_painting_strokes))
+
+                if method == 'random':
+                    # Randomly remove strokes to get the start image
+                    start_painting = remove_strokes_randomly(copy.deepcopy(painting), 
+                                                            partial_painting_strokes, full_painting_strokes)
+                elif method == 'salience':
+                    # Remove strokes by region
+                    start_painting, attn, salient = remove_strokes_by_region(copy.deepcopy(painting), 
+                                                            target_img, datum["TEXT"])
+                    attn_path = os.path.join(output_dir, 'id{}_{}_attn.png'.format(len(data_dict), 
+                                                                            full_painting_strokes))
+                    save_image(attn[None,None].float().repeat((1,3,1,1)), attn_path)
+                    salience_path = os.path.join(output_dir, 'id{}_{}_salience.png'.format(len(data_dict), 
+                                                                            full_painting_strokes))
+                    save_image(salient[None,None].float().repeat((1,3,1,1)), salience_path)
                     
-                    final_img_path = os.path.join(output_dir, 'id{}_{}strokes.png'.format(len(data_dict), opt.max_strokes_added))
-                    final_img_rel_path = os.path.join(output_rel_dir, 'id{}_{}strokes.png'.format(len(data_dict), opt.max_strokes_added))
-                    save_image(final_painting[:,:3],final_img_path)
+                elif method == 'not_salience':
+                    # Remove strokes by region
+                    start_painting, attn, salient = remove_strokes_by_region(copy.deepcopy(painting), 
+                                                            target_img, datum["TEXT"], keep_important=True)
+                elif method == 'object':
+                    start_painting, mask_img, boolean_mask = remove_strokes_by_object(copy.deepcopy(painting), 
+                                                            target_img)
+                    mask_path = os.path.join(output_dir, 'id{}_{}_mask.png'.format(len(data_dict), 
+                                                                            full_painting_strokes))
+                    Image.fromarray((mask_img*254).astype(np.uint8)).save(mask_path)
+                    boolean_mask_path = os.path.join(output_dir, 'id{}_{}_bool_obj_mask.png'.format(len(data_dict), 
+                                                                            full_painting_strokes))
+                    boolean_mask = boolean_mask[0].cpu().numpy().transpose(1,2,0)
+                    Image.fromarray((boolean_mask*254).astype(np.uint8)).save(boolean_mask_path)
+                elif method == 'all':
+                    start_painting = painting.background_img
+                else:
+                    print("Not sure which removal method you mean")
+                    1/0
 
-                    if method == 'random':
-                        # Randomly remove strokes to get the start image
-                        start_painting = remove_strokes_randomly(copy.deepcopy(painting), 
-                                                                opt.min_strokes_added, opt.max_strokes_added)
-                    elif method == 'salience':
-                        # Remove strokes by region
-                        start_painting, attn, salient = remove_strokes_by_region(copy.deepcopy(painting), 
-                                                                target_img, datum["TEXT"])
-                        attn_path = os.path.join(output_dir, 'id{}_{}_attn.png'.format(len(data_dict), 
-                                                                                opt.max_strokes_added))
-                        save_image(attn[None,None].float().repeat((1,3,1,1)), attn_path)
-                        salience_path = os.path.join(output_dir, 'id{}_{}_salience.png'.format(len(data_dict), 
-                                                                                opt.max_strokes_added))
-                        save_image(salient[None,None].float().repeat((1,3,1,1)), salience_path)
-                        
-                    elif method == 'not_salience':
-                        # Remove strokes by region
-                        start_painting, attn, salient = remove_strokes_by_region(copy.deepcopy(painting), 
-                                                                target_img, datum["TEXT"], keep_important=True)
-                    elif method == 'object':
-                        start_painting, mask_img, boolean_mask = remove_strokes_by_object(copy.deepcopy(painting), 
-                                                                target_img)
-                        mask_path = os.path.join(output_dir, 'id{}_{}_mask.png'.format(len(data_dict), 
-                                                                                opt.max_strokes_added))
-                        Image.fromarray((mask_img*254).astype(np.uint8)).save(mask_path)
-                        boolean_mask_path = os.path.join(output_dir, 'id{}_{}_bool_obj_mask.png'.format(len(data_dict), 
-                                                                                opt.max_strokes_added))
-                        boolean_mask = boolean_mask[0].cpu().numpy().transpose(1,2,0)
-                        Image.fromarray((boolean_mask*254).astype(np.uint8)).save(boolean_mask_path)
-                    elif method == 'all':
-                        start_painting = painting.background_img
-                    else:
-                        print("Not sure which removal method you mean")
-                        1/0
+                # Don't save if the start painting is too similar to final painting
+                diff = torch.mean(torch.abs(transforms.Resize((256,256), antialias=True)(start_painting[:,:3]) \
+                            - transforms.Resize((256,256), antialias=True)(final_painting[:,:3])))
+                # print(diff)
+                # if diff < 0.025:
+                #     # print('not different enough')
+                #     continue
 
-                    # Don't save if the start painting is too similar to final painting
-                    diff = torch.mean(torch.abs(transforms.Resize((256,256), antialias=True)(start_painting[:,:3]) \
-                                - transforms.Resize((256,256), antialias=True)(final_painting[:,:3])))
-                    # print(diff)
-                    # if diff < 0.025:
-                    #     # print('not different enough')
-                    #     continue
+                start_img_path = os.path.join(output_dir, 'id{}_start.png'.format(len(data_dict)))
+                start_img_rel_path = os.path.join(output_rel_dir, 'id{}_start.png'.format(len(data_dict)))
+                save_image(start_painting[:,:3],start_img_path)
 
-                    start_img_path = os.path.join(output_dir, 'id{}_start.png'.format(len(data_dict)))
-                    start_img_rel_path = os.path.join(output_rel_dir, 'id{}_start.png'.format(len(data_dict)))
-                    save_image(start_painting[:,:3],start_img_path)
+                d = {'id':len(data_dict),
+                        'num_strokes_added':full_painting_strokes-partial_painting_strokes,
+                        'num_prev_strokes':partial_painting_strokes,
+                        'start_img':start_img_rel_path,
+                        'final_img':final_img_rel_path,
+                        'target_img':target_img_rel_path,
+                        'method':method,
+                    #  'text':datum['text'],#sketches
+                        'text':datum['TEXT'],
+                        'photo_to_sketch_diff': diff.item(),
+                        'clip_score':cs,
+                        'dataset_info':datum_no_img}
 
-                    d = {'id':len(data_dict),
-                            'num_strokes_added':opt.max_strokes_added-opt.min_strokes_added,
-                            'num_prev_strokes':opt.min_strokes_added,
-                            'start_img':start_img_rel_path,
-                            'final_img':final_img_rel_path,
-                            'target_img':target_img_rel_path,
-                            'method':method,
-                        #  'text':datum['text'],#sketches
-                            'text':datum['TEXT'],
-                            'photo_to_sketch_diff': diff.item(),
-                            'clip_score':cs,
-                            'dataset_info':datum_no_img}
+                # current_canvas = p.detach()
+                # start_img_path = final_img_path
 
-                    # current_canvas = p.detach()
-                    # start_img_path = final_img_path
+                current_canvas = final_painting.detach()
+                current_canvas = transforms.Resize((h,w), antialias=True)(current_canvas)
 
-                    current_canvas = final_painting.detach()
-                    current_canvas = transforms.Resize((h,w), antialias=True)(current_canvas)
+                data_dict.append(d)
 
-                    data_dict.append(d)
-
-                    if os.path.exists(data_dict_fn):
-                        shutil.copyfile(data_dict_fn,
-                                    os.path.join(opt.output_parent_dir, 'data_dict_saved.pkl'))
-                                        
-                    with open(data_dict_fn,'wb') as f:
-                        pickle.dump(data_dict, f)
-                except Exception as e:
-                    print('Exception', e)
-                    continue
+                if os.path.exists(data_dict_fn):
+                    shutil.copyfile(data_dict_fn,
+                                os.path.join(opt.output_parent_dir, 'data_dict_saved.pkl'))
+                                    
+                with open(data_dict_fn,'wb') as f:
+                    pickle.dump(data_dict, f)
+            except Exception as e:
+                print('Exception', e)
+                continue
         
