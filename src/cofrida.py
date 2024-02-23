@@ -1,6 +1,4 @@
-
-
-
+import os
 import numpy as np
 import torch
 import torch.utils.checkpoint
@@ -10,9 +8,7 @@ from transformers import AutoTokenizer, PretrainedConfig
 
 from diffusers import (
     AutoencoderKL,
-    ControlNetModel,
     DDPMScheduler,
-    # StableDiffusionControlNetPipeline,
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
@@ -59,39 +55,21 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
     else:
         raise ValueError(f"{model_class} is not supported.")
 
-def get_instruct_pix2pix_model(instruct_pix2pix_path, original_model_name_or_path="timbrooks/instruct-pix2pix", 
+def get_instruct_pix2pix_model(lora_weights_path, original_model_name_or_path="timbrooks/instruct-pix2pix", 
                                device="cuda", weight_dtype=torch.float16):
-    tokenizer = AutoTokenizer.from_pretrained(
-        original_model_name_or_path,
-        subfolder="tokenizer",
-        # revision=args.revision,
-        use_fast=False,
-    )
-
-    # import correct text encoder class
-    text_encoder_cls = import_model_class_from_model_name_or_path(original_model_name_or_path)
-
-    # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(original_model_name_or_path, subfolder="scheduler")
-    text_encoder = text_encoder_cls.from_pretrained(
-        original_model_name_or_path, subfolder="text_encoder"
-    )
-    vae = AutoencoderKL.from_pretrained(original_model_name_or_path, subfolder="vae")
-    unet = UNet2DConditionModel.from_pretrained(
-        instruct_pix2pix_path, subfolder="unet", in_channels=8, out_channels=4,
-    )
-    unet.register_to_config(in_channels=8)
-
+    '''
+        args:
+            lora_weights_path : Either path to local file (parent dir) 
+                or Huggingface location (e.g., skeeterman/CoFRIDA-Sharpie)
+    '''
+    # Assuming LoRA was used
     pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-        original_model_name_or_path,
-        unet=unet,
-        text_encoder=text_encoder,
-        vae=vae,
-        # revision=args.revision,
-        torch_dtype=weight_dtype,
-        safety_checker=None,
-    )
-    pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
+                    original_model_name_or_path,
+                    torch_dtype=weight_dtype,
+                    safety_checker=None,
+                )
+    pipeline.unet.load_attn_procs(lora_weights_path)
+
     pipeline = pipeline.to(device)
     # pipeline.set_progress_bar_config(disable=True)
     return pipeline
