@@ -8,6 +8,7 @@
 
 
 import datetime
+import random
 import sys
 import cv2
 from matplotlib import pyplot as plt
@@ -18,7 +19,7 @@ from tqdm import tqdm
 from PIL import Image
 
 from cofrida import get_instruct_pix2pix_model
-from paint_utils3 import canvas_to_global_coordinates, format_img, get_colors, nearest_color, random_init_painting, save_colors, show_img
+from paint_utils3 import canvas_to_global_coordinates, format_img, get_colors, initialize_painting, nearest_color, random_init_painting, save_colors, show_img
 from painting_optimization import optimize_painting
 
 from painter import Painter
@@ -50,6 +51,7 @@ def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
                     # generator=generator,
                     num_images_per_prompt=1,
                     # image_guidance_scale=2.5,#1.5 is default
+                    image_guidance_scale = 1.5 if op == 0 else random.uniform(1.01, 2.5)
                 ).images[0])
         fig, ax = plt.subplots(1,n_ai_options, figsize=(2*n_ai_options,2))
         for j in range(n_ai_options):
@@ -80,10 +82,10 @@ if __name__ == '__main__':
 
 
     cofrida_model = get_instruct_pix2pix_model(
-                instruct_pix2pix_path=opt.cofrida_model, 
+                lora_weights_path=opt.cofrida_model, 
                 device=device)
     cofrida_model.set_progress_bar_config(disable=True)
-    n_ai_options = 4
+    n_ai_options = 6
 
     date_and_time = datetime.datetime.now()
     run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
@@ -91,13 +93,7 @@ if __name__ == '__main__':
     opt.writer.add_text('args', str(sys.argv), 0)
 
     painter = Painter(opt)
-    opt = painter.opt # This necessary?
-
-    # if not opt.simulate:
-    #     try:
-    #         input('Make sure blank canvas is exposed. Press enter when you are ready for the paint planning to start. Use tensorboard to see which colors to paint.')
-    #     except SyntaxError:
-    #         pass
+    opt = painter.opt 
 
     painter.to_neutral()
 
@@ -115,29 +111,28 @@ if __name__ == '__main__':
                 n_colors=opt.n_colors)
         opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(color_palette), 0)
 
-    current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device) / 255.
-
     for i in range(9): # Max number of turns to take
 
         ##################################
         ########## Hooman Turn ###########
         ##################################
         
-        current_canvas = painter.camera.get_canvas_tensor(h=h_render, w=w_render) / 255.
+        current_canvas = painter.camera.get_canvas_tensor() / 255.
         opt.writer.add_image('images/{}_0_canvas_start'.format(i), format_img(current_canvas), 0)
+        current_canvas = Resize((h_render,w_render), antialias=True)(current_canvas)
 
         try:
             input('\nFeel free to draw, then press enter when done.')
         except SyntaxError:
             pass
 
-        current_canvas = painter.camera.get_canvas_tensor(h=h_render, w=w_render) / 255.
+        current_canvas = painter.camera.get_canvas_tensor() / 255.
         opt.writer.add_image('images/{}_1_canvas_after_human'.format(i), format_img(current_canvas), 0)
+        current_canvas = Resize((h_render,w_render), antialias=True)(current_canvas)
 
         #################################
         ########## Robot Turn ###########
         #################################
-
 
         curr_canvas = painter.camera.get_canvas()
         # dark_inds = curr_canvas.mean(axis=2) < 0.81*255
@@ -148,11 +143,16 @@ if __name__ == '__main__':
         # Let the user generate and choose cofrida images to draw
         text_prompt, target_img = get_cofrida_image_to_draw(cofrida_model, 
                                                             curr_canvas_pil, n_ai_options)
-        target_img = Resize((h_render, w_render), antialias=True)(target_img)
         opt.writer.add_image('images/{}_2_target_from_cofrida_{}'.format(i, text_prompt), format_img(target_img), 0)
+        target_img = Resize((h_render, w_render), antialias=True)(target_img)
 
+        # Ask for how many strokes to use
+        num_strokes = int(input("How many strokes to use in this plan?\n:"))
+        
         # Generate initial (random plan)
-        painting = random_init_painting(opt, current_canvas.to(device), opt.num_strokes, ink=opt.ink).to(device)
+        # painting = random_init_painting(opt, current_canvas.to(device), num_strokes, ink=opt.ink).to(device)
+        painting = initialize_painting(opt, num_strokes, target_img, 
+                                       current_canvas.to(device), opt.ink, device=device)
         color_palette = None #TODO: support input fixed palette
 
         # Set variables for planning algorithm
@@ -162,14 +162,15 @@ if __name__ == '__main__':
         
         # Get the plan
         painting, _ = optimize_painting(opt, painting, 
-                    optim_iter=opt.optim_iter, color_palette=color_palette)
+                    optim_iter=opt.optim_iter, color_palette=color_palette,
+                    log_title='{}_3_plan'.format(i))
         
         # Warn the user plan is ready. Get paint ready.
         if not painter.opt.simulate:
             show_img(painter.camera.get_canvas()/255., 
-                    title="Initial plan complete. Ready to start painting. \
-                        Ensure mixed paint is provided and then exit this to \
-                        start painting.")
+                    title="Initial plan complete. Ready to start painting."
+                        + "Ensure mixed paint is provided and then exit this to "
+                        + "start painting.")
 
         # Execute plan
         for stroke_ind in tqdm(range(len(painting)), desc="Executing plan"):
@@ -192,6 +193,7 @@ if __name__ == '__main__':
 
             # Convert the canvas proportion coordinates to meters from robot
             x, y = stroke.transformation.xt.item()*0.5+0.5, stroke.transformation.yt.item()*0.5+0.5
+            y = 1-y
             x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
             x_glob, y_glob,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
@@ -200,8 +202,9 @@ if __name__ == '__main__':
 
         painter.to_neutral()
 
-        current_canvas = painter.camera.get_canvas_tensor(h=h_render, w=w_render) / 255.
+        current_canvas = painter.camera.get_canvas_tensor() / 255.
         opt.writer.add_image('images/{}_4_canvas_after_drawing'.format(i), format_img(current_canvas), 0)
+        current_canvas = Resize((h_render, w_render), antialias=True)(current_canvas)
     
     if not painter.opt.ink:
         painter.clean_paint_brush()
