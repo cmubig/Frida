@@ -62,7 +62,12 @@ def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
         if n_ai_options > 1:
             # matplotlib.use('TkAgg')
             plt.show()
-            target_img_ind = int(input("Type the number of the option you liked most? Type -1 if you don't like any and want more options.\n:"))
+            while(True):
+                try:
+                    target_img_ind = int(input("Type the number of the option you liked most? Type -1 if you don't like any and want more options.\n:"))
+                    break
+                except:
+                    print("Was that a number? Make sure you type the number of the image you liked. Type -1 if you want to generate alternatives.")
             if target_img_ind < 0:
                 continue
             target_img = target_imgs[target_img_ind]

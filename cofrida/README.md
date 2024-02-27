@@ -91,6 +91,9 @@ tensorboard --logdir [--output_dir from train_instruct_pix2pix.py]/logs
 
 ### Run CoFRIDA w/ Robot
 
+Run the `codraw.py` script with the trained Instruct-Pix2Pix model.
+
+Use `--cofrida_model /path/to/output_dir/unet` if trained all parameters. If you used LoRA, then it is `--cofrida_model /path/to/output_dir`
 ```
 cd Frida/src/
 
