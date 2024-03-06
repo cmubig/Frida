@@ -121,8 +121,8 @@ def sort_brush_strokes_by_location(painting, bin_size=3000):
     from scipy.spatial import distance_matrix
     points = np.zeros((2, len(painting.brush_strokes)))
     for i in range(len(painting.brush_strokes)):
-        points[0,i] = painting.brush_strokes[i].transformation.xt.detach().cpu().numpy()
-        points[1,i] = painting.brush_strokes[i].transformation.yt.detach().cpu().numpy()
+        points[0,i] = painting.brush_strokes[i].xt.detach().cpu().numpy()
+        points[1,i] = painting.brush_strokes[i].yt.detach().cpu().numpy()
     d_mat = distance_matrix(points.T, points.T)
     
     from tsp_solver.greedy import solve_tsp
@@ -270,11 +270,11 @@ def extract_paint_color(canvas_before, canvas_after, stroke_bool_map):
 def random_init_painting(opt, background_img, n_strokes, ink=False, device='cuda'):
     gridded_brush_strokes = []
 
-    xys = [(x,y) for x in torch.linspace(-.85,.85,int(n_strokes**0.5)) \
-                 for y in torch.linspace(-.85,.85,int(n_strokes**0.5))]
+    xys = [(x,y) for x in torch.linspace(0.2,.8,int(n_strokes**0.5)) \
+                 for y in torch.linspace(0.2,.8,int(n_strokes**0.5))]
     if ink:
-        xys = [(x,y) for x in torch.linspace(-.5,.5,int(n_strokes**0.5)) \
-                    for y in torch.linspace(-.5,.5,int(n_strokes**0.5))]
+        xys = [(x,y) for x in torch.linspace(0.25,.75,int(n_strokes**0.5)) \
+                     for y in torch.linspace(0.25,.75,int(n_strokes**0.5))]
     random.shuffle(xys)
     for x,y in xys:
         # Random brush stroke

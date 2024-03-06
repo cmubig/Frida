@@ -72,16 +72,16 @@ class BezierRenderer(nn.Module):
         self.size_x = size_x # grid dimensions (size_x x size_y)
         self.size_y = size_y
         self.P = num_pts
-
-        idxs_x = torch.arange(size_x)
-        idxs_y = torch.arange(size_y)
-        x_coords, y_coords = torch.meshgrid(idxs_y, idxs_x, indexing='ij') # G x G
-        self.grid_coords = torch.stack((x_coords, y_coords), dim=2).reshape(1,size_y, size_x,2) # 1 x G x G x 2
+        
+        self.set_render_size(size_x, size_y)
 
         self.weights = nn.Parameter(torch.eye(2)) # multiply each point in trajectory by this
         self.biases = nn.Parameter(torch.zeros(2)) # add this to each point
         
         self.thick_mult = nn.Parameter(torch.ones((1)))
+        # self.thick_bias = nn.Parameter(torch.zeros((1)))
+        # self.thick_mult = nn.Parameter(torch.ones((1))*0.3)
+        self.thick_bias = nn.Parameter(torch.zeros((1))+0.1)
         self.dark_exp = nn.Parameter(torch.ones((1)))
 
         # self.nc = self.P
@@ -97,17 +97,26 @@ class BezierRenderer(nn.Module):
 
         self.conv = MatMulLayer(size=(1,self.P-1,size_y,size_x), layers=1)
 
+    def set_render_size(self, size_x, size_y):
+        '''
+        Set the internal dimensions that strokes should be rendered at
+        '''
+        self.size_x = size_x 
+        self.size_y = size_y
+        idxs_x = torch.arange(size_x) / size_x
+        idxs_y = torch.arange(size_y) / size_y
+        x_coords, y_coords = torch.meshgrid(idxs_y, idxs_x, indexing='ij') # G x G
+        self.grid_coords = torch.stack((x_coords, y_coords), dim=2).reshape(1,size_y, size_x,2) # 1 x G x G x 2
+
     def forward(self, trajectories, thicknesses, use_conv):        
         # trajectories: (n, 2, self.P)
         # thicknesses: (n, 1, self.P)
         strokes = []
         for i in range(len(trajectories)):
             # Expand num_ctrl_pts to self.P (smooths the curve)
-            stroke = self.curve_to_stroke(trajectories[i]) # (P, 2)
-            stroke[:,0] *= self.size_y
-            stroke[:,1] *= self.size_x
+            stroke = self.curve_to_stroke(trajectories[i]) # (P, 2) range:[0,1]
 
-            thickness = thicknesses[i]*2 + 0.5
+            thickness = (thicknesses[i]*2 + 0.5) / 64
             # Stroke trajectory to bitmap
             stroke = self.render_stroke(stroke, thickness, use_conv=use_conv)
             strokes.append(stroke)
@@ -139,7 +148,8 @@ class BezierRenderer(nn.Module):
         
         # Convert the fractions into thickness values
         thickness = start_thickness * (1 - fraction) + end_thickness * fraction # (P-1, size_y, size_x)
-        thickness = thickness * self.thick_mult
+        thickness = thickness * self.thick_mult + self.thick_bias#torch.clamp(self.thick_bias, min=0.0, max=1.0)
+        thickness = torch.clamp(thickness, min=1e-8)
 
         # Compute darkness for each line segment
         darkness = torch.clamp((thickness - distances)/(thickness), min=0.0, max=1.0) # (P-1, size_y, size_x)
@@ -149,6 +159,7 @@ class BezierRenderer(nn.Module):
         import warnings
         from brush_stroke import rigid_body_transform, rigid_body_transforms
         
+        use_conv = False
         if use_conv:
             # Compute the angle the stroke segment is tilted at
             angles = torch.atan2((stroke[1:,0]-stroke[:-1,0]), (stroke[1:,1] - stroke[:-1,1]))
@@ -238,46 +249,54 @@ def process_img(img):
 
 
 class StrokeParametersToImage(nn.Module):
-    def __init__(self, output_dim_meters=None, margin_props=None):
+    def __init__(self, output_dim_meters=None):
         super(StrokeParametersToImage, self).__init__()
-        self.size_x = 128#256
-        self.size_y = 128#256
+        self.size_x = 200#128#256
+        self.size_y = 200#128#256
 
-        if output_dim_meters is not None and margin_props is not None:
+        if output_dim_meters is not None:
             # input parameters are in meters. Translate these to proportions for the renderer.
-            # Also account for the starting position of the stroke
-            self.x_m = 1.0 / output_dim_meters[1]
-            self.x_b = margin_props[1]
-            self.y_m = -1.0 / output_dim_meters[0]
-            self.y_b = margin_props[0]
+            # Also account for the starting position of the stroke (Which should be 0,0)
+            self.x_m = 1.0#1.0 / output_dim_meters[1]
+            self.y_m = 1.0#-1.0 / output_dim_meters[0]
 
             self.x_m = nn.Parameter(torch.tensor(self.x_m))
-            self.x_b = nn.Parameter(torch.tensor(self.x_b))
             self.y_m = nn.Parameter(torch.tensor(self.y_m))
-            self.y_b = nn.Parameter(torch.tensor(self.y_b))
         else:
             self.x_m = nn.Parameter(torch.tensor(1.0))
-            self.x_b = nn.Parameter(torch.tensor(0.0))
             self.y_m = nn.Parameter(torch.tensor(1.0))
-            self.y_b = nn.Parameter(torch.tensor(0.0))
+
+        self.x_b = nn.Parameter(torch.tensor(0.0))
+        self.y_b = nn.Parameter(torch.tensor(0.0))
         
         self.renderer = BezierRenderer(size_x=self.size_x, 
                                        size_y=self.size_y,
                                        num_pts=32)
 
-        # self.thick_mult = nn.Parameter(self.renderer.thick_mult)
-        # self.renderer.thick_mult = self.thick_mult
-        # self.dark_exp = nn.Parameter(self.renderer.dark_exp)
-        # self.renderer.dark_exp = self.dark_exp
+    def get_rotated_trajectory(self, rotation, trajectory):
+        '''
+        Rotate a trajectory some specified rotation (in radian).
+        Rotates around (0,0) 
+        args:
+            rotation : torch.Tensor([radians])
+            trajectory : torch.Tensor((1,n_points,2)) y=dim_0
+        '''
+        x, y = trajectory[0,:,1], trajectory[0,:,0]
 
-        # self.conv = self.renderer.conv
+        x_rot = x*torch.cos(rotation) + y*torch.sin(rotation)
+        y_rot = -1*x*torch.sin(rotation) + y*torch.cos(rotation)
 
-        # self.weights = nn.Parameter(self.renderer.weights)
-        # self.renderer.weights = self.weights
-        # self.biases = nn.Parameter(self.renderer.biases)
-        # self.renderer.biases = self.biases
+        return torch.stack([y_rot, x_rot], dim=1).unsqueeze(0)
 
-    def forward(self, parameter, use_conv):
+    def forward(self, parameter, x_start, y_start, theta, use_conv):
+        '''
+        args:
+            parameter : (batch, num_pts, 3)
+            x_start : where to start stroke. range [0,1]
+            y_start : where to start stroke. range [0,1]
+            theta : how much to rotate stroke. Radians.
+            use_conv : 
+        '''
         # parameter: (batch, num_pts, 3)
         traj = parameter[:,:,0:2] # (batch, num_pts, 2)
         thicknesses = parameter[:,:,2:3] # (batch, num_pts, 1)
@@ -285,11 +304,19 @@ class StrokeParametersToImage(nn.Module):
         # x,y to y,x
         traj = torch.flip(traj, dims=(2,)) 
 
+        # To be consistent with the way BrushStroke.execute runs trajectories
+        traj[:,:,0] = -1.0*traj[:,:,0] # y = -y yeah weird
+
+        # Rotate before converting to proportions (errors when canvas isn't square)
+        traj = self.get_rotated_trajectory(theta, traj)
+        
         # traj from meters to proportion
         traj[:,:,0] *= self.y_m
-        traj[:,:,0] += self.y_b
         traj[:,:,1] *= self.x_m 
-        traj[:,:,1] += self.x_b
+
+        # From traj starting  x=0,y=0 to  x=x_start, y=y_start
+        traj[:,:,0] += y_start
+        traj[:,:,1] += x_start
 
         # batch, ctrl_point, 2 -> batch, 2, ctrl_points
         traj = torch.permute(traj, (0,2,1))
@@ -340,11 +367,6 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     torch.random.manual_seed(0)
     np.random.seed(0)
 
-    # Size to render for training
-    h_render_pix, w_render_pix = 256, 256
-    # Size to render for logging to tensorboard
-    h_log, w_log = 256, 256
-    res_log = Resize((h_log, w_log), bicubic, antialias=True)
 
     # Get lists of saved data files
     canvases_before_fns = glob.glob(os.path.join(opt.cache_dir, 'stroke_library', 'canvases_before_*.npy'))
@@ -355,6 +377,10 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     canvases_before_fns = sorted(canvases_before_fns)
     canvases_after_fns = sorted(canvases_after_fns)
     brush_strokes_fns = sorted(brush_strokes_fns)
+
+    # canvases_before_fns = canvases_before_fns[:5]
+    # canvases_after_fns = canvases_after_fns[:5]
+    # brush_strokes_fns = brush_strokes_fns[:5]
 
     # Load data
     canvases_before = None
@@ -374,13 +400,19 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
         bs = pickle.load(open(brush_strokes_fn,'rb'))
         brush_strokes = bs if brush_strokes is None else np.concatenate([brush_strokes, bs]) 
     
-    # Margins around the starting point of the stroke
-    left_margin_prop = 0.1
-    top_margin_prop = 0.5
-
     canvases_before = torch.from_numpy(canvases_before).float().nan_to_num()
     canvases_after = torch.from_numpy(canvases_after).float().nan_to_num()
     
+
+    # Size to render for training
+    render_height_pix = 175
+    w_h_ratio = canvases_before.shape[2] / canvases_before.shape[1]
+    h_render_pix, w_render_pix = render_height_pix, int(render_height_pix*w_h_ratio)
+
+    # Size to render for logging to tensorboard
+    h_log, w_log = h_render_pix, w_render_pix
+    res_log = Resize((h_log, w_log), bicubic, antialias=True)
+
     n = len(canvases_before)
 
     # Randomize
@@ -421,13 +453,17 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     print('{} training strokes. {} validation strokes'.format(len(train_canvases_before), len(val_canvases_before)))
 
 
-    trans = StrokeParametersToImage(output_dim_meters=(opt.STROKE_LIBRARY_CANVAS_HEIGHT_M, opt.STROKE_LIBRARY_CANVAS_WIDTH_M),
-                                    margin_props=(top_margin_prop, left_margin_prop)) 
-    # trans.requires_grad_(True)
+    trans = StrokeParametersToImage(output_dim_meters=(opt.STROKE_LIBRARY_CANVAS_HEIGHT_M, opt.STROKE_LIBRARY_CANVAS_WIDTH_M))
     trans = trans.to(device)
+    
+    # Need to render at the correct ratio
+    # trans.renderer.set_render_size(size_x=w_render_pix, size_y=h_render_pix)
+    # trans.renderer.set_render_size(size_x=h_render_pix, size_y=h_render_pix)
+    
     print('# parameters in Param2Image model:', get_n_params(trans))
     optim = torch.optim.Adam(trans.parameters(), lr=1e-3)
-    
+
+
     # Keep track of the best model (judged by validation error)
     best_model = copy.deepcopy(trans)
     best_val_loss = 99999
@@ -450,25 +486,18 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
             canvas_before = train_canvases_before[batch_it:batch_it+1]
             canvas_after = train_canvases_after[batch_it:batch_it+1]
 
-            full_param = bs.get_path().unsqueeze(0)
-            full_param.retain_grad()
-            stroke = trans(full_param, use_conv=train_conv).unsqueeze(0)
+            isolated_stroke = bs(h=h_render_pix, w=w_render_pix, param2img=trans, use_conv=train_conv)
 
             # Pad 1 or two to make it fit
-            if stroke.shape[2] != h_render_pix or stroke.shape[3] != w_render_pix:
-                stroke = transforms.Resize((h_render_pix, w_render_pix), bicubic, antialias=True)(stroke)
+            if isolated_stroke.shape[2] != h_render_pix or isolated_stroke.shape[3] != w_render_pix:
+                isolated_stroke = transforms.Resize((h_render_pix, w_render_pix), bicubic, antialias=True)(isolated_stroke)
 
-            x = bs.transformation(stroke)
-            x = torch.cat([x,x,x,x], dim=1)
-
-            # Color change
-            isolated_stroke = torch.cat((x[:,:3]*0 + bs.color_transform[None,:,None,None], x[:,3:]), dim=1)
-            # isolated_stroke = bs(h=h_render_pix, w=w_render_pix, param2img=trans, use_conv=train_conv)
             predicted_canvas = canvas_before[:,:3] * (1 - isolated_stroke[:,3:]) \
                 + isolated_stroke[:,3:] * isolated_stroke[:,:3]
+            
 
             loss += loss_fcn(predicted_canvas, canvas_after, canvas_before,
-                                         fnl_weight=max(0, 0.5 * ((600-it)/600)))
+                                         fnl_weight=max(0, 0.5 * ((200-it)/200)))
             ep_loss += loss.item()
 
             if (batch_it+1) % batch_size == 0 or batch_it == len(train_brush_strokes)-1:
@@ -492,8 +521,15 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
                     print('Nan')
                     break
                 loss = 0
-        if it%10 == 0:
+        if it%20 == 0:
             opt.writer.add_scalar('loss/train_loss_stroke_model', ep_loss/len(train_brush_strokes), it)
+            
+            for name, param in trans.named_parameters():
+                try:
+                    val = float(param)
+                    opt.writer.add_scalar('parameter/{}'.format(name), val, it)
+                except:
+                    pass
 
         # Log images
         if it%50 == 0:

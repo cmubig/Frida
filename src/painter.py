@@ -554,7 +554,7 @@ class Painter():
         if not os.path.exists(lib_dir): os.mkdir(lib_dir)
 
         # Figure out how many strokes can be made on the given canvas size
-        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT_M/(0.15*self.opt.MAX_STROKE_LENGTH)))
+        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT_M/(0.25*self.opt.MAX_STROKE_LENGTH)))
 
         brush_strokes = [] # list of BrushStroke
         canvases_before = [] # Photos of canvases without stroke
@@ -591,11 +591,11 @@ class Painter():
                     y_offset_pix = y_offset_pix_og
 
                     with torch.no_grad(): # Save other variables with brush stroke for training
-                        random_stroke.transformation.xt *= 0
-                        random_stroke.transformation.xt += (x_offset_pix / w) * 2  - 1
-                        random_stroke.transformation.yt *= 0
-                        random_stroke.transformation.yt += (y_offset_pix / h) * 2  - 1
-                        random_stroke.transformation.a *= 0
+                        random_stroke.xt *= 0
+                        random_stroke.xt += (x_offset_pix / w)
+                        random_stroke.yt *= 0
+                        random_stroke.yt += (y_offset_pix / h)
+                        random_stroke.a *= 0
                         
                     x, y = x_offset_pix / w, 1 - (y_offset_pix / h)
                     x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety

@@ -130,59 +130,6 @@ def get_translation_transform(xt, yt):
     A[0,2,2] = 1
     return A
 
-class RigidBodyTransformation(nn.Module):
-    def __init__(self, a, xt, yt):
-        super(RigidBodyTransformation, self).__init__()
-        self.xt = nn.Parameter(torch.ones(1)*xt)
-        self.yt = nn.Parameter(torch.ones(1)*yt)
-        self.a = nn.Parameter(torch.ones(1)*a)
-
-    def forward(self, x):
-        h, w = x.shape[2], x.shape[3]
-        # anchor_x, anchor_y = w/2, h/2
-        left_margin = 0.1 # Start stroke 10% away fromm left side
-        anchor_x, anchor_y = left_margin*w, 0.5*h
-
-        M = rigid_body_transform(self.a[0], 
-                (self.xt[0]+2*(0.5-left_margin))*(w/2), self.yt[0]*(h/2), 
-                anchor_x, anchor_y)
-        with warnings.catch_warnings(): # suppress annoing torchgeometry warning
-            warnings.simplefilter("ignore")
-            return torchgeometry.warp_perspective(x, M, dsize=(h,w))
-        
-    def forward2(self, x):
-        # This is equivalent to forward(), but decouples the rotation and translation.
-        # This is also 30% slower than the other forward()
-        h, w = x.shape[2], x.shape[3]
-        
-        left_margin = 0.1 # Start stroke 10% away fromm left side
-        top_margin = 0.5
-
-        # Must pad x before rotating and translating. 
-        # This to avoid a stroke going off the side of the image after rotating
-        # but before translating 
-        pad_top = max(w-h, 0) # TODO: ASSUMES THAT top_margin==0.5
-        pad_bottom = max(w-h, 0)
-        pad_left = int((1-2*left_margin)*w)
-        pad_right = 0 # TODO ASSUMES THAT left_margin <= 0.5
-        x = T.functional.pad(x, padding=[pad_left, pad_top, pad_right, pad_bottom])
-        
-        h_padded, w_padded = x.shape[2], x.shape[3]
-
-        M_trans = get_translation_transform((self.xt[0]+2*(0.5-left_margin))*(w/2), 
-                                            self.yt[0]*(h/2))
-        
-        with warnings.catch_warnings(): # suppress annoing torchgeometry warning
-            warnings.simplefilter("ignore")
-            # Rotate the stroke about the center (Start of stroke is at center of image)
-            x = rotate(x, angle=torch.rad2deg(self.a[0]))
-
-            # Translate the stroke
-            x = torchgeometry.warp_perspective(x, M_trans, dsize=(h_padded,w_padded))
-
-            # Remove padding
-            x = x[:,:,pad_top:pad_top+h,pad_left:pad_left+w]
-            return x
 class BrushStroke(nn.Module):
     vae = MLP_VAE(32, 16, 32)
     vae.load_state_dict(torch.load("traj_vae/saved_models/model.pt"))
@@ -213,10 +160,12 @@ class BrushStroke(nn.Module):
 
         if color is None: color=(torch.rand(3).to(device)*.4)+0.3
         if a is None: a=(torch.rand(1)*2-1)*3.14
-        if xt is None: xt=(torch.rand(1)*2-1)
-        if yt is None: yt=(torch.rand(1)*2-1)
+        if xt is None: xt=torch.rand(1)
+        if yt is None: yt=torch.rand(1)
 
-        self.transformation = RigidBodyTransformation(a, xt, yt)
+        self.xt = nn.Parameter(torch.ones(1)*xt) # Range [0,1]
+        self.yt = nn.Parameter(torch.ones(1)*yt) # Range [0,1]
+        self.a = nn.Parameter(torch.ones(1)*a) # Range [-2pi,2pi]
         
         if latent is None: 
             latent = torch.randn(1, BrushStroke.vae.latent_dim)
@@ -232,8 +181,9 @@ class BrushStroke(nn.Module):
 
     def forward(self, h, w, param2img, use_conv=True):
         # Do rigid body transformation
-        full_param = self.get_path().unsqueeze(0) # 1 x 32 x 3
-        stroke = param2img(full_param, use_conv=use_conv).unsqueeze(0)
+        full_param = self.get_path(normalize=False).unsqueeze(0) # 1 x 32 x 3
+        
+        stroke = param2img(full_param, self.xt, self.yt, self.a, use_conv=use_conv).unsqueeze(0)
 
         # Pad 1 or two to make it fit
         if stroke.shape[2] != h or stroke.shape[3] != w:
@@ -241,7 +191,7 @@ class BrushStroke(nn.Module):
 
         # from paint_utils3 import show_img
         # show_img(stroke)
-        x = self.transformation(stroke)
+        x = stroke
         # show_img(x)
 
         # Remove stray color from the neural network being sloppy
@@ -260,8 +210,8 @@ class BrushStroke(nn.Module):
         with torch.no_grad():
             stroke.latent.data.clamp(-2.5, 2.5)
 
-            stroke.transformation.xt.data.clamp_(-1.,1.)
-            stroke.transformation.yt.data.clamp_(-1.,1.)
+            stroke.xt.data.clamp_(0,1.)
+            stroke.yt.data.clamp_(0,1.)
 
             #stroke.color_transform.data.clamp_(0.02,0.75)
             if stroke.color_transform.min() < 0.35:
@@ -271,7 +221,7 @@ class BrushStroke(nn.Module):
                 # Well balanced RGB, less constraint
                 stroke.color_transform.data.clamp_(0.02,0.85)
 
-    def get_path(self):
+    def get_path(self, normalize=True):
         if self.is_dot:
             path = torch.zeros((4,4))
             path[:,2] = 0.75
@@ -281,7 +231,8 @@ class BrushStroke(nn.Module):
 
         # Clone the path so that the operation is not in-place (PyTorch quirk; allows gradients to flow through)
         path_clone = path.clone()
-        path_clone[:,0:2] = path[:,0:2] / BrushStroke.vae_max_stroke_length * self.MAX_STROKE_LENGTH
+        if normalize:
+            path_clone[:,0:2] = path[:,0:2] / BrushStroke.vae_max_stroke_length * self.MAX_STROKE_LENGTH
         path_clone[:,2] = path[:,2].clamp(self.MIN_STROKE_Z, 0.95)
         
         return path_clone
@@ -309,8 +260,7 @@ class BrushStroke(nn.Module):
 
         path = BrushStroke.get_rotated_trajectory(rotation, path)
 
-        painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.03, speed=0.4)
-        painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.005, speed=0.1)
+        # painter.move_to(x_start+path[0,0], y_start+path[0,1], painter.Z_CANVAS + 0.03, speed=0.4)
 
         for step in range(len(path)):
             x, y, z = path[step,0], path[step,1], path[step,2]
@@ -329,7 +279,7 @@ class BrushStroke(nn.Module):
             y_next = min(max(painter.opt.Y_CANVAS_MIN, y_next), painter.opt.Y_CANVAS_MAX)
 
             if step == 0: # First point: lower pen down
-                all_positions.append([x_next, y_next, z+0.02])
+                all_positions.append([x_next, y_next, z+0.03])
                 all_orientations.append(q)
                 all_positions.append([x_next, y_next, z+0.005])
                 all_orientations.append(q)
@@ -338,7 +288,7 @@ class BrushStroke(nn.Module):
             if step == len(path)-1: # Last point: raise pen up
                 all_positions.append([x_next, y_next, z+0.01])
                 all_orientations.append(q)
-                all_positions.append([x_next, y_next, z+0.02])
+                all_positions.append([x_next, y_next, z+0.04])
                 all_orientations.append(q)
 
 
@@ -349,7 +299,7 @@ class BrushStroke(nn.Module):
         y_next = y_start+path[-1,1]
         x_next = min(max(painter.opt.X_CANVAS_MIN, x_next), painter.opt.X_CANVAS_MAX) 
         y_next = min(max(painter.opt.Y_CANVAS_MIN, y_next), painter.opt.Y_CANVAS_MAX)
-        painter.move_to(x_next, y_next, painter.Z_CANVAS + 0.04, speed=0.3)
+        # painter.move_to(x_next, y_next, painter.Z_CANVAS + 0.04, speed=0.3)
         # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
 
         return stroke_complete
