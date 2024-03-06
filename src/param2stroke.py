@@ -19,6 +19,8 @@ from torchvision.transforms.functional import affine
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+small_dtype = torch.float16
+
 import matplotlib
 def show_img(img, display_actual_size=True, title=""):
     if type(img) is torch.Tensor:
@@ -57,8 +59,8 @@ class MatMulLayer(nn.Module):
         super(MatMulLayer, self).__init__()
         self.activation = activation()
         self.layers = layers
-        self.weights = torch.nn.Parameter(torch.ones((layers,)+size, dtype=torch.float))
-        self.biases = torch.nn.Parameter(torch.zeros((layers,)+size, dtype=torch.float))
+        self.weights = torch.nn.Parameter(torch.ones((layers,)+size, dtype=small_dtype))
+        self.biases = torch.nn.Parameter(torch.zeros((layers,)+size, dtype=small_dtype))
     def forward(self, x):
         for i in range(self.layers):
             x = x * self.weights[i] + self.biases[i]
@@ -75,13 +77,13 @@ class BezierRenderer(nn.Module):
         
         self.set_render_size(size_x, size_y)
 
-        self.weights = nn.Parameter(torch.eye(2)) # multiply each point in trajectory by this
-        self.biases = nn.Parameter(torch.zeros(2)) # add this to each point
+        self.weights = nn.Parameter(torch.eye(2, dtype=small_dtype)) # multiply each point in trajectory by this
+        self.biases = nn.Parameter(torch.zeros(2, dtype=small_dtype)) # add this to each point
         
-        self.thick_mult = nn.Parameter(torch.ones((1))*0.5)
-        self.thick_bias = nn.Parameter(torch.zeros((1))+0.1)
-        self.dark_exp = nn.Parameter(torch.ones((1)))
-        self.dark_non_lin_weight = nn.Parameter(torch.ones((1))*0.5)
+        self.thick_mult = nn.Parameter(torch.ones((1), dtype=small_dtype)*0.5)
+        self.thick_bias = nn.Parameter(torch.zeros((1), dtype=small_dtype)+0.1)
+        self.dark_exp = nn.Parameter(torch.ones((1), dtype=small_dtype))
+        self.dark_non_lin_weight = nn.Parameter(torch.ones((1), dtype=small_dtype)*0.5)
 
         # self.nc = self.P
         # self.conv = nn.Sequential(
@@ -102,8 +104,8 @@ class BezierRenderer(nn.Module):
         '''
         self.size_x = size_x 
         self.size_y = size_y
-        idxs_x = torch.arange(size_x) / size_x
-        idxs_y = torch.arange(size_y) / size_y
+        idxs_x = torch.arange(size_x, dtype=small_dtype) / size_x
+        idxs_y = torch.arange(size_y, dtype=small_dtype) / size_y
         x_coords, y_coords = torch.meshgrid(idxs_y, idxs_x, indexing='ij') # G x G
         self.grid_coords = torch.stack((x_coords, y_coords), dim=2).reshape(1,size_y, size_x,2) # 1 x G x G x 2
 
@@ -111,19 +113,43 @@ class BezierRenderer(nn.Module):
         # trajectories: (n, 2, self.P)
         # thicknesses: (n, 1, self.P)
         strokes = []
+        if torch.isnan(trajectories).any():
+            print('found Nan trajectories before dtype')
+        if torch.isinf(trajectories).any():
+            print('found inf trajectories before dtype')
+        trajectories = trajectories#.type(small_dtype)
+        if torch.isnan(trajectories).any():
+            print('found Nan trajectories')
+        if torch.isinf(trajectories).any():
+            print('found inf trajectories')
         for i in range(len(trajectories)):
             # Expand num_ctrl_pts to self.P (smooths the curve)
+            print('i', i)
             stroke = self.curve_to_stroke(trajectories[i]) # (P, 2) range:[0,1]
-
+            print('stroke type', stroke.dtype)
+            if torch.isnan(stroke).any():
+                print('found Nan stroke 000' )
+            if torch.isinf(stroke).any():
+                print('found inf stroke 000' )
             thickness = (thicknesses[i]*2 + 0.5) / 64
             # Stroke trajectory to bitmap
             stroke = self.render_stroke(stroke, thickness, use_conv=use_conv)
             strokes.append(stroke)
         strokes = torch.stack(strokes, dim=0)
-        return strokes
+        return strokes#.float()
 
     def curve_to_stroke(self, curve):
         # curve: (2, self.P)
+        # print(self.weights)
+        c_to_s = torch.matmul(self.weights, curve)
+        if torch.isnan(c_to_s).any():
+            print('found nan c_to_s stroke' )
+            print(c_to_s)
+        if torch.isinf(c_to_s).any():
+            print('found inf c_to_s stroke' )
+            print(self.weights)
+            print(curve)
+            print(c_to_s)
         return torch.matmul(self.weights, curve).T + self.biases # (self.P, 2)
 
     def render_stroke(self, stroke, t, use_conv):
@@ -137,7 +163,26 @@ class BezierRenderer(nn.Module):
         ws = torch.tile(ws, (1, self.size_y, self.size_x, 1)) # (P-1, size_y, size_x, 2)
 
         coords = torch.tile(self.grid_coords, (n-1,1,1,1)).to(ws.device) # (P-1, size_y, size_x, 2)
-
+        if torch.isnan(stroke).any():
+            print('found Nan stroke 1111')
+        if torch.isnan(t).any():
+            print('found Nan t')
+        if torch.isnan(vs).any():
+            print('found Nan vs')
+        if torch.isnan(ws).any():
+            print('found Nan ws')
+        if torch.isnan(coords).any():
+            print('found Nan coords')
+        if torch.isinf(stroke).any():
+            print('found inf stroke 111')
+        if torch.isinf(t).any():
+            print('found inf t')
+        if torch.isinf(vs).any():
+            print('found inf vs')
+        if torch.isinf(ws).any():
+            print('found inf ws')
+        if torch.isinf(coords).any():
+            print('found inf coords')
         # For each of the P segments, compute distance from every point to the line as well as the fraction along the line
         distances, fraction = self.dist_line_segment(coords, vs, ws) # (P-1, size_y, size_x)
         
@@ -148,10 +193,18 @@ class BezierRenderer(nn.Module):
         # Convert the fractions into thickness values
         thickness = start_thickness * (1 - fraction) + end_thickness * fraction # (P-1, size_y, size_x)
         thickness = thickness * self.thick_mult + self.thick_bias
+        if torch.isnan(thickness).any() or torch.isinf(thickness).any():
+            print(thickness)
+            print('found Nan thickness')
         thickness = torch.clamp(thickness, min=1e-8)
 
         # Compute darkness for each line segment
         darkness = torch.clamp((thickness - distances)/(thickness), min=0.0, max=1.0) # (P-1, size_y, size_x)
+        
+        if torch.isnan((thickness - distances)/(thickness)).any() or torch.isinf((thickness - distances)/(thickness)).any():
+            print((thickness - distances)/(thickness))
+            print('found Nan (thickness - distances)/(thickness)')
+        
         darkness = (darkness+1e-4)**self.dark_exp # (P-1, size_y, size_x)
 
         # Push furth towards 0 or 1
@@ -210,11 +263,35 @@ class BezierRenderer(nn.Module):
     # distance from point p to line segment v--w
     # also returns the fraction of the length of v--w that the point p is along
     def dist_line_segment(self, p, v, w):
+        # print(v)
+        # print(w)
+        if torch.isinf(v).any():
+            print('found Inf w')
+        if torch.isinf(w).any():
+            print('found Inf v')
+        if torch.isnan(v+w).any():
+            print('found Nan v+w')
+        if torch.isnan(v-w).any():
+            print('found Nan v-w')
         d = torch.linalg.norm(v-w, dim=3) # (n-1) x G x G
+        if torch.isnan(d).any():
+            print('found Nan d')
         dot = (p-v) * (w-v)
-        dot_sum = torch.sum(dot, dim=3) / (d**2 + 1e-5)
+        if torch.isnan(dot).any():
+            print('found Nan dot')
+        dot_sum = torch.sum(dot, dim=3) / (d**2 + 1e-3)
+        if torch.isnan(dot_sum).any():
+            # print((d**2 + 1e-3))
+            print(dot.max())
+            # print(torch.isnan(dot_sum).float().sum(), (1-torch.isnan(dot_sum).float()).sum())
+            print('found Nan 0')
+            1/0
         t = dot_sum.unsqueeze(3) # (n-1) x G x G x 1
+        if torch.isnan(t).any() or torch.isinf(t).any():
+            print(t)
+            print('found Nan t')
         t = torch.clamp(t, min=0, max=1) # (n-1) x G x G x 1
+
         proj = v + t * (w-v) # (n-1) x G x G x 2
         return torch.linalg.norm(p-proj, dim=3), t.squeeze(3)
 
@@ -266,14 +343,14 @@ class StrokeParametersToImage(nn.Module):
             self.x_m = 1.0#1.0 / output_dim_meters[1]
             self.y_m = 1.0#-1.0 / output_dim_meters[0]
 
-            self.x_m = nn.Parameter(torch.tensor(self.x_m))
-            self.y_m = nn.Parameter(torch.tensor(self.y_m))
+            self.x_m = nn.Parameter(torch.tensor(self.x_m, dtype=small_dtype))
+            self.y_m = nn.Parameter(torch.tensor(self.y_m, dtype=small_dtype))
         else:
-            self.x_m = nn.Parameter(torch.tensor(1.0))
-            self.y_m = nn.Parameter(torch.tensor(1.0))
+            self.x_m = nn.Parameter(torch.tensor(1.0, dtype=small_dtype))
+            self.y_m = nn.Parameter(torch.tensor(1.0, dtype=small_dtype))
 
-        self.x_b = nn.Parameter(torch.tensor(0.0))
-        self.y_b = nn.Parameter(torch.tensor(0.0))
+        self.x_b = nn.Parameter(torch.tensor(0.0, dtype=small_dtype))
+        self.y_b = nn.Parameter(torch.tensor(0.0, dtype=small_dtype))
         
         self.renderer = BezierRenderer(size_x=self.size_x, 
                                        size_y=self.size_y,
@@ -446,7 +523,7 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     # canvases_before.requires_grad = False 
     # canvases_after.requires_grad = False 
     for bs in brush_strokes:
-        bs.color_transform = nn.Parameter(torch.zeros(3))
+        bs.color_transform = nn.Parameter(torch.zeros(3, dtype=small_dtype))
         bs.requires_grad_(False)
 
     # Train/Validation split
@@ -471,7 +548,7 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     
     print('# parameters in Param2Image model:', get_n_params(trans))
     optim = torch.optim.Adam(trans.parameters(), lr=1e-3)
-
+    scaler = torch.cuda.amp.GradScaler()
 
     # Keep track of the best model (judged by validation error)
     best_model = copy.deepcopy(trans)
@@ -484,6 +561,7 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
         train_conv = it > 300 
 
         # with torch.autograd.set_detect_anomaly(True):
+        # torch.autograd.set_detect_anomaly(True)
         if best_hasnt_changed_for >= 400 and it > 1000:
             break # all done :)
         optim.zero_grad()
@@ -495,26 +573,38 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
             canvas_before = train_canvases_before[batch_it:batch_it+1]
             canvas_after = train_canvases_after[batch_it:batch_it+1]
 
-            isolated_stroke = bs(h=h_render_pix, w=w_render_pix, param2img=trans, use_conv=train_conv)
+            with torch.autocast(device_type='cuda'):#, dtype=torch.float16):
+                isolated_stroke = bs(h=h_render_pix, w=w_render_pix, param2img=trans, use_conv=train_conv)
 
-            # Pad 1 or two to make it fit
-            if isolated_stroke.shape[2] != h_render_pix or isolated_stroke.shape[3] != w_render_pix:
-                isolated_stroke = transforms.Resize((h_render_pix, w_render_pix), bicubic, antialias=True)(isolated_stroke)
+                # Pad 1 or two to make it fit
+                if isolated_stroke.shape[2] != h_render_pix or isolated_stroke.shape[3] != w_render_pix:
+                    isolated_stroke = transforms.Resize((h_render_pix, w_render_pix), bicubic, antialias=True)(isolated_stroke)
 
-            predicted_canvas = canvas_before[:,:3] * (1 - isolated_stroke[:,3:]) \
-                + isolated_stroke[:,3:] * isolated_stroke[:,:3]
-            
+                predicted_canvas = canvas_before[:,:3] * (1 - isolated_stroke[:,3:]) \
+                    + isolated_stroke[:,3:] * isolated_stroke[:,:3]
+                
 
-            loss += loss_fcn(predicted_canvas, canvas_after, canvas_before,
-                                         fnl_weight=max(0, 0.5 * ((200-it)/200)))
+                loss += loss_fcn(predicted_canvas, canvas_after, canvas_before,
+                                            fnl_weight=max(0, 0.5 * ((200-it)/200)))
+                
+                if torch.isnan(predicted_canvas).any():
+                    print('predicted_canvas nan')
+                if torch.isinf(predicted_canvas).any():
+                    print('predicted_canvas isinf')
             ep_loss += loss.item()
 
+            if torch.isnan(loss).any():
+                print('loss nan')
+            if torch.isinf(loss).any():
+                print('loss inf')
             if (batch_it+1) % batch_size == 0 or batch_it == len(train_brush_strokes)-1:
                 if not torch.isnan(loss):
                     # Don't try backprop further than full_param
-                    loss.backward(inputs=tuple(trans.parameters()), retain_graph=True)
+                    # loss.backward(inputs=tuple(trans.parameters()), retain_graph=True)
+                    scaler.scale(loss).backward(inputs=tuple(trans.parameters()), 
+                                                retain_graph=True)
 
-                    torch.nn.utils.clip_grad_norm_(trans.parameters(), max_norm=1.0)
+                    # torch.nn.utils.clip_grad_norm_(trans.parameters(), max_norm=1.0)
                     # if train_conv:
                     #     conv_param_names = []
                     #     for name, param in trans.renderer.conv.named_parameters():
@@ -525,7 +615,12 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
                     #             if param.grad is not None:
                     #                 param.grad *= 0
 
-                    optim.step()
+                    # optim.step()
+                    # scaler.unscale_(optim)
+                    print(loss)
+                    scaler.step(optim)
+                    # Updates the scale for next iteration.
+                    scaler.update()
                 else:
                     print('Nan')
                     break

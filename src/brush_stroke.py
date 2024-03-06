@@ -13,7 +13,7 @@ from scipy.interpolate import make_interp_spline
 from traj_vae.autoencoders import MLP_VAE
 
 # from param2stroke import special_sigmoid
-
+small_dtype = torch.float16
 
 def get_quaternion_from_euler(roll, pitch, yaw):
     """
@@ -158,32 +158,33 @@ class BrushStroke(nn.Module):
         self.max_length_before_new_paint = opt.max_length_before_new_paint
         self.ink = ink
 
-        if color is None: color=(torch.rand(3).to(device)*.4)+0.3
-        if a is None: a=(torch.rand(1)*2-1)*3.14
-        if xt is None: xt=torch.rand(1)
-        if yt is None: yt=torch.rand(1)
+        if color is None: color=(torch.rand(3, dtype=small_dtype).to(device)*.4)+0.3
+        if a is None: a=(torch.rand(1,dtype=small_dtype)*2-1)*3.14
+        if xt is None: xt=torch.rand(1, dtype=small_dtype)
+        if yt is None: yt=torch.rand(1, dtype=small_dtype)
 
-        self.xt = nn.Parameter(torch.ones(1)*xt) # Range [0,1]
-        self.yt = nn.Parameter(torch.ones(1)*yt) # Range [0,1]
-        self.a = nn.Parameter(torch.ones(1)*a) # Range [-2pi,2pi]
+        self.xt = nn.Parameter(torch.ones(1, dtype=small_dtype)*xt) # Range [0,1]
+        self.yt = nn.Parameter(torch.ones(1, dtype=small_dtype)*yt) # Range [0,1]
+        self.a = nn.Parameter(torch.ones(1, dtype=small_dtype)*a) # Range [-2pi,2pi]
         
         if latent is None: 
-            latent = torch.randn(1, BrushStroke.vae.latent_dim)
+            latent = torch.randn(1, BrushStroke.vae.latent_dim, dtype=small_dtype)
 
         self.latent = latent 
         self.latent.requires_grad = True 
-        self.latent = nn.Parameter(self.latent)
+        self.latent = nn.Parameter(self.latent, dtype=small_dtype)
 
         if not self.ink:
-            self.color_transform = nn.Parameter(color)
+            self.color_transform = nn.Parameter(color, dtype=small_dtype)
         else:
-            self.color_transform = torch.zeros(3).to(device)
+            self.color_transform = torch.zeros(3, dtype=small_dtype).to(device)
 
     def forward(self, h, w, param2img, use_conv=True):
         # Do rigid body transformation
         full_param = self.get_path(normalize=False).unsqueeze(0) # 1 x 32 x 3
         
-        stroke = param2img(full_param, self.xt, self.yt, self.a, use_conv=use_conv).unsqueeze(0)
+        with torch.autocast(device_type='cuda', dtype=torch.float16):
+            stroke = param2img(full_param, self.xt, self.yt, self.a, use_conv=use_conv).unsqueeze(0)
 
         # Pad 1 or two to make it fit
         if stroke.shape[2] != h or stroke.shape[3] != w:
