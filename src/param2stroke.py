@@ -78,11 +78,10 @@ class BezierRenderer(nn.Module):
         self.weights = nn.Parameter(torch.eye(2)) # multiply each point in trajectory by this
         self.biases = nn.Parameter(torch.zeros(2)) # add this to each point
         
-        self.thick_mult = nn.Parameter(torch.ones((1)))
-        # self.thick_bias = nn.Parameter(torch.zeros((1)))
-        # self.thick_mult = nn.Parameter(torch.ones((1))*0.3)
+        self.thick_mult = nn.Parameter(torch.ones((1))*0.5)
         self.thick_bias = nn.Parameter(torch.zeros((1))+0.1)
         self.dark_exp = nn.Parameter(torch.ones((1)))
+        self.dark_non_lin_weight = nn.Parameter(torch.ones((1))*0.5)
 
         # self.nc = self.P
         # self.conv = nn.Sequential(
@@ -95,7 +94,7 @@ class BezierRenderer(nn.Module):
         #     nn.Conv2d(self.P, self.P, kernel_size=5, padding='same', dilation=1)
         # )
 
-        self.conv = MatMulLayer(size=(1,self.P-1,size_y,size_x), layers=1)
+        # self.conv = MatMulLayer(size=(1,self.P-1,size_y,size_x), layers=1)
 
     def set_render_size(self, size_x, size_y):
         '''
@@ -148,12 +147,19 @@ class BezierRenderer(nn.Module):
         
         # Convert the fractions into thickness values
         thickness = start_thickness * (1 - fraction) + end_thickness * fraction # (P-1, size_y, size_x)
-        thickness = thickness * self.thick_mult + self.thick_bias#torch.clamp(self.thick_bias, min=0.0, max=1.0)
+        thickness = thickness * self.thick_mult + self.thick_bias
         thickness = torch.clamp(thickness, min=1e-8)
 
         # Compute darkness for each line segment
         darkness = torch.clamp((thickness - distances)/(thickness), min=0.0, max=1.0) # (P-1, size_y, size_x)
         darkness = (darkness+1e-4)**self.dark_exp # (P-1, size_y, size_x)
+
+        # Push furth towards 0 or 1
+        dark_non_lin = 1/(1+torch.exp(-1*(darkness*16-8))) 
+        
+        # Weight this value
+        darkness = self.dark_non_lin_weight*dark_non_lin \
+             + (1-self.dark_non_lin_weight)*darkness
 
         import torchgeometry
         import warnings
@@ -313,6 +319,9 @@ class StrokeParametersToImage(nn.Module):
         # traj from meters to proportion
         traj[:,:,0] *= self.y_m
         traj[:,:,1] *= self.x_m 
+
+        traj[:,:,0] += self.y_b
+        traj[:,:,1] += self.x_b
 
         # From traj starting  x=0,y=0 to  x=x_start, y=y_start
         traj[:,:,0] += y_start

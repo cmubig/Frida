@@ -19,7 +19,6 @@ from paint_utils3 import canvas_to_global_coordinates, discretize_colors, get_co
 
 from painter import Painter
 from options import Options
-# from paint_planner import paint_planner_new
 
 from my_tensorboard import TensorBoard
 from painting_optimization import load_objectives_data, optimize_painting
