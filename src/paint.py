@@ -15,7 +15,7 @@ import numpy as np
 
 import torch
 from tqdm import tqdm
-from paint_utils3 import canvas_to_global_coordinates, get_colors, nearest_color, random_init_painting, save_colors, show_img, to_video
+from paint_utils3 import canvas_to_global_coordinates, discretize_colors, get_colors, nearest_color, random_init_painting, save_colors, show_img, to_video
 
 from painter import Painter
 from options import Options
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     color_palette = None
     if opt.use_colors_from is not None:
         color_palette = get_colors(cv2.resize(cv2.imread(opt.use_colors_from)[:,:,::-1], (256, 256)), 
-                n_colors=opt.n_colors)
+                n_colors=opt.n_colors).to(device)
         opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(color_palette), 0)
 
     current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device) / 255.
@@ -67,9 +67,16 @@ if __name__ == '__main__':
     painting = random_init_painting(opt, current_canvas, opt.num_strokes, ink=opt.ink)
     painting.to(device)
 
+    if opt.use_colors_from is not None:
+        discretize_colors(painting, color_palette)
+    
+
     # Do the initial optimization
     painting, color_palette = optimize_painting(opt, painting, 
                 optim_iter=opt.init_optim_iter, color_palette=color_palette)
+    
+    # painting.param2img.renderer.set_render_size(size_x=w_render, size_y=h_render)
+    # painting.param2img.renderer.set_render_size(size_x=h_render, size_y=h_render)
     
     # Log colors so user can start to mix them
     if not opt.ink:
@@ -108,13 +115,13 @@ if __name__ == '__main__':
                     consecutive_paints = 0
 
             # Convert the canvas proportion coordinates to meters from robot
-            x, y = stroke.transformation.xt.item()*0.5+0.5, stroke.transformation.yt.item()*0.5+0.5
+            x, y = stroke.xt.item(), stroke.yt.item()
             y = 1-y
             x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
             x_glob, y_glob,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
             # Runnit
-            stroke.execute(painter, x_glob, y_glob, stroke.transformation.a.item())
+            stroke.execute(painter, x_glob, y_glob, stroke.a.item())
 
             strokes_executed += 1
             consecutive_paints += 1
