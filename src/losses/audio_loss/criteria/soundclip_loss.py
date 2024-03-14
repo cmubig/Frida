@@ -42,7 +42,11 @@ class SoundCLIPLoss(torch.nn.Module):
         self.audio_encoder = AudioEncoder()
         
         root = os.path.dirname(os.path.realpath(__file__))
-        self.audio_encoder.load_state_dict(copyStateDict(torch.load(os.path.join(root,"audio/pretrained_models/resnet18.pth"))))
+        parent = os.path.dirname(root)
+        self.audio_encoder.load_state_dict(
+            copyStateDict(torch.load(
+                os.path.join(parent,
+                    "audio/pretrained_models/resnet18.pth"))))
         
         self.audio_encoder = self.audio_encoder.cuda()
         self.audio_encoder.eval()
@@ -63,7 +67,7 @@ class SoundCLIPLoss(torch.nn.Module):
 def get_image_augmentation():
     augment_trans = transforms.Compose([
         transforms.RandomPerspective(fill=1, p=1, distortion_scale=0.5),
-        transforms.RandomResizedCrop(256, scale=(0.7,0.9)),
+        transforms.RandomResizedCrop(256, scale=(0.7,0.9), antialias=True),
     ])
 
     return augment_trans
