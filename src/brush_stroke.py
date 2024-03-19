@@ -279,17 +279,25 @@ class BrushStroke(nn.Module):
             y_next = min(max(painter.opt.Y_CANVAS_MIN, y_next), painter.opt.Y_CANVAS_MAX)
 
             if step == 0: # First point: lower pen down
-                all_positions.append([x_next, y_next, z+0.03])
-                all_orientations.append(q)
-                all_positions.append([x_next, y_next, z+0.005])
-                all_orientations.append(q)
+                if painter.opt.ink:
+                    all_positions.append([x_next, y_next, z+0.01])
+                    all_orientations.append(q)
+                else:
+                    all_positions.append([x_next, y_next, z+0.03])
+                    all_orientations.append(q)
+                    all_positions.append([x_next, y_next, z+0.005])
+                    all_orientations.append(q)
             all_positions.append([x_next, y_next, z]) # Move to point
             all_orientations.append(q)
             if step == len(path)-1: # Last point: raise pen up
-                all_positions.append([x_next, y_next, z+0.01])
-                all_orientations.append(q)
-                all_positions.append([x_next, y_next, z+0.04])
-                all_orientations.append(q)
+                if painter.opt.ink:
+                    all_positions.append([x_next, y_next, z+0.01])
+                    all_orientations.append(q)
+                else:
+                    all_positions.append([x_next, y_next, z+0.01])
+                    all_orientations.append(q)
+                    all_positions.append([x_next, y_next, z+0.04])
+                    all_orientations.append(q)
 
         # Remove redundant positions (doesn't matter whether we do it or not)
         def remove_redundant_positions(positions, orientations, thresh=0.00025):
