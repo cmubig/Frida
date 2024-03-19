@@ -58,6 +58,7 @@ def get_colors(img, n_colors=6):
     kmeans = KMeans(n_clusters=n_colors, random_state=0)
     kmeans.fit(img.reshape((img.shape[0]*img.shape[1],3)))
     colors = [kmeans.cluster_centers_[i] for i in range(len(kmeans.cluster_centers_))]
+    colors = sorted(colors, key=lambda x : x.mean())
     colors = (torch.from_numpy(np.array(colors)) / 255.).float()
     return colors
 
@@ -103,7 +104,7 @@ def show_img(img, display_actual_size=True, title=""):
         plt.imshow(img)
     plt.xticks([]), plt.yticks([])
     plt.title(title)
-    #plt.scatter(img.shape[1]/2, img.shape[0]/2)
+    # plt.scatter(img.shape[1]/2, img.shape[0]/2)
     plt.show()
 
 
@@ -121,8 +122,8 @@ def sort_brush_strokes_by_location(painting, bin_size=3000):
     from scipy.spatial import distance_matrix
     points = np.zeros((2, len(painting.brush_strokes)))
     for i in range(len(painting.brush_strokes)):
-        points[0,i] = painting.brush_strokes[i].transformation.xt.detach().cpu().numpy()
-        points[1,i] = painting.brush_strokes[i].transformation.yt.detach().cpu().numpy()
+        points[0,i] = painting.brush_strokes[i].xt.detach().cpu().numpy()
+        points[1,i] = painting.brush_strokes[i].yt.detach().cpu().numpy()
     d_mat = distance_matrix(points.T, points.T)
     
     from tsp_solver.greedy import solve_tsp
@@ -269,12 +270,17 @@ def extract_paint_color(canvas_before, canvas_after, stroke_bool_map):
 
 def random_init_painting(opt, background_img, n_strokes, ink=False, device='cuda'):
     gridded_brush_strokes = []
-    xys = [(x,y) for x in torch.linspace(-.95,.95,int(n_strokes**0.5)) \
-                 for y in torch.linspace(-.95,.95,int(n_strokes**0.5))]
+
+    xys = [(x,y) for x in torch.linspace(0.15,.2,int(n_strokes**0.5)) \
+                 for y in torch.linspace(0.2,.8,int(n_strokes**0.5))]
+    if ink:
+        xys = [(x,y) for x in torch.linspace(0.25,.75,int(n_strokes**0.5)) \
+                     for y in torch.linspace(0.25,.75,int(n_strokes**0.5))]
     random.shuffle(xys)
     for x,y in xys:
         # Random brush stroke
         brush_stroke = BrushStroke(opt, xt=x, yt=y, ink=ink)
+        BrushStroke.make_valid(brush_stroke)
         gridded_brush_strokes.append(brush_stroke)
 
     painting = Painting(opt, 0, background_img=background_img, 
@@ -334,6 +340,8 @@ def init_brush_strokes(opt, diff, n_strokes, ink):
     else:
         diff[diff < 0.15] = 0.0001
     diff = diff.cpu().detach().numpy()
+    # plt.matshow(diff)
+    # plt.show()
     points = (np.array(np.nonzero(diff))).astype(int)
 
 
@@ -364,10 +372,10 @@ def init_brush_strokes(opt, diff, n_strokes, ink):
         points = points[:,:0]
                    
     for i in range(points.shape[1]):
-        x, y = points[1,i]/diff.shape[1]*2-1, points[0,i]/diff.shape[0]*2-1
+        x, y = points[1,i]/diff.shape[1], points[0,i]/diff.shape[0]
         # Random brush stroke
-        brush_stroke = BrushStroke(opt, xt=x, yt=y, ink=ink, 
-                                   stroke_length=torch.Tensor([0.001]))
+        brush_stroke = BrushStroke(opt, xt=x, yt=y, ink=ink)#, 
+                                #    stroke_length=torch.Tensor([0.001]))
         brush_strokes.append(brush_stroke)
     return brush_strokes
 

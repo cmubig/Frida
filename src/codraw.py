@@ -26,6 +26,9 @@ from painter import Painter
 from options import Options
 from my_tensorboard import TensorBoard
 
+# For Audio Recording and Transcription 
+from audio_test import get_text_from_audio
+
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 if not torch.cuda.is_available():
     print('Using CPU..... good luck')
@@ -37,7 +40,12 @@ def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
     while(not satisfied):
         text_prompt = None
         try:
-            text_prompt = input('\nIf you would like the robot to draw, type a description then press enter. Type nothing if you do not want to the robot to draw.\n:')
+            # text_prompt = input('\nIf you would like the robot to draw, type a description then press enter. Type nothing if you do not want to the robot to draw.\n:')
+
+            # # Audio Recording and Transcription
+            text_prompt = get_text_from_audio("current_recording.wav")
+            print(f"Audio transcribed from text: {text_prompt}")
+
         except SyntaxError:
             continue # No input
 
@@ -53,13 +61,14 @@ def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
                     # image_guidance_scale=2.5,#1.5 is default
                     image_guidance_scale = 1.5 if op == 0 else random.uniform(1.01, 2.5)
                 ).images[0])
-        fig, ax = plt.subplots(1,n_ai_options, figsize=(2*n_ai_options,2))
-        for j in range(n_ai_options):
-            ax[j].imshow(target_imgs[j])
-            ax[j].set_xticks([])
-            ax[j].set_yticks([])
-            ax[j].set_title(str(j))
+        
         if n_ai_options > 1:
+            # fig, ax = plt.subplots(1,n_ai_options, figsize=(2*n_ai_options,2))
+            # for j in range(n_ai_options):
+            #     ax[j].imshow(target_imgs[j])
+            #     ax[j].set_xticks([])
+            #     ax[j].set_yticks([])
+            #     ax[j].set_title(str(j))
             # matplotlib.use('TkAgg')
             plt.show()
             while(True):
@@ -80,6 +89,8 @@ def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
     # target_img = Resize((h,w), antialias=True)(target_img)
     return text_prompt, target_img
 
+def flip_img(img):
+    return torch.flip(img, dims=(2,3))
 
 if __name__ == '__main__':
     opt = Options()
@@ -123,6 +134,7 @@ if __name__ == '__main__':
         ##################################
         
         current_canvas = painter.camera.get_canvas_tensor() / 255.
+        current_canvas = flip_img(current_canvas)
         opt.writer.add_image('images/{}_0_canvas_start'.format(i), format_img(current_canvas), 0)
         current_canvas = Resize((h_render,w_render), antialias=True)(current_canvas)
 
@@ -132,6 +144,7 @@ if __name__ == '__main__':
             pass
 
         current_canvas = painter.camera.get_canvas_tensor() / 255.
+        current_canvas = flip_img(current_canvas)
         opt.writer.add_image('images/{}_1_canvas_after_human'.format(i), format_img(current_canvas), 0)
         current_canvas = Resize((h_render,w_render), antialias=True)(current_canvas)
 
@@ -140,22 +153,26 @@ if __name__ == '__main__':
         #################################
 
         curr_canvas = painter.camera.get_canvas()
+        curr_canvas = np.flip(curr_canvas, axis=(0,1))
         # dark_inds = curr_canvas.mean(axis=2) < 0.81*255
         # curr_canvas[dark_inds] = 5
         curr_canvas_pil = Image.fromarray(curr_canvas.astype(np.uint8)).resize((512,512))
         curr_canvas_pil = curr_canvas_pil#.convert("L").convert('RGB')
 
         # Let the user generate and choose cofrida images to draw
+        n_ai_options = 1
         text_prompt, target_img = get_cofrida_image_to_draw(cofrida_model, 
                                                             curr_canvas_pil, n_ai_options)
         opt.writer.add_image('images/{}_2_target_from_cofrida_{}'.format(i, text_prompt), format_img(target_img), 0)
         target_img = Resize((h_render, w_render), antialias=True)(target_img)
+        target_img = flip_img(target_img) # Should be upside down for planning
 
         # Ask for how many strokes to use
-        num_strokes = int(input("How many strokes to use in this plan?\n:"))
+        num_strokes = 40#int(input("How many strokes to use in this plan?\n:"))
         
         # Generate initial (random plan)
         # painting = random_init_painting(opt, current_canvas.to(device), num_strokes, ink=opt.ink).to(device)
+        current_canvas = flip_img(current_canvas) # Should look upside down / real
         painting = initialize_painting(opt, num_strokes, target_img, 
                                        current_canvas.to(device), opt.ink, device=device)
         color_palette = None #TODO: support input fixed palette
@@ -197,17 +214,18 @@ if __name__ == '__main__':
                     consecutive_paints = 0
 
             # Convert the canvas proportion coordinates to meters from robot
-            x, y = stroke.transformation.xt.item()*0.5+0.5, stroke.transformation.yt.item()*0.5+0.5
+            x, y = stroke.xt.item(), stroke.yt.item()
             y = 1-y
             x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
             x_glob, y_glob,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
             # Runnit
-            stroke.execute(painter, x_glob, y_glob, stroke.transformation.a.item())
+            stroke.execute(painter, x_glob, y_glob, stroke.a.item(), fast=True)
 
         painter.to_neutral()
 
         current_canvas = painter.camera.get_canvas_tensor() / 255.
+        current_canvas = flip_img(current_canvas)
         opt.writer.add_image('images/{}_4_canvas_after_drawing'.format(i), format_img(current_canvas), 0)
         current_canvas = Resize((h_render, w_render), antialias=True)(current_canvas)
     

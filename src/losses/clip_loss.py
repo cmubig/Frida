@@ -178,7 +178,7 @@ class CLIPConvLoss(torch.nn.Module):
         else:
             xs_fc_features, xs_conv_features = self.visual_encoder(xs)
             ys_fc_features, ys_conv_features = self.visual_encoder(ys)
-
+        
         conv_loss = self.distance_metrics[self.clip_conv_loss_type](
             xs_conv_features, ys_conv_features, self.clip_model_name)
 
@@ -226,7 +226,7 @@ def get_image_augmentation(use_normalized_clip):
     return augment_trans
 
 augment_trans = get_image_augmentation(False)
-num_augs = 10
+num_augs = 5
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 def clip_loss(img0, img1):
     img0_batch = torch.cat([augment_trans(img0) for n in range(num_augs)])
