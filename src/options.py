@@ -117,6 +117,9 @@ class Options(object):
         parser.add_argument("--retrain_cofrida_image_generator", type=int,
             default=10, help='Retrain cofrida image generator every time this many images are generated.')
         
+
+        parser.add_argument("--locate_items", action='store_true',
+            default=False, help='Just try to find the items on the table')
         
         ### Argument is not used, but is allowed for flask compatability ###
         parser.add_argument("--app", type=str, nargs='*',

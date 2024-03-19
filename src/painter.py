@@ -122,8 +122,9 @@ class Painter():
         self.opt.PALLETTE_POSITION.append(self.Z_CANVAS- 0.2*self.Z_RANGE)
         # self.opt.PAINT_DIFFERENCE = 0.03976
 
-        # while True: 
-        #     self.locate_items()
+        if self.opt.locate_items:
+            while True: 
+                self.locate_items()
 
         # self.locate_canvas()
         # self.calibrate_robot_tilt()
