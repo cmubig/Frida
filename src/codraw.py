@@ -26,6 +26,9 @@ from painter import Painter
 from options import Options
 from my_tensorboard import TensorBoard
 
+# For Audio Recording and Transcription 
+from audio_test import get_text_from_audio
+
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 if not torch.cuda.is_available():
     print('Using CPU..... good luck')
@@ -37,7 +40,12 @@ def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
     while(not satisfied):
         text_prompt = None
         try:
-            text_prompt = input('\nIf you would like the robot to draw, type a description then press enter. Type nothing if you do not want to the robot to draw.\n:')
+            # text_prompt = input('\nIf you would like the robot to draw, type a description then press enter. Type nothing if you do not want to the robot to draw.\n:')
+
+            # Audio Recording and Transcription
+            text_prompt = get_text_from_audio("current_recording.wav")
+            print(f"Audio transcribed from text: {text_prompt}")
+
         except SyntaxError:
             continue # No input
 
