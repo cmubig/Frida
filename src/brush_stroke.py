@@ -237,7 +237,7 @@ class BrushStroke(nn.Module):
         
         return path_clone
 
-    def execute(self, painter, x_start, y_start, rotation):
+    def execute(self, painter, x_start, y_start, rotation, fast=False):
         # x_start, y_start in global coordinates. rotation in radians
         # curve_angle_is_rotation if true, then the brush is angled constantly down towards theta
         all_positions = []
@@ -291,8 +291,42 @@ class BrushStroke(nn.Module):
                 all_positions.append([x_next, y_next, z+0.04])
                 all_orientations.append(q)
 
+        # Remove redundant positions (doesn't matter whether we do it or not)
+        def remove_redundant_positions(positions, orientations, thresh=0.00025):
+            new_positions, new_orientations = [positions[0]], [orientations[0]]
+            prev_pos = np.array(positions[0])
+            for i in range(1, len(positions)-1, 2):
+                p1, p2, p3 = prev_pos, np.array(positions[i]), np.array(positions[i+1])
+                # https://stackoverflow.com/questions/39840030/distance-between-point-and-a-line-from-two-points
 
-        stroke_complete = painter.move_to_trajectories(all_positions, all_orientations)
+                delta = np.linalg.norm(np.cross(p3-p1, p1-p2))/np.linalg.norm(p3-p1)
+                delta = np.nan_to_num(delta)
+                # print(delta)
+                if delta > thresh:
+                    new_positions.append(positions[i])
+                    new_orientations.append(orientations[i])
+                new_positions.append(positions[i+1])
+                new_orientations.append(orientations[i+1])
+                prev_pos = np.array(positions[i+1])
+            new_positions.append(positions[-1])
+            new_orientations.append(orientations[-1])
+            return new_positions, new_orientations
+        prev_n = len(all_positions)
+        all_positions, all_orientations = remove_redundant_positions(all_positions, all_orientations)
+        removed_positions = prev_n - len(all_positions)
+        print('removed positions1', removed_positions)
+        
+        prev_n = len(all_positions)
+        all_positions, all_orientations = remove_redundant_positions(all_positions, all_orientations)
+        removed_positions = prev_n - len(all_positions)
+        print('removed positions2', removed_positions)
+        
+        prev_n = len(all_positions)
+        all_positions, all_orientations = remove_redundant_positions(all_positions, all_orientations)
+        removed_positions = prev_n - len(all_positions)
+        print('removed positions3', removed_positions)
+        
+        stroke_complete = painter.move_to_trajectories(all_positions, all_orientations, fast=fast)
 
         # Don't over shoot the canvas
         x_next = x_start+path[-1,0]

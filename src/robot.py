@@ -63,7 +63,10 @@ class XArm(Robot, object):
         self.arm.disconnect()
 
     def go_to_cartesian_pose(self, positions, orientations,
-            speed=250):
+            speed=250, fast=False):
+        fast = False
+        if fast:
+            return self.go_to_cartesian_pose_fast(positions, orientations)
         # positions in meters
         positions, orientations = np.array(positions), np.array(orientations)
         if len(positions.shape) == 1:
@@ -113,6 +116,46 @@ class XArm(Robot, object):
                 self.good_morning_robot()
                 print('Cannot go to position', e)
 
+    def go_to_cartesian_pose_fast(self, positions, orientations,
+            speed=150):
+        '''
+        args:
+            positions [np.array(3)] list of 3D coordinates in meters
+            orientations [p.array(4)] (not actual quaternion). It's just [[roll,pitch,yaw,other value],...]
+        '''
+        positions, orientations = np.array(positions), np.array(orientations)
+        if len(positions.shape) == 1:
+            positions = positions[None,:]
+            orientations = orientations[None,:]
+        
+        paths = []
+
+        # if len(positions) > 2:
+        #     positions = [positions[0], positions[-1]]
+            
+        for i in range(len(positions)):
+            x,y,z = positions[i][1], positions[i][0], positions[i][2]
+            x,y,z = x*1000, y*-1000, z*1000 #m to mm
+            q = orientations[i]
+            q = (q / np.pi) * 180 # radian to degrees
+            # For xarm, we feed in euler angle instead of quaternion
+            # roll, pitch, yaw = q[0], q[1], q[2]
+            roll, pitch, yaw = 180, 0, 0
+
+            radius = 0.0
+            paths.append([x,y,z,roll,pitch,yaw,radius]) #TODO: set radius?
+            # paths.append([x,y,z,roll,pitch,yaw]) #TODO: set radius?
+            # https://github.com/xArm-Developer/xArm-Python-SDK/blob/master/doc/api/xarm_api.md#def-move_arc_linesself-paths-is_radiannone-times1-first_pause_time01-repeat_pause_time0-automatic_calibrationtrue-speednone-mvaccnone-mvtimenone-waitfalse
+
+        try:
+            self.arm.move_arc_lines(
+                paths=paths, speed=speed, wait=True, mvacc=500,#mvacc=1#mvacc=50
+            )
+        except Exception as e:
+            # self.arm.clean_error()
+            # self.good_night_robot()
+            # self.good_morning_robot()
+            print('Cannot go to position', e)
 
 class Franka(Robot, object):
     '''

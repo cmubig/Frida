@@ -199,11 +199,11 @@ class Painter():
                 y = 0.1
             self.move_to_trajectories([[0,y,self.opt.INIT_TABLE_Z]], [None])
 
-    def move_to_trajectories(self, positions, orientations):
+    def move_to_trajectories(self, positions, orientations, fast=False):
         for i in range(len(orientations)):
             if orientations[i] is None:
                 orientations[i] = PERPENDICULAR_QUATERNION
-        return self.robot.go_to_cartesian_pose(positions, orientations)
+        return self.robot.go_to_cartesian_pose(positions, orientations, fast=fast)
 
     def _move(self, x, y, z, q=None, timeout=20, method='direct', 
             step_size=.1, speed=0.1, duration=5):
@@ -601,7 +601,7 @@ class Painter():
                     x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
                     x,y,_ = canvas_to_global_coordinates(x,y,None,self.opt)
                     
-                    random_stroke.execute(self, x, y, 0)
+                    random_stroke.execute(self, x, y, 0, fast=True)
 
                     distance_since_getting_paint += random_stroke.get_length().item()
 

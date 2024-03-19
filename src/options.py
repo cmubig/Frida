@@ -69,7 +69,7 @@ class Options(object):
         parser.add_argument('--num_augs', type=int, default=30)
 
         # Painting Parameters
-        parser.add_argument('--how_often_to_get_paint', type=int, default=4)
+        parser.add_argument('--how_often_to_get_paint', type=int, default=5)
         parser.add_argument('--max_length_before_new_paint', type=float, default=0.75,
                             help="Maximum length (in meters) to paint without getting new paint from palette")
 
@@ -77,7 +77,7 @@ class Options(object):
         parser.add_argument("--tensorboard_dir", type=str,
             default='./painting_log', help='Where to write tensorboard log to.')
         parser.add_argument('--plan_gif_dir', type=str, default='../outputs/')
-        parser.add_argument('--log_frequency', type=int, default=5, help="Log to TB after this many optim. iters.")
+        parser.add_argument('--log_frequency', type=int, default=25, help="Log to TB after this many optim. iters.")
         parser.add_argument("--output_dir", type=str, default="../outputs/", help='Where to write output to.')
         parser.add_argument('--log_photo_frequency', type=int, default=20, help="Log to TB after this many strokes painted.")
 
@@ -88,32 +88,34 @@ class Options(object):
 
         # CoFRIDA Training Parameters
         parser.add_argument("--cofrida_dataset", type=str,
-            default="laion/laion-art", help='A dataset for training CoFRIDA')
+            default="ChristophSchuhmann/MS_COCO_2017_URL_TEXT", help='A dataset for training CoFRIDA')
+        parser.add_argument("--generate_cofrida_training_data", action='store_true',
+            default=False, help='Generate training images for CoFRIDA. Use with dataset nateraw/parti-prompts')
         parser.add_argument("--cofrida_background_image", type=str,
             default='./blank_canvas.jpg', help='path to image to use as background for cofrida drawings/paintings')
         parser.add_argument("--output_parent_dir", type=str,
             help='Where to save the data. Can continue if partially complete.')
-        parser.add_argument("--removal_method", type=str,
-            default='random',
-            help='how to make partial sketchs. [random|salience]')
+        # parser.add_argument("--removal_method", type=str,
+        #     default='random',
+        #     help='how to make partial sketchs. [random|salience]')
         parser.add_argument("--max_images", type=int,
             default=20000, help='A dataset for training controlnet')
-        parser.add_argument("--max_strokes_added", type=int,
-            default=200, help='Final amount of strokes')
-        parser.add_argument("--min_strokes_added", type=int,
-            default=100, help='Amount of strokes in the partial sketch')
         parser.add_argument("--num_images_to_consider_for_simplicity", type=int,
             default=3, help='Load this many images and take the one with fewest edges for simplicity.')
+        parser.add_argument("--max_strokes_added", type=int,
+            default=200, help='Maximum possible strokes in a cofrida training painting')
+        parser.add_argument("--min_strokes_added", type=int,
+            default=100, help='Minimum number of strokes in a cofrida training painting')
         parser.add_argument("--n_iters", type=int,
             default=300, help='Number of optimization iterations.')
         parser.add_argument("--colors", type=str,
             default=None, help='Specify a fixed palette of paint colors.')
-        parser.add_argument("--turn_takes", type=int,
-            default=0, help='How many turns for generating pix2pix training data.')
         parser.add_argument("--codraw_metric_data_dir", type=str,
             default=None, help='Where to store evaluation data.')
         parser.add_argument("--codraw_eval_setting", type=str,
             default=None, help='[same_text_fill_in,same_text_add_detail_different_text,add_background,something_from_nothing]')
+        parser.add_argument("--retrain_cofrida_image_generator", type=int,
+            default=10, help='Retrain cofrida image generator every time this many images are generated.')
         
         
         ### Argument is not used, but is allowed for flask compatability ###

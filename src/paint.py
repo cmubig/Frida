@@ -57,6 +57,7 @@ if __name__ == '__main__':
     if opt.use_colors_from is not None:
         color_palette = get_colors(cv2.resize(cv2.imread(opt.use_colors_from)[:,:,::-1], (256, 256)), 
                 n_colors=opt.n_colors).to(device)
+        print(color_palette)
         opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(color_palette), 0)
 
     current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device) / 255.
@@ -65,6 +66,10 @@ if __name__ == '__main__':
 
     painting = random_init_painting(opt, current_canvas, opt.num_strokes, ink=opt.ink)
     painting.to(device)
+
+    with torch.no_grad():
+        for bs in painting.brush_strokes:
+            bs.color_transform *= 0
 
     if opt.use_colors_from is not None:
         discretize_colors(painting, color_palette)
@@ -105,7 +110,7 @@ if __name__ == '__main__':
                 new_paint_color = color_ind != curr_color
                 if new_paint_color or consecutive_strokes_no_clean > 12:
                     if new_paint_color: painter.clean_paint_brush()
-                    painter.clean_paint_brush()
+                    # painter.clean_paint_brush()
                     consecutive_strokes_no_clean = 0
                     curr_color = color_ind
                     new_paint_color = True
@@ -120,7 +125,7 @@ if __name__ == '__main__':
             x_glob, y_glob,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
             # Runnit
-            stroke.execute(painter, x_glob, y_glob, stroke.a.item())
+            stroke.execute(painter, x_glob, y_glob, stroke.a.item(), fast=True)
 
             strokes_executed += 1
             consecutive_paints += 1
@@ -145,7 +150,7 @@ if __name__ == '__main__':
     painter.writer.add_image('images/canvas', canvas_photos[-1]/255., strokes_executed)
 
     if not painter.opt.ink:
-        for i in range(3): painter.clean_paint_brush()
+        for i in range(1): painter.clean_paint_brush()
 
     to_video(canvas_photos, fn=os.path.join(opt.plan_gif_dir,'sim_canvases{}.mp4'.format(str(time.time()))))
     # with torch.no_grad():
