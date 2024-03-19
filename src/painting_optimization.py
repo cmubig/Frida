@@ -25,7 +25,7 @@ from losses.dino_loss import dino_loss
 from losses.clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_fc_loss
 import clip
 
-from paint_utils3 import discretize_colors, format_img, load_img, randomize_brush_stroke_order, sort_brush_strokes_by_color
+from paint_utils3 import discretize_colors, format_img, load_img, randomize_brush_stroke_order, sort_brush_strokes_by_color, sort_brush_strokes_by_location
 
 # from paint_utils3 import *
 
@@ -243,6 +243,8 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
 
         if not opt.ink and shuffle_strokes:
             painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
+        elif opt.ink and shuffle_strokes:
+            painting = sort_brush_strokes_by_location(painting)
         
         if it < 0.3*optim_iter and it %3 == 0 and not opt.ink and shuffle_strokes:
             # make sure hidden strokes get some attention
@@ -268,6 +270,9 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
         discretize_colors(painting, color_palette)
         if shuffle_strokes:
             painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
+    if opt.ink and shuffle_strokes:
+        painting = sort_brush_strokes_by_location(painting)    
+    
     log_progress(painting, opt, force_log=True, log_freq=opt.log_frequency, title=log_title)
 
     latent_std = 0
