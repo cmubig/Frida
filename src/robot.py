@@ -63,7 +63,7 @@ class XArm(Robot, object):
         self.arm.disconnect()
 
     def go_to_cartesian_pose(self, positions, orientations,
-            speed=250, fast=False):
+            speed=350, fast=False):
         fast = False
         if fast:
             return self.go_to_cartesian_pose_fast(positions, orientations)
@@ -91,7 +91,7 @@ class XArm(Robot, object):
                 # Dist in mm
                 if dist < 5:
                     wait=False
-                    speed=600
+                    speed=1000
                     # print('less')
 
             try:

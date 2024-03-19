@@ -44,7 +44,7 @@ class Painting(nn.Module):
             if "a" in n.split('.')[-1]: a.append(p)
             if "color_transform" in n.split('.')[-1]: color.append(p)
 
-        path_opt = torch.optim.RMSprop(latent, lr=1e-1)
+        path_opt = torch.optim.RMSprop(latent, lr=5e-2)
         position_opt = torch.optim.RMSprop(xt + yt, lr=5e-3*multiplier)
         rotation_opt = torch.optim.RMSprop(a, lr=1e-2*multiplier)
         color_opt = None if ink else torch.optim.RMSprop(color, lr=5e-3*multiplier)
