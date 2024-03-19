@@ -327,6 +327,9 @@ class StrokeParametersToImage(nn.Module):
         traj[:,:,0] += y_start
         traj[:,:,1] += x_start
 
+        #
+        # traj.data.clamp_(0,1)
+
         # batch, ctrl_point, 2 -> batch, 2, ctrl_points
         traj = torch.permute(traj, (0,2,1))
         thicknesses = torch.permute(thicknesses, (0,2,1))

@@ -153,6 +153,9 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
         for o in optims: o.zero_grad() if o is not None else None
 
         lr_factor = (1 - 2*np.abs(it/optim_iter - 0.5)) + 0.005
+        if it < 0.25*optim_iter:
+            lr_factor += 0.3
+        # lr_factor = (1 - np.abs(it/optim_iter)) + 0.001 # 1.001 -> 0.001
         for i_o in range(len(optims)):
             if optims[i_o] is not None:
                 optims[i_o].param_groups[0]['lr'] = og_lrs[i_o]*lr_factor
@@ -168,11 +171,44 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
         #loss += (1-alphas).mean() * opt.fill_weight
         if opt.fill_weight > 0:
             loss += torch.abs(1-alphas).mean() * opt.fill_weight
+
+        # if True:#it < 0.2*optim_iter:
+        #     # loss = 0
+        #     for bs in painting.brush_strokes:
+        #         path = bs.get_path()
+        #         #loss += path[:,2].sum()*100
+        #         d = torch.abs(path[1:,2] - path[:-1,2]).sum()
+        #         loss += d*0.1
+            
+        # stroke_latent_reg_loss_weight = 1.0
+        # if stroke_latent_reg_loss_weight > 0:
+        #     latent_reg_loss = 0
+        #     for bs in painting.brush_strokes:
+        #         latent = bs.latent
+        #         latent_std = latent.std()
+        #         latent_mean = latent.mean()
+        #         if latent_std > 1.2:
+        #             latent_reg_loss += latent_std
+        #         if latent_mean > 0.25:
+        #             latent_reg_loss += latent_mean 
+        #         elif latent_mean < -0.25:
+        #             latent_reg_loss += -1.0 * latent_mean 
+        #     latent_reg_loss /= len(painting.brush_strokes)
+        #     latent_reg_loss *= stroke_latent_reg_loss_weight
+        #     if latent_reg_loss != 0:
+        #         loss += latent_reg_loss
+                
+        
         loss.backward()
 
         for o in optims: o.step() if o is not None else None
 
         painting.validate()
+
+        if it < 0.4*optim_iter:
+            with torch.no_grad():
+                for bs in painting.brush_strokes:
+                    bs.color_transform *= 0
 
         # if it == optim_iter -1:#it%10==0 and it > 0.7*optim_iter:
         #     # Remove strokes that don't help the loss
@@ -233,5 +269,15 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
         if shuffle_strokes:
             painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
     log_progress(painting, opt, force_log=True, log_freq=opt.log_frequency, title=log_title)
+
+    latent_std = 0
+    latent_mean = 0
+    for bs in painting.brush_strokes:
+        latent = bs.latent
+        latent_std += latent.std()
+        latent_mean += latent.mean()
+    latent_std /= len(painting.brush_strokes)
+    latent_mean /= len(painting.brush_strokes)
+    print('latent', latent_mean.cpu().detach().numpy(), latent_std.cpu().detach().numpy())
 
     return painting, color_palette
