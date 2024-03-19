@@ -97,7 +97,7 @@ class XArm(Robot, object):
             try:
                 r = self.arm.set_position(
                         x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw,
-                        speed=speed, wait=wait
+                        speed=speed, wait=wait, mvacc=5000
                 )
                 # print(r)
                 if r:
