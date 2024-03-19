@@ -7,6 +7,7 @@
 ##########################################################
 
 
+import copy
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -130,7 +131,7 @@ def load_objectives_data(opt):
     opt.objective_data_loaded = objective_data
 
 def optimize_painting(opt, painting, optim_iter, color_palette=None,
-                      change_color=True, shuffle_strokes=True):
+                      change_color=True, shuffle_strokes=True, log_title='plan'):
     """
     kwargs:
         color_palette: if None, then it creates a new one
@@ -173,6 +174,37 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
 
         painting.validate()
 
+        # if it == optim_iter -1:#it%10==0 and it > 0.7*optim_iter:
+        #     # Remove strokes that don't help the loss
+        #     with torch.no_grad():
+        #         full_painting = copy.deepcopy(painting)
+        #         for i in range(len(full_painting)-1, 0, -1):
+        #             partial_painting = copy.deepcopy(full_painting)
+        #             partial_painting.remove(i)
+        #             full_loss = 0
+        #             p, alphas = full_painting(opt.h_render, opt.w_render, use_alpha=False, return_alphas=True)
+        #             for k in range(len(opt.objective)):
+        #                 full_loss += parse_objective(opt.objective[k], 
+        #                     opt.objective_data_loaded[k], p[:,:3], 
+        #                     weight=opt.objective_weight[k],
+        #                     num_augs=opt.num_augs)
+        #             partial_loss = 0
+        #             p, alphas = partial_painting(opt.h_render, opt.w_render, use_alpha=False, return_alphas=True)
+        #             for k in range(len(opt.objective)):
+        #                 partial_loss += parse_objective(opt.objective[k], 
+        #                     opt.objective_data_loaded[k], p[:,:3], 
+        #                     weight=opt.objective_weight[k],
+        #                     num_augs=1000)
+        #             if partial_loss < full_loss:
+        #                 full_painting = copy.deepcopy(partial_painting)
+        #         print('strokes removed', len(full_painting) - len(painting))
+        #         painting = copy.deepcopy(full_painting)
+        #         position_opt, rotation_opt, color_opt, path_opt \
+        #                     = painting.get_optimizers(multiplier=opt.lr_multiplier, ink=opt.ink)
+        #         if not change_color:
+        #             color_opt.param_groups[0]['lr'] = 0.0
+        #         optims = (position_opt, rotation_opt, color_opt, path_opt)
+
         if not opt.ink and shuffle_strokes:
             painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
         
@@ -188,7 +220,7 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
 
             if not opt.ink:
                 discretize_colors(painting, color_palette)
-        log_progress(painting, opt, log_freq=opt.log_frequency)#, force_log=True)
+        log_progress(painting, opt, log_freq=opt.log_frequency, title=log_title)#, force_log=True)
 
     painting.validate()
     if not use_input_palette and not opt.ink:
@@ -200,6 +232,6 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
         discretize_colors(painting, color_palette)
         if shuffle_strokes:
             painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
-    log_progress(painting, opt, force_log=True, log_freq=opt.log_frequency)
+    log_progress(painting, opt, force_log=True, log_freq=opt.log_frequency, title=log_title)
 
     return painting, color_palette

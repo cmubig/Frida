@@ -131,6 +131,12 @@ class Painting(nn.Module):
         # Remove the stroke
         self.brush_strokes = nn.ModuleList([self.brush_strokes[i] for i in range(1,len(self.brush_strokes),1)])
         return bs
+    def remove(self,i):
+        ''' Remove and return first stroke in the plan '''
+        bs = self.brush_strokes[i]
+        # Remove the stroke
+        self.brush_strokes = nn.ModuleList([self.brush_strokes[i] for i in range(1,len(self.brush_strokes),1)])
+        return bs
     
     def __len__(self):
         return len(self.brush_strokes)

@@ -1,29 +1,15 @@
-
-
-
+import os
 import numpy as np
 import torch
 import torch.utils.checkpoint
 from PIL import Image
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
 
-from diffusers import (
-    AutoencoderKL,
-    ControlNetModel,
-    DDPMScheduler,
-    # StableDiffusionControlNetPipeline,
-    UNet2DConditionModel,
-    UniPCMultistepScheduler,
-)
 from diffusers import StableDiffusionInstructPix2PixPipeline
 
 import numpy as np
 import PIL.Image
 import torch
-
-from diffusers.models import AutoencoderKL, UNet2DConditionModel
-
 import matplotlib.pyplot as plt
 
 
@@ -34,64 +20,43 @@ def add_imgs_together(imgs):
     return PIL.Image.fromarray(img)
 
 
-# # controlnet_model_name_or_path = "./controlnet_models/checkpoint-12000_good/controlnet"
-# controlnet_model_name_or_path = "./controlnet_models/checkpoint-1500/unet"
-# pretrained_model_name_or_path = "timbrooks/instruct-pix2pix"
-# weight_dtype = torch.float16
-# device = 'cuda'
-
-def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision=None):
-    text_encoder_config = PretrainedConfig.from_pretrained(
-        pretrained_model_name_or_path,
-        subfolder="text_encoder",
-        # revision=revision,
-    )
-    model_class = text_encoder_config.architectures[0]
-
-    if model_class == "CLIPTextModel":
-        from transformers import CLIPTextModel
-
-        return CLIPTextModel
-    elif model_class == "RobertaSeriesModelWithTransformation":
-        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import RobertaSeriesModelWithTransformation
-
-        return RobertaSeriesModelWithTransformation
-    else:
-        raise ValueError(f"{model_class} is not supported.")
-
-def get_instruct_pix2pix_model(instruct_pix2pix_path, original_model_name_or_path="timbrooks/instruct-pix2pix", 
+def get_instruct_pix2pix_model(lora_weights_path, original_model_name_or_path="timbrooks/instruct-pix2pix", 
                                device="cuda", weight_dtype=torch.float16):
-    tokenizer = AutoTokenizer.from_pretrained(
-        original_model_name_or_path,
-        subfolder="tokenizer",
-        # revision=args.revision,
-        use_fast=False,
-    )
-
-    # import correct text encoder class
-    text_encoder_cls = import_model_class_from_model_name_or_path(original_model_name_or_path)
-
-    # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(original_model_name_or_path, subfolder="scheduler")
-    text_encoder = text_encoder_cls.from_pretrained(
-        original_model_name_or_path, subfolder="text_encoder"
-    )
-    vae = AutoencoderKL.from_pretrained(original_model_name_or_path, subfolder="vae")
-    unet = UNet2DConditionModel.from_pretrained(
-        instruct_pix2pix_path, subfolder="unet", in_channels=8, out_channels=4,
-    )
-    unet.register_to_config(in_channels=8)
-
+    '''
+        args:
+            lora_weights_path : Either path to local file (parent dir) 
+                or Huggingface location (e.g., skeeterman/CoFRIDA-Sharpie)
+    '''
+    # Assuming LoRA was used
     pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-        original_model_name_or_path,
-        unet=unet,
-        text_encoder=text_encoder,
-        vae=vae,
-        # revision=args.revision,
-        torch_dtype=weight_dtype,
-        safety_checker=None,
-    )
-    pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
+                    original_model_name_or_path,
+                    torch_dtype=weight_dtype,
+                    safety_checker=None,
+                )
+    
+    model_loaded = False
+    try:
+        pipeline.unet.load_attn_procs(lora_weights_path)
+        print('Loaded LoRA')
+        model_loaded = True
+    except:
+        pass
+
+    try:
+        pipeline.unet = pipeline.unet.from_pretrained(
+            lora_weights_path, 
+            torch_dtype=weight_dtype,
+            safetensors=True
+        )
+        print('Loaded Unet Params. No LoRA')
+        model_loaded = True 
+    except:
+        pass 
+
+    if not model_loaded:
+        print('Could not load model: ', lora_weights_path)
+        raise Exception
+
     pipeline = pipeline.to(device)
     # pipeline.set_progress_bar_config(disable=True)
     return pipeline

@@ -2,10 +2,10 @@ python3 create_copaint_data.py \
         --use_cache \
         --cache_dir ../src/caches/sharpie_short_strokes \
         --materials_json ../materials_ink.json \
-        --lr_multiplier 0.7  \
-        --n_iters 400  \
-        --max_strokes_added 70  \
-        --min_strokes_added 35  \
-        --turn_takes 4  \
+        --lr_multiplier 2.0  \
+        --n_iters 700  \
+        --max_strokes_added 400  \
+        --min_strokes_added 10  \
         --ink \
+        --render_height 168 \
         --output_parent_dir train_data/ink 
