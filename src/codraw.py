@@ -61,13 +61,14 @@ def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
                     # image_guidance_scale=2.5,#1.5 is default
                     image_guidance_scale = 1.5 if op == 0 else random.uniform(1.01, 2.5)
                 ).images[0])
-        fig, ax = plt.subplots(1,n_ai_options, figsize=(2*n_ai_options,2))
-        for j in range(n_ai_options):
-            ax[j].imshow(target_imgs[j])
-            ax[j].set_xticks([])
-            ax[j].set_yticks([])
-            ax[j].set_title(str(j))
+        
         if n_ai_options > 1:
+            # fig, ax = plt.subplots(1,n_ai_options, figsize=(2*n_ai_options,2))
+            # for j in range(n_ai_options):
+            #     ax[j].imshow(target_imgs[j])
+            #     ax[j].set_xticks([])
+            #     ax[j].set_yticks([])
+            #     ax[j].set_title(str(j))
             # matplotlib.use('TkAgg')
             plt.show()
             while(True):
@@ -154,13 +155,14 @@ if __name__ == '__main__':
         curr_canvas_pil = curr_canvas_pil#.convert("L").convert('RGB')
 
         # Let the user generate and choose cofrida images to draw
+        n_ai_options = 1
         text_prompt, target_img = get_cofrida_image_to_draw(cofrida_model, 
                                                             curr_canvas_pil, n_ai_options)
         opt.writer.add_image('images/{}_2_target_from_cofrida_{}'.format(i, text_prompt), format_img(target_img), 0)
         target_img = Resize((h_render, w_render), antialias=True)(target_img)
 
         # Ask for how many strokes to use
-        num_strokes = int(input("How many strokes to use in this plan?\n:"))
+        num_strokes = 40#int(input("How many strokes to use in this plan?\n:"))
         
         # Generate initial (random plan)
         # painting = random_init_painting(opt, current_canvas.to(device), num_strokes, ink=opt.ink).to(device)
@@ -205,13 +207,13 @@ if __name__ == '__main__':
                     consecutive_paints = 0
 
             # Convert the canvas proportion coordinates to meters from robot
-            x, y = stroke.transformation.xt.item()*0.5+0.5, stroke.transformation.yt.item()*0.5+0.5
+            x, y = stroke.xt.item(), stroke.yt.item()
             y = 1-y
             x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
             x_glob, y_glob,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
             # Runnit
-            stroke.execute(painter, x_glob, y_glob, stroke.transformation.a.item(), fast=True)
+            stroke.execute(painter, x_glob, y_glob, stroke.a.item(), fast=True)
 
         painter.to_neutral()
 

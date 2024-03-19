@@ -159,7 +159,7 @@ class BrushStroke(nn.Module):
         self.ink = ink
 
         if color is None: color=(torch.rand(3).to(device)*.4)+0.3
-        if a is None: a=(torch.rand(1)*2-1)*3.14
+        if a is None: a=(torch.rand(1)*2-1)*3.14#torch.zeros(1)#(torch.rand(1)*2-1)*3.14#torch.zeros(1)#
         if xt is None: xt=torch.rand(1)
         if yt is None: yt=torch.rand(1)
 
@@ -210,8 +210,8 @@ class BrushStroke(nn.Module):
         with torch.no_grad():
             stroke.latent.data.clamp(-2.5, 2.5)
 
-            stroke.xt.data.clamp_(0,1.)
-            stroke.yt.data.clamp_(0,1.)
+            stroke.xt.data.clamp_(0.05,0.95)
+            stroke.yt.data.clamp_(0.05,0.95)
 
             #stroke.color_transform.data.clamp_(0.02,0.75)
             if stroke.color_transform.min() < 0.35:
@@ -311,20 +311,22 @@ class BrushStroke(nn.Module):
             new_positions.append(positions[-1])
             new_orientations.append(orientations[-1])
             return new_positions, new_orientations
-        prev_n = len(all_positions)
-        all_positions, all_orientations = remove_redundant_positions(all_positions, all_orientations)
-        removed_positions = prev_n - len(all_positions)
-        print('removed positions1', removed_positions)
         
-        prev_n = len(all_positions)
-        all_positions, all_orientations = remove_redundant_positions(all_positions, all_orientations)
-        removed_positions = prev_n - len(all_positions)
-        print('removed positions2', removed_positions)
-        
-        prev_n = len(all_positions)
-        all_positions, all_orientations = remove_redundant_positions(all_positions, all_orientations)
-        removed_positions = prev_n - len(all_positions)
-        print('removed positions3', removed_positions)
+        if not self.is_dot:
+            prev_n = len(all_positions)
+            all_positions, all_orientations = remove_redundant_positions(all_positions, all_orientations)
+            removed_positions = prev_n - len(all_positions)
+            print('removed positions1', removed_positions)
+            
+            prev_n = len(all_positions)
+            all_positions, all_orientations = remove_redundant_positions(all_positions, all_orientations)
+            removed_positions = prev_n - len(all_positions)
+            print('removed positions2', removed_positions)
+            
+            prev_n = len(all_positions)
+            all_positions, all_orientations = remove_redundant_positions(all_positions, all_orientations)
+            removed_positions = prev_n - len(all_positions)
+            print('removed positions3', removed_positions)
         
         stroke_complete = painter.move_to_trajectories(all_positions, all_orientations, fast=fast)
 

@@ -271,7 +271,7 @@ def extract_paint_color(canvas_before, canvas_after, stroke_bool_map):
 def random_init_painting(opt, background_img, n_strokes, ink=False, device='cuda'):
     gridded_brush_strokes = []
 
-    xys = [(x,y) for x in torch.linspace(0.2,.8,int(n_strokes**0.5)) \
+    xys = [(x,y) for x in torch.linspace(0.15,.2,int(n_strokes**0.5)) \
                  for y in torch.linspace(0.2,.8,int(n_strokes**0.5))]
     if ink:
         xys = [(x,y) for x in torch.linspace(0.25,.75,int(n_strokes**0.5)) \
@@ -340,6 +340,8 @@ def init_brush_strokes(opt, diff, n_strokes, ink):
     else:
         diff[diff < 0.15] = 0.0001
     diff = diff.cpu().detach().numpy()
+    # plt.matshow(diff)
+    # plt.show()
     points = (np.array(np.nonzero(diff))).astype(int)
 
 
@@ -370,10 +372,10 @@ def init_brush_strokes(opt, diff, n_strokes, ink):
         points = points[:,:0]
                    
     for i in range(points.shape[1]):
-        x, y = points[1,i]/diff.shape[1]*2-1, points[0,i]/diff.shape[0]*2-1
+        x, y = points[1,i]/diff.shape[1], points[0,i]/diff.shape[0]
         # Random brush stroke
-        brush_stroke = BrushStroke(opt, xt=x, yt=y, ink=ink, 
-                                   stroke_length=torch.Tensor([0.001]))
+        brush_stroke = BrushStroke(opt, xt=x, yt=y, ink=ink)#, 
+                                #    stroke_length=torch.Tensor([0.001]))
         brush_strokes.append(brush_stroke)
     return brush_strokes
 
