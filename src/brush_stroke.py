@@ -132,6 +132,7 @@ def get_translation_transform(xt, yt):
 
 class BrushStroke(nn.Module):
     vae = MLP_VAE(32, 64, 32)
+    loaded = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def __init__(self, 
@@ -144,7 +145,7 @@ class BrushStroke(nn.Module):
                 is_dot=False):
         super(BrushStroke, self).__init__()
 
-        BrushStroke.vae.load_state_dict(torch.load(opt.vae_path))
+        self.load_vae(opt)
 
         self.is_dot = is_dot
 
@@ -173,10 +174,16 @@ class BrushStroke(nn.Module):
             self.color_transform = nn.Parameter(color)
         else:
             self.color_transform = torch.zeros(3).to(device)
+    
+    def load_vae(self, opt):
+        if BrushStroke.loaded:
+            return
+        BrushStroke.loaded = True
+        BrushStroke.vae.load_state_dict(torch.load(opt.vae_path))
 
     def forward(self, h, w, param2img, use_conv=True):
         # Do rigid body transformation
-        full_param = self.get_path(normalize=False).unsqueeze(0) # 1 x 32 x 3
+        full_param = self.get_path().unsqueeze(0) # 1 x 32 x 3
         
         stroke = param2img(full_param, self.xt, self.yt, self.a, use_conv=use_conv).unsqueeze(0)
 
