@@ -11,7 +11,7 @@ class MLP_VAE(nn.Module):
         # Encoder
         self.encoder = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(input_points_per_traj*2, 256),
+            nn.Linear(input_points_per_traj*3, 256),
             nn.LeakyReLU(),
             nn.Linear(256, 128),
             nn.LeakyReLU()
@@ -25,8 +25,8 @@ class MLP_VAE(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(128, 256),
             nn.LeakyReLU(),
-            nn.Linear(256, output_points_per_traj*2),
-            nn.Unflatten(1, (output_points_per_traj, 2)),
+            nn.Linear(256, output_points_per_traj*3),
+            nn.Unflatten(1, (output_points_per_traj, 3)),
             nn.Tanh()
         )
 
@@ -50,7 +50,7 @@ class MLP_VAE(nn.Module):
         decoded = self.decoder(z)
         if z.shape[0] == 1:
             decoded = decoded.squeeze(0)
-        decoded = decoded * 0.2
+        decoded = decoded * torch.Tensor([0.2, 0.2, 1.0]).to(self.dummy_param.device)
         return decoded
     
     def forward(self, trajectory):

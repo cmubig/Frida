@@ -7,7 +7,7 @@ def get_trajectories(dirs):
     '''
     dirs: list of directories containing trajectories.pkl
 
-    Returns list of np arrays, where each array is (N, 2)
+    Returns list of np arrays, where each array is (N, 3)
     '''
     trajectories = []
     for dir in dirs:
@@ -22,7 +22,7 @@ def normalize_trajectory(trajectory):
     '''
     Translates trajectory so that it start at [0,0] and rotates so that it ends on y-coordinate 0
 
-    trajectory: (N, 2)
+    trajectory: (N, 3)
     '''
     # trajectory: (N, 3)
     traj = trajectory.copy()
@@ -37,6 +37,7 @@ def normalize_trajectory(trajectory):
     new_traj = np.zeros_like(traj)
     new_traj[:, 0] = traj[:, 0] * np.cos(angle) - traj[:, 1] * np.sin(angle)
     new_traj[:, 1] = traj[:, 0] * np.sin(angle) + traj[:, 1] * np.cos(angle)
+    new_traj[:, 2] = traj[:, 2]
     traj = new_traj
 
     return traj
@@ -46,7 +47,7 @@ def resample_trajectory(trajectory, num_points=32):
     Resamples trajectory so that the number of points is num_points.
     Interpolates between points of original trajectory.
 
-    trajectory: (N, 2)
+    trajectory: (N, 3)
     num_points: int
     '''
     N = trajectory.shape[0]
@@ -81,4 +82,4 @@ def plot_trajectory(ax, trajectory):
     ax.plot(trajectory[:, 0], trajectory[:, 1], c='black', linewidth=0.5)
 
     # Draw small dots at trajectory points based on value of z-coordinate
-    ax.scatter(trajectory[:, 0], trajectory[:, 1], s=1)
+    ax.scatter(trajectory[:, 0], trajectory[:, 1], c=trajectory[:, 2], s=1)

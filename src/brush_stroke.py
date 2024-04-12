@@ -10,7 +10,7 @@ bicubic = InterpolationMode.BICUBIC
 import warnings
 import numpy as np
 from scipy.interpolate import make_interp_spline
-from traj_vae.autoencoders import MLP_VAE
+from mocap.autoencoders import MLP_VAE
 
 # from param2stroke import special_sigmoid
 small_dtype = torch.float16
@@ -131,15 +131,8 @@ def get_translation_transform(xt, yt):
     return A
 
 class BrushStroke(nn.Module):
-    vae = MLP_VAE(32, 16, 32)
-    vae.load_state_dict(torch.load("traj_vae/saved_models/model.pt"))
+    vae = MLP_VAE(32, 64, 32)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # Bounds for the x/y coordinates the VAE can generate
-    # These values are calculated based on the imposed max stroke length of 0.25 in the JSPaint webapp,
-    # in conjunction with the fact that the stroke starts at (0,0) and is rotated to be horizontal
-    vae_max_stroke_length = 0.25
-    vae_x_bounds = (-vae_max_stroke_length/2, vae_max_stroke_length)
-    vae_y_bounds = (-vae_max_stroke_length/2, vae_max_stroke_length/2)
 
     def __init__(self, 
                  opt,
@@ -150,6 +143,8 @@ class BrushStroke(nn.Module):
                 device='cuda',
                 is_dot=False):
         super(BrushStroke, self).__init__()
+
+        BrushStroke.vae.load_state_dict(torch.load(opt.vae_path))
 
         self.is_dot = is_dot
 
@@ -222,7 +217,7 @@ class BrushStroke(nn.Module):
                 # Well balanced RGB, less constraint
                 stroke.color_transform.data.clamp_(0.02,0.85)
 
-    def get_path(self, normalize=True):
+    def get_path(self):
         if self.is_dot:
             path = torch.zeros((4,4))
             path[:,2] = 0.75
@@ -232,8 +227,6 @@ class BrushStroke(nn.Module):
 
         # Clone the path so that the operation is not in-place (PyTorch quirk; allows gradients to flow through)
         path_clone = path.clone()
-        if normalize:
-            path_clone[:,0:2] = path[:,0:2] / BrushStroke.vae_max_stroke_length * self.MAX_STROKE_LENGTH
         path_clone[:,2] = path[:,2].clamp(self.MIN_STROKE_Z, 0.95)
         
         return path_clone
