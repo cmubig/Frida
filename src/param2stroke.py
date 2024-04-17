@@ -257,8 +257,8 @@ class StrokeParametersToImage(nn.Module):
         if output_dim_meters is not None:
             # input parameters are in meters. Translate these to proportions for the renderer.
             # Also account for the starting position of the stroke (Which should be 0,0)
-            self.x_m = 1.0#1.0 / output_dim_meters[1]
-            self.y_m = 1.0#-1.0 / output_dim_meters[0]
+            self.x_m = 1.0 / output_dim_meters[1]
+            self.y_m = 1.0 / output_dim_meters[0]
 
             self.x_m = nn.Parameter(torch.tensor(self.x_m))
             self.y_m = nn.Parameter(torch.tensor(self.y_m))

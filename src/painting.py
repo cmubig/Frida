@@ -27,6 +27,8 @@ class Painting(nn.Module):
             self.brush_strokes = nn.ModuleList([BrushStroke(opt) for _ in range(n_strokes)])
         else:
             self.brush_strokes = nn.ModuleList(brush_strokes)
+        for bs in self.brush_strokes:
+            bs.load_vae(opt)
         
         self.param2img = get_param2img(opt)
 
