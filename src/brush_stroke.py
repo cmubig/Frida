@@ -131,8 +131,7 @@ def get_translation_transform(xt, yt):
     return A
 
 class BrushStroke(nn.Module):
-    vae = MLP_VAE(32, 64, 32)
-    loaded = False
+    vaes = {}
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def __init__(self, 
@@ -144,8 +143,6 @@ class BrushStroke(nn.Module):
                 device='cuda',
                 is_dot=False):
         super(BrushStroke, self).__init__()
-
-        self.load_vae(opt)
 
         self.is_dot = is_dot
 
@@ -162,9 +159,11 @@ class BrushStroke(nn.Module):
         self.xt = nn.Parameter(torch.ones(1)*xt) # Range [0,1]
         self.yt = nn.Parameter(torch.ones(1)*yt) # Range [0,1]
         self.a = nn.Parameter(torch.ones(1)*a) # Range [-2pi,2pi]
+
+        self.vae_name = opt.vae_path
         
         if latent is None: 
-            latent = torch.randn(1, BrushStroke.vae.latent_dim)
+            latent = torch.randn(1, 64)
 
         self.latent = latent 
         self.latent.requires_grad = True 
@@ -174,12 +173,6 @@ class BrushStroke(nn.Module):
             self.color_transform = nn.Parameter(color)
         else:
             self.color_transform = torch.zeros(3).to(device)
-    
-    def load_vae(self, opt):
-        if BrushStroke.loaded:
-            return
-        BrushStroke.loaded = True
-        BrushStroke.vae.load_state_dict(torch.load(opt.vae_path))
 
     def forward(self, h, w, param2img, use_conv=True):
         # Do rigid body transformation
@@ -228,8 +221,13 @@ class BrushStroke(nn.Module):
             path = torch.zeros((4,4))
             path[:,2] = 0.75
             return path
-        BrushStroke.vae.to(self.latent.device)
-        path = BrushStroke.vae.decode(self.latent)
+        if self.vae_name not in BrushStroke.vaes:
+            vae = MLP_VAE(32, 64, 32)
+            vae.load_state_dict(torch.load(self.vae_name))
+            BrushStroke.vaes[self.vae_name] = vae
+
+        BrushStroke.vaes[self.vae_name].to(self.latent.device)
+        path = BrushStroke.vaes[self.vae_name].decode(self.latent)
 
         # Clone the path so that the operation is not in-place (PyTorch quirk; allows gradients to flow through)
         path_clone = path.clone()

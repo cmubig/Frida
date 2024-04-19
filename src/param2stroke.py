@@ -483,7 +483,6 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
         ep_loss = 0
         for batch_it in range(len(train_brush_strokes)):
             bs = train_brush_strokes[batch_it].to(device)
-            bs.load_vae(opt)
             canvas_before = train_canvases_before[batch_it:batch_it+1]
             canvas_after = train_canvases_after[batch_it:batch_it+1]
 
