@@ -24,6 +24,8 @@ from options import Options
 from my_tensorboard import TensorBoard
 from painting_optimization import load_objectives_data, optimize_painting
 
+import gc
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 if __name__ == '__main__':
@@ -65,7 +67,7 @@ if __name__ == '__main__':
     load_objectives_data(opt)
 
     # Optimize strokes one batch at a time, freezing strokes from previous batches
-    num_batches = opt.num_strokes // opt.strokes_per_batch + opt.num_strokes % opt.strokes_per_batch
+    num_batches = (opt.num_strokes // opt.strokes_per_batch) + (1 if opt.num_strokes % opt.strokes_per_batch > 0 else 0)
     for batch_ind in range(num_batches):
         num_strokes = opt.strokes_per_batch if batch_ind < num_batches - 1 else opt.num_strokes % opt.strokes_per_batch
 
@@ -78,8 +80,13 @@ if __name__ == '__main__':
         painting, color_palette = optimize_painting(opt, painting, 
                     optim_iter=opt.init_optim_iter//num_batches, color_palette=color_palette)
 
-        current_canvas = painting(h_render, w_render, use_alpha=False)
-    
+        current_canvas = torch.clone(painting(h_render, w_render, use_alpha=False))
+
+        painting = None
+        gc.collect()
+        with torch.no_grad():
+            torch.cuda.empty_cache()
+
     # Log colors so user can start to mix them
     if not opt.ink:
         opt.writer.add_image('paint_colors/mix_these_colors', save_colors(color_palette), 0)
@@ -91,7 +98,7 @@ if __name__ == '__main__':
                  title="Initial plan complete. Ready to start painting. Ensure mixed paint is provided and then exit this to start painting.")
 
 
-    strokes_per_adaptation = int(len(painting) / opt.num_adaptations)
+    strokes_per_adaptation = int(opt.num_strokes / opt.num_adaptations)
     strokes_executed, canvas_photos = 0, []
     # for adaptation_it in range(opt.num_adaptations):
     while len(painting) > 0:
