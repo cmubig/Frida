@@ -64,19 +64,21 @@ if __name__ == '__main__':
 
     load_objectives_data(opt)
 
-    painting = random_init_painting(opt, current_canvas, opt.num_strokes, ink=opt.ink)
-    painting.to(device)
+    # Optimize strokes one batch at a time, freezing strokes from previous batches
+    num_batches = opt.num_strokes // opt.strokes_per_batch + opt.num_strokes % opt.strokes_per_batch
+    for batch_ind in range(num_batches):
+        num_strokes = opt.strokes_per_batch if batch_ind < num_batches - 1 else opt.num_strokes % opt.strokes_per_batch
 
-    if opt.use_colors_from is not None:
-        discretize_colors(painting, color_palette)
-    
+        painting = random_init_painting(opt, current_canvas, num_strokes, ink=opt.ink)
+        painting.to(device)
 
-    # Do the initial optimization
-    painting, color_palette = optimize_painting(opt, painting, 
-                optim_iter=opt.init_optim_iter, color_palette=color_palette)
-    
-    # painting.param2img.renderer.set_render_size(size_x=w_render, size_y=h_render)
-    # painting.param2img.renderer.set_render_size(size_x=h_render, size_y=h_render)
+        if opt.use_colors_from is not None:
+            discretize_colors(painting, color_palette)
+        
+        painting, color_palette = optimize_painting(opt, painting, 
+                    optim_iter=opt.init_optim_iter//num_batches, color_palette=color_palette)
+
+        current_canvas = painting(h_render, w_render, use_alpha=False)
     
     # Log colors so user can start to mix them
     if not opt.ink:

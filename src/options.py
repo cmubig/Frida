@@ -58,6 +58,7 @@ class Options(object):
         parser.add_argument('--num_strokes', type=int, default=400)
         parser.add_argument('--num_adaptations', type=int, default=4)
         parser.add_argument('--fill_weight', type=float, default=0.0, help="Encourage strokes to fill canvas.")
+        parser.add_argument('--strokes_per_batch', type=int, default=None)
 
         # Optimization Parameters
         parser.add_argument('--objective', nargs='*', type=str, help='text|style|clip_conv_loss|l2|clip_fc_loss')
@@ -162,6 +163,8 @@ class Options(object):
         if not os.path.exists(self.plan_gif_dir): os.mkdir(self.plan_gif_dir)
         if not os.path.exists(self.output_dir): os.mkdir(self.output_dir)
 
+        if self.opt['strokes_per_batch'] is None:
+            self.opt['strokes_per_batch'] = self.opt['num_strokes']
 
     def __getattr__(self, attr_name):
         return self.opt[attr_name]
