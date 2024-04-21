@@ -69,7 +69,7 @@ if __name__ == '__main__':
     # Optimize strokes one batch at a time, freezing strokes from previous batches
     num_batches = (opt.num_strokes // opt.strokes_per_batch) + (1 if opt.num_strokes % opt.strokes_per_batch > 0 else 0)
     for batch_ind in range(num_batches):
-        num_strokes = opt.strokes_per_batch if batch_ind < num_batches - 1 else opt.num_strokes % opt.strokes_per_batch
+        num_strokes = min(opt.strokes_per_batch, opt.num_strokes - batch_ind * opt.strokes_per_batch)
 
         painting = random_init_painting(opt, current_canvas, num_strokes, ink=opt.ink)
         painting.to(device)
