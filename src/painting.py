@@ -6,6 +6,7 @@ bicubic = InterpolationMode.BICUBIC
 import numpy as np
 from brush_stroke import BrushStroke
 from param2stroke import get_param2img
+import pickle
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -59,13 +60,15 @@ class Painting(nn.Module):
             canvas = T.Resize((h,w), bicubic, antialias=True)(self.background_img).detach()
         canvas[:,3] = 1 # alpha channel
 
-        mostly_opaque = False#True
+        adjust_extreme_alphas = True
         if return_alphas: stroke_alphas = []
 
         for brush_stroke in self.brush_strokes:
             single_stroke = brush_stroke(h,w, self.param2img)
 
-            if mostly_opaque: single_stroke[:,3][single_stroke[:,3] > 0.5] = 1.
+            if adjust_extreme_alphas:
+                single_stroke[:,3][single_stroke[:,3] > 0.5] = 1.
+                single_stroke[:,3][single_stroke[:,3] < 0.05] = 0.
             if return_alphas: stroke_alphas.append(single_stroke[:,3:])
             
             if efficient:
@@ -134,3 +137,10 @@ class Painting(nn.Module):
     
     def __len__(self):
         return len(self.brush_strokes)
+    
+    def save(self, path):
+        pickle.dump(self.brush_strokes, open(path, 'wb'))
+    
+    @staticmethod
+    def load(path):
+        return pickle.load(open(path, 'rb'))
