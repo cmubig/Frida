@@ -6,7 +6,6 @@ bicubic = InterpolationMode.BICUBIC
 import numpy as np
 from brush_stroke import BrushStroke
 from param2stroke import get_param2img
-import pickle
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -15,11 +14,9 @@ class Painting(nn.Module):
     def __init__(self, opt, n_strokes=None, background_img=None, brush_strokes=None):
         # h, w are canvas height and width in pixels
         super(Painting, self).__init__()
-        self.n_strokes = n_strokes
-
         self.background_img = background_img
 
-        if self.background_img.shape[1] == 3: # add alpha channel
+        if self.background_img is not None and self.background_img.shape[1] == 3: # add alpha channel
             t =  torch.zeros((1,1,self.background_img.shape[2],self.background_img.shape[3])).to(device)
             # t[:,:3] = self.background_img
             self.background_img = torch.cat((self.background_img, t), dim=1)
@@ -137,10 +134,3 @@ class Painting(nn.Module):
     
     def __len__(self):
         return len(self.brush_strokes)
-    
-    def save(self, path):
-        pickle.dump(self.brush_strokes, open(path, 'wb'))
-    
-    @staticmethod
-    def load(path):
-        return pickle.load(open(path, 'rb'))

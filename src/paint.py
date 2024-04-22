@@ -6,25 +6,27 @@
 ################ All rights reserved. ####################
 ##########################################################
 
+import copy
 import os
 import sys
 import time
 import cv2
 import datetime
 import numpy as np
+import gc
+import pickle
 
 import torch
 from tqdm import tqdm
 from paint_utils3 import canvas_to_global_coordinates, discretize_colors, get_colors, nearest_color, random_init_painting, save_colors, show_img, to_video
 
 from painter import Painter
+from painting import Painting
 from options import Options
 # from paint_planner import paint_planner_new
 
 from my_tensorboard import TensorBoard
 from painting_optimization import load_objectives_data, optimize_painting
-
-import gc
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -66,26 +68,39 @@ if __name__ == '__main__':
 
     load_objectives_data(opt)
 
-    # Optimize strokes one batch at a time, freezing strokes from previous batches
-    num_batches = (opt.num_strokes // opt.strokes_per_batch) + (1 if opt.num_strokes % opt.strokes_per_batch > 0 else 0)
-    for batch_ind in range(num_batches):
-        num_strokes = min(opt.strokes_per_batch, opt.num_strokes - batch_ind * opt.strokes_per_batch)
+    if opt.painting_path is None or not os.path.exists(opt.painting_path):
+        # Optimize strokes one batch at a time, freezing strokes from previous batches
+        strokes = []
+        num_batches = (opt.num_strokes // opt.strokes_per_batch) + (1 if opt.num_strokes % opt.strokes_per_batch > 0 else 0)
+        for batch_ind in range(num_batches):
+            num_strokes = min(opt.strokes_per_batch, opt.num_strokes - batch_ind * opt.strokes_per_batch)
 
-        painting = random_init_painting(opt, current_canvas, num_strokes, ink=opt.ink)
+            painting = random_init_painting(opt, current_canvas, num_strokes, ink=opt.ink)
+            painting.to(device)
+
+            if opt.use_colors_from is not None:
+                discretize_colors(painting, color_palette)
+            
+            painting, color_palette = optimize_painting(opt, painting, 
+                        optim_iter=opt.init_optim_iter//num_batches, color_palette=color_palette)
+
+            current_canvas = torch.clone(painting(h_render, w_render, use_alpha=False))
+            for bs in painting.brush_strokes:
+                strokes.append(copy.deepcopy(bs))
+
+            painting = None
+            gc.collect()
+            with torch.no_grad():
+                torch.cuda.empty_cache()
+
+        painting = Painting(opt, brush_strokes=strokes)
+        # Save painting to file
+        if opt.painting_path is not None:
+            pickle.dump(painting, open(opt.painting_path, 'wb'))
         painting.to(device)
-
-        if opt.use_colors_from is not None:
-            discretize_colors(painting, color_palette)
-        
-        painting, color_palette = optimize_painting(opt, painting, 
-                    optim_iter=opt.init_optim_iter//num_batches, color_palette=color_palette)
-
-        current_canvas = torch.clone(painting(h_render, w_render, use_alpha=False))
-
-        painting = None
-        gc.collect()
-        with torch.no_grad():
-            torch.cuda.empty_cache()
+    else:
+        painting = pickle.load(open(opt.painting_path, 'rb'))
+        painting.to(device)
 
     # Log colors so user can start to mix them
     if not opt.ink:
@@ -98,7 +113,7 @@ if __name__ == '__main__':
                  title="Initial plan complete. Ready to start painting. Ensure mixed paint is provided and then exit this to start painting.")
 
 
-    strokes_per_adaptation = int(opt.num_strokes / opt.num_adaptations)
+    strokes_per_adaptation = len(painting) // opt.num_adaptations
     strokes_executed, canvas_photos = 0, []
     # for adaptation_it in range(opt.num_adaptations):
     while len(painting) > 0:
