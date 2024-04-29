@@ -55,7 +55,7 @@ class Options(object):
         # Planning Parameters
         parser.add_argument('--dont_plan', action='store_true', help='Use saved plan from last run')
         parser.add_argument('--num_strokes', type=int, default=400)
-        parser.add_argument('--num_adaptations', type=int, default=4)
+        parser.add_argument('--num_adaptations', type=int, default=1)
         parser.add_argument('--fill_weight', type=float, default=0.0, help="Encourage strokes to fill canvas.")
 
         # Optimization Parameters
