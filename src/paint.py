@@ -84,7 +84,7 @@ if __name__ == '__main__':
             painting, color_palette = optimize_painting(opt, painting, 
                         optim_iter=opt.init_optim_iter//num_batches, color_palette=color_palette)
 
-            current_canvas = torch.clone(painting(h_render, w_render, use_alpha=False))
+            current_canvas = torch.clone(painting(h_render, w_render, use_alpha=False, save=batch_ind == num_batches - 1))
             for bs in painting.brush_strokes:
                 strokes.append(copy.deepcopy(bs))
 
