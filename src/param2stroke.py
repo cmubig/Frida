@@ -75,8 +75,8 @@ class BezierRenderer(nn.Module):
         
         self.set_render_size(size_x, size_y)
 
-        self.weights = nn.Parameter(torch.eye(2)) # multiply each point in trajectory by this
-        self.biases = nn.Parameter(torch.zeros(2)) # add this to each point
+        # self.weights = nn.Parameter(torch.eye(2)) # multiply each point in trajectory by this
+        # self.biases = nn.Parameter(torch.zeros(2)) # add this to each point
         
         self.thick_mult = nn.Parameter(torch.ones((1)))
         # self.thick_bias = nn.Parameter(torch.zeros((1)))
@@ -84,18 +84,24 @@ class BezierRenderer(nn.Module):
         self.thick_bias = nn.Parameter(torch.zeros((1))+0.1)
         self.dark_exp = nn.Parameter(torch.ones((1)))
 
-        # self.nc = self.P
+        # self.conv_mult = nn.Parameter(torch.zeros((1)))
         # self.conv = nn.Sequential(
-        #     nn.Conv2d(self.P, self.nc, kernel_size=5, padding='same', dilation=1),
-        #     nn.LeakyReLU(0.2, inplace=True),
-        #     nn.Conv2d(self.nc, self.P, kernel_size=5, padding='same', dilation=1),
+        #     nn.Conv2d(self.P, 8, kernel_size=3, padding='same'),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True),
+        #     nn.Conv2d(8, 16, kernel_size=3, padding='same'),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True),
+        #     nn.Conv2d(16, 32, kernel_size=3, padding='same'),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True),
+        #     nn.Conv2d(32, 64, kernel_size=3, padding='same'),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True),
+        #     nn.Conv2d(64, 64, kernel_size=3, padding='same'),
+        #     nn.ReLU(),
+        #     # unfinished
         # )
-        # self.conv = nn.Sequential(
-        #     # nn.Sigmoid(),
-        #     nn.Conv2d(self.P, self.P, kernel_size=5, padding='same', dilation=1)
-        # )
-
-        self.conv = MatMulLayer(size=(1,self.P-1,size_y,size_x), layers=1)
 
     def set_render_size(self, size_x, size_y):
         '''
@@ -108,28 +114,34 @@ class BezierRenderer(nn.Module):
         x_coords, y_coords = torch.meshgrid(idxs_y, idxs_x, indexing='ij') # G x G
         self.grid_coords = torch.stack((x_coords, y_coords), dim=2).reshape(1,size_y, size_x,2) # 1 x G x G x 2
 
-    def forward(self, trajectories, thicknesses, use_conv):        
+    def forward(self, trajectories, heights, use_conv):        
         # trajectories: (n, 2, self.P)
-        # thicknesses: (n, 1, self.P)
+        # heights: (n, 1, self.P)
         strokes = []
         for i in range(len(trajectories)):
             # Expand num_ctrl_pts to self.P (smooths the curve)
             stroke = self.curve_to_stroke(trajectories[i]) # (P, 2) range:[0,1]
 
-            thickness = (thicknesses[i]*2 + 0.5) / 64
+            heights_ = (heights[i]*2 + 0.5) / 64 # Hacky fixed scaling to help start better
+
             # Stroke trajectory to bitmap
-            stroke = self.render_stroke(stroke, thickness, use_conv=use_conv)
+            stroke = self.render_stroke(stroke, heights_)
+            if use_conv:
+                stroke = stroke.reshape(1, 1, self.size_y, self.size_x)
+                # stroke = stroke + self.conv_mult * self.conv(stroke)
+
             strokes.append(stroke)
         strokes = torch.stack(strokes, dim=0)
         return strokes
 
     def curve_to_stroke(self, curve):
         # curve: (2, self.P)
-        return torch.matmul(self.weights, curve).T + self.biases # (self.P, 2)
+        # return torch.matmul(self.weights, curve).T + self.biases # (self.P, 2)
+        return curve.T
 
-    def render_stroke(self, stroke, t, use_conv):
+    def render_stroke(self, stroke, heights):
         # stroke: (P, 2)
-        # t: (1, P)
+        # heights: (1, P)
         n = len(stroke)
         vs = stroke[:-1].reshape((-1,1,1,2)) # (P-1, 1, 1, 2)
         vs = torch.tile(vs, (1, self.size_y, self.size_x, 1)) # (P-1, size_y, size_x, 2)
@@ -142,18 +154,19 @@ class BezierRenderer(nn.Module):
         # For each of the P segments, compute distance from every point to the line as well as the fraction along the line
         distances, fraction = self.dist_line_segment(coords, vs, ws) # (P-1, size_y, size_x)
         
-        # Compute the start and end thickness of each line segment
-        start_thickness = t[0, :-1].unsqueeze(1).unsqueeze(2) # (P-1, 1, 1)
-        end_thickness = t[0, 1:].unsqueeze(1).unsqueeze(2) # (P-1, 1, 1)
+        # Compute interpolated heights for each line segment
+        start_heights = heights[0, :-1].unsqueeze(1).unsqueeze(2) # (P-1, 1, 1)
+        end_heights = heights[0, 1:].unsqueeze(1).unsqueeze(2) # (P-1, 1, 1)
+        interpolated_heights = start_heights * (1 - fraction) + end_heights * fraction # (P-1, size_y, size_x)
         
-        # Convert the fractions into thickness values
-        thickness = start_thickness * (1 - fraction) + end_thickness * fraction # (P-1, size_y, size_x)
-        thickness = thickness * self.thick_mult + self.thick_bias#torch.clamp(self.thick_bias, min=0.0, max=1.0)
+        # Convert heights into thickness values
+        thickness = interpolated_heights * self.thick_mult + self.thick_bias#torch.clamp(self.thick_bias, min=0.0, max=1.0)
         thickness = torch.clamp(thickness, min=1e-8)
 
         # Compute darkness for each line segment
         darkness = torch.clamp((thickness - distances)/(thickness), min=0.0, max=1.0) # (P-1, size_y, size_x)
         darkness = (darkness+1e-4)**self.dark_exp # (P-1, size_y, size_x)
+
 
         import torchgeometry
         import warnings
@@ -180,7 +193,6 @@ class BezierRenderer(nn.Module):
 
             darkness = darkness[:,0,:,:].unsqueeze(0) # (1, P-1, size_y, size_x)
 
-
             darkness = self.conv(darkness) # (1, P-1, size_y, size_x)
 
             darkness = darkness.swapaxes(0,1) # (P-1, 1, size_y, size_x)
@@ -192,9 +204,6 @@ class BezierRenderer(nn.Module):
                         torch.inverse(M), dsize=(self.size_y,self.size_x))
 
             darkness = darkness.squeeze(1) # (P, size_y, size_x)
-
-            # show_img(torch.max(darknesses, dim=0).values * dryness)
-
         # Max across channels to get final stroke
         darkness = torch.max(darkness, dim=0).values # (size_y, size_x)
         
@@ -299,7 +308,7 @@ class StrokeParametersToImage(nn.Module):
         '''
         # parameter: (batch, num_pts, 3)
         traj = parameter[:,:,0:2] # (batch, num_pts, 2)
-        thicknesses = parameter[:,:,2:3] # (batch, num_pts, 1)
+        heights = parameter[:,:,2:3] # (batch, num_pts, 1)
 
         # x,y to y,x
         traj = torch.flip(traj, dims=(2,)) 
@@ -320,11 +329,11 @@ class StrokeParametersToImage(nn.Module):
 
         # batch, ctrl_point, 2 -> batch, 2, ctrl_points
         traj = torch.permute(traj, (0,2,1))
-        thicknesses = torch.permute(thicknesses, (0,2,1))
+        heights = torch.permute(heights, (0,2,1))
         
         # Run through Differentiable renderer
         x = self.renderer(traj,# * self.traj_factor[None] + self.traj_bias, 
-                          thicknesses,
+                          heights,
                           use_conv=use_conv) # (batch, size_y, size_x)
         
         return x
@@ -398,6 +407,15 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     brush_strokes = []
     for brush_strokes_fn in brush_strokes_fns:
         bs = pickle.load(open(brush_strokes_fn,'rb'))
+
+        print("REMINDER LAWRENCE YOU NEED TO DELETE THIS EVENTUALLY")
+        print("REMINDER LAWRENCE YOU NEED TO DELETE THIS EVENTUALLY")
+        print("REMINDER LAWRENCE YOU NEED TO DELETE THIS EVENTUALLY")
+        print("REMINDER LAWRENCE YOU NEED TO DELETE THIS EVENTUALLY")
+        print("REMINDER LAWRENCE YOU NEED TO DELETE THIS EVENTUALLY")
+        for stroke in bs:
+            stroke.vae_name = opt.vae_path
+
         brush_strokes = bs if brush_strokes is None else np.concatenate([brush_strokes, bs]) 
     
     canvases_before = torch.from_numpy(canvases_before).float().nan_to_num()

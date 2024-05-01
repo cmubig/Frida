@@ -555,6 +555,7 @@ class Painter():
 
         # Figure out how many strokes can be made on the given canvas size
         n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT_M/(0.25*self.opt.MAX_STROKE_LENGTH)))
+        n_strokes_y //= 3 # TODO: LAWRENCE DELETE THIS
 
         brush_strokes = [] # list of BrushStroke
         canvases_before = [] # Photos of canvases without stroke
@@ -585,6 +586,7 @@ class Painter():
                     
                     stroke_length_m = random_stroke.get_path()[:,0].max().item()
                     stroke_length_pix = stroke_length_m * (w / self.opt.CANVAS_WIDTH_M)
+                    stroke_length_pix *= 1.5 # TODO: LAWRENCE DELETE THIS
                     if stroke_length_pix + x_offset_pix > 0.98*w:
                         break # No room left on the page width
                     

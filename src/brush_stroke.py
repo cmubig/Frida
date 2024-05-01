@@ -228,6 +228,7 @@ class BrushStroke(nn.Module):
 
         BrushStroke.vaes[self.vae_name].to(self.latent.device)
         path = BrushStroke.vaes[self.vae_name].decode(self.latent)
+        path *= 2 # TODO: LAWRENCE DELETE THIS
 
         # Clone the path so that the operation is not in-place (PyTorch quirk; allows gradients to flow through)
         path_clone = path.clone()
