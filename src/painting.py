@@ -67,19 +67,20 @@ class Painting(nn.Module):
                 single_stroke[:,3][single_stroke[:,3] < 0.05] = 0.
             if return_alphas: stroke_alphas.append(single_stroke[:,3:])
             
-            if save and i < 10:
+            if save:
                 import matplotlib
                 import matplotlib.pyplot as plt
                 from mocap.traj_helpers import plot_trajectory
                 matplotlib.use('Agg')
-                path = brush_stroke.get_path()
+                path = brush_stroke.get_path().cpu().detach().numpy()
                 _, ax = plt.subplots()
                 plot_trajectory(ax, path)
+                plt.axis('scaled')
                 plt.savefig(f"bruh/trajectory_{i}.png")
 
                 # save single_stroke image
                 from PIL import Image
-                single_stroke_img = Image.fromarray((single_stroke.cpu().numpy()[0].transpose(1,2,0)*255).astype(np.uint8))
+                single_stroke_img = Image.fromarray((single_stroke.cpu().detach().numpy()[0].transpose(1,2,0)*255).astype(np.uint8))
                 single_stroke_img.save(f"bruh/stroke_{i}.png")
 
             if efficient:
@@ -103,7 +104,7 @@ class Painting(nn.Module):
         if save:
             # Save painting
             from PIL import Image
-            canvas_img = Image.fromarray((canvas.cpu().numpy()[0].transpose(1,2,0)*255).astype(np.uint8))
+            canvas_img = Image.fromarray((canvas.cpu().detach().numpy()[0].transpose(1,2,0)*255).astype(np.uint8))
             canvas_img.save(f"bruh/canvas.png")
         return canvas
 
