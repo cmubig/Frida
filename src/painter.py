@@ -99,7 +99,7 @@ class Painter():
         else:
             print('\nBrush tip calibration\n')
             print('Brush should be at very center of the canvas.')
-            print('Use keys "w" and "s" to set the brush to just barely touch the canvas.')
+            print('Use keys "w" and "s" to set the brush to just bare/localy touch the canvas.')
             p = canvas_to_global_coordinates(0.5, 0.5, self.opt.INIT_TABLE_Z, self.opt)
             self.Z_CANVAS = self.set_height(p[0], p[1], self.opt.INIT_TABLE_Z)[2]
 
@@ -554,8 +554,7 @@ class Painter():
         if not os.path.exists(lib_dir): os.mkdir(lib_dir)
 
         # Figure out how many strokes can be made on the given canvas size
-        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT_M/(0.25*self.opt.MAX_STROKE_LENGTH)))
-        n_strokes_y //= 3 # TODO: LAWRENCE DELETE THIS
+        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT_M/(0.5*self.opt.MAX_STROKE_LENGTH)))
 
         brush_strokes = [] # list of BrushStroke
         canvases_before = [] # Photos of canvases without stroke
@@ -586,7 +585,6 @@ class Painter():
                     
                     stroke_length_m = random_stroke.get_path()[:,0].max().item()
                     stroke_length_pix = stroke_length_m * (w / self.opt.CANVAS_WIDTH_M)
-                    stroke_length_pix *= 1.5 # TODO: LAWRENCE DELETE THIS
                     if stroke_length_pix + x_offset_pix > 0.98*w:
                         break # No room left on the page width
                     

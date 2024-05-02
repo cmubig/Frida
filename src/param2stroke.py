@@ -126,9 +126,6 @@ class BezierRenderer(nn.Module):
 
             # Stroke trajectory to bitmap
             stroke = self.render_stroke(stroke, heights_)
-            if use_conv:
-                stroke = stroke.reshape(1, 1, self.size_y, self.size_x)
-                # stroke = stroke + self.conv_mult * self.conv(stroke)
 
             strokes.append(stroke)
         strokes = torch.stack(strokes, dim=0)
@@ -407,15 +404,6 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     brush_strokes = []
     for brush_strokes_fn in brush_strokes_fns:
         bs = pickle.load(open(brush_strokes_fn,'rb'))
-
-        print("REMINDER LAWRENCE YOU NEED TO DELETE THIS EVENTUALLY")
-        print("REMINDER LAWRENCE YOU NEED TO DELETE THIS EVENTUALLY")
-        print("REMINDER LAWRENCE YOU NEED TO DELETE THIS EVENTUALLY")
-        print("REMINDER LAWRENCE YOU NEED TO DELETE THIS EVENTUALLY")
-        print("REMINDER LAWRENCE YOU NEED TO DELETE THIS EVENTUALLY")
-        for stroke in bs:
-            stroke.vae_name = opt.vae_path
-
         brush_strokes = bs if brush_strokes is None else np.concatenate([brush_strokes, bs]) 
     
     canvases_before = torch.from_numpy(canvases_before).float().nan_to_num()
