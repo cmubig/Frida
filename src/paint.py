@@ -68,7 +68,7 @@ if __name__ == '__main__':
 
     load_objectives_data(opt)
 
-    if opt.painting_path is None or not os.path.exists(opt.painting_path):
+    if opt.overwrite_painting or opt.painting_path is None or not os.path.exists(opt.painting_path):
         # Optimize strokes one batch at a time, freezing strokes from previous batches
         strokes = []
         num_batches = (opt.num_strokes // opt.strokes_per_batch) + (1 if opt.num_strokes % opt.strokes_per_batch > 0 else 0)
@@ -78,7 +78,7 @@ if __name__ == '__main__':
             painting = random_init_painting(opt, current_canvas, num_strokes, ink=opt.ink)
             painting.to(device)
 
-            if opt.use_colors_from is not None:
+            if color_palette is not None:
                 discretize_colors(painting, color_palette)
             
             painting, color_palette = optimize_painting(opt, painting, 
@@ -94,12 +94,13 @@ if __name__ == '__main__':
                 torch.cuda.empty_cache()
 
         painting = Painting(opt, brush_strokes=strokes)
+
         # Save painting to file
         if opt.painting_path is not None:
-            pickle.dump(painting, open(opt.painting_path, 'wb'))
+            pickle.dump((painting, color_palette), open(opt.painting_path, 'wb'))
         painting.to(device)
     else:
-        painting = pickle.load(open(opt.painting_path, 'rb'))
+        painting, color_palette = pickle.load(open(opt.painting_path, 'rb'))
         painting.to(device)
 
     # Log colors so user can start to mix them

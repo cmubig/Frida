@@ -38,6 +38,7 @@ class Options(object):
         parser.add_argument('--paint_from_image', action='store_true')
         parser.add_argument('--vae_path', type=str)
         parser.add_argument('--painting_path', type=str, default=None)
+        parser.add_argument('--overwrite_painting', action='store_true')
 
         # Color parameters
         parser.add_argument('--calib_colors', action='store_true', help='Use this to calibrate colors using MacBeth color checker')
