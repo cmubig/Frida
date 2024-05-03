@@ -89,7 +89,7 @@ if __name__ == '__main__':
             if current_alphas is None:
                 current_alphas = alphas
             else:
-                current_alphas = torch.max(current_alphas, alphas)
+                current_alphas = torch.max(current_alphas, alphas).clone().detach()
             for bs in painting.brush_strokes:
                 strokes.append(copy.deepcopy(bs))
 
