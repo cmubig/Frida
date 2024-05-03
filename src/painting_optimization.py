@@ -51,7 +51,7 @@ def log_progress(painting, opt, log_freq=5, force_log=False, title='plan'):
             
             plans.append((p*255.).astype(np.uint8))
 
-def parse_objective(objective_type, objective_data, p, alphas, weight=1.0, num_augs=30):
+def parse_objective(objective_type, objective_data, p, weight=1.0, num_augs=30):
     ''' p is the rendered painting '''
     global local_it
     if objective_type == 'text':
