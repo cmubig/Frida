@@ -51,7 +51,7 @@ def log_progress(painting, opt, log_freq=5, force_log=False, title='plan'):
             
             plans.append((p*255.).astype(np.uint8))
 
-def parse_objective(objective_type, objective_data, p, weight=1.0, num_augs=30):
+def parse_objective(objective_type, objective_data, p, alphas, weight=1.0, num_augs=30):
     ''' p is the rendered painting '''
     global local_it
     if objective_type == 'text':
@@ -130,7 +130,7 @@ def load_objectives_data(opt):
     opt.objective_data_loaded = objective_data
 
 def optimize_painting(opt, painting, optim_iter, color_palette=None,
-                      change_color=True, shuffle_strokes=True):
+                      change_color=True, shuffle_strokes=True, preexisting_alphas=None):
     """
     kwargs:
         color_palette: if None, then it creates a new one
@@ -157,6 +157,8 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
                 optims[i_o].param_groups[0]['lr'] = og_lrs[i_o]*lr_factor
 
         p, alphas = painting(opt.h_render, opt.w_render, use_alpha=False, return_alphas=True)
+        if preexisting_alphas is not None:
+            alphas = torch.max(preexisting_alphas, alphas)
         
         loss = 0
         for k in range(len(opt.objective)):

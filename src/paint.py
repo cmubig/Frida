@@ -71,6 +71,7 @@ if __name__ == '__main__':
     if opt.overwrite_painting or opt.painting_path is None or not os.path.exists(opt.painting_path):
         # Optimize strokes one batch at a time, freezing strokes from previous batches
         strokes = []
+        current_alphas = None
         num_batches = (opt.num_strokes // opt.strokes_per_batch) + (1 if opt.num_strokes % opt.strokes_per_batch > 0 else 0)
         for batch_ind in range(num_batches):
             num_strokes = min(opt.strokes_per_batch, opt.num_strokes - batch_ind * opt.strokes_per_batch)
@@ -82,9 +83,13 @@ if __name__ == '__main__':
                 discretize_colors(painting, color_palette)
             
             painting, color_palette = optimize_painting(opt, painting, 
-                        optim_iter=opt.init_optim_iter, color_palette=color_palette)
+                        optim_iter=opt.init_optim_iter, color_palette=color_palette, preexisting_alphas=current_alphas)
 
-            current_canvas = torch.clone(painting(h_render, w_render, use_alpha=False))
+            current_canvas, alphas = painting(h_render, w_render, use_alpha=False, return_alphas=True)
+            if current_alphas is None:
+                current_alphas = alphas
+            else:
+                current_alphas = torch.max(current_alphas, alphas)
             for bs in painting.brush_strokes:
                 strokes.append(copy.deepcopy(bs))
 
