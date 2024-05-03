@@ -157,6 +157,7 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
                 optims[i_o].param_groups[0]['lr'] = og_lrs[i_o]*lr_factor
 
         p, alphas = painting(opt.h_render, opt.w_render, use_alpha=False, return_alphas=True)
+        alphas = alphas.clone().detach()
         if preexisting_alphas is not None:
             alphas = torch.max(preexisting_alphas, alphas)
         
