@@ -82,7 +82,7 @@ if __name__ == '__main__':
                 discretize_colors(painting, color_palette)
             
             painting, color_palette = optimize_painting(opt, painting, 
-                        optim_iter=opt.init_optim_iter//num_batches, color_palette=color_palette)
+                        optim_iter=opt.init_optim_iter, color_palette=color_palette)
 
             current_canvas = torch.clone(painting(h_render, w_render, use_alpha=False))
             for bs in painting.brush_strokes:
