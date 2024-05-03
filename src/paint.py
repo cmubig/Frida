@@ -86,10 +86,11 @@ if __name__ == '__main__':
                         optim_iter=opt.init_optim_iter, color_palette=color_palette, preexisting_alphas=current_alphas)
 
             current_canvas, alphas = painting(h_render, w_render, use_alpha=False, return_alphas=True)
+            alphas = alphas.clone().detach()
             if current_alphas is None:
                 current_alphas = alphas
             else:
-                current_alphas = torch.max(current_alphas, alphas).clone().detach()
+                current_alphas = torch.max(current_alphas, alphas)
             for bs in painting.brush_strokes:
                 strokes.append(copy.deepcopy(bs))
 
