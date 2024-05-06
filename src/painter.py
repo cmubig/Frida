@@ -227,12 +227,12 @@ class Painter():
         self._move(x,y,z, q=q, method=method, speed=speed)
 
     def locate_items(self):
-        self.dip_brush_in_water()
-        self.rub_brush_on_rag()
-        self.get_paint(0)
-        self.get_paint(5)
-        self.get_paint(6)
-        self.get_paint(11)
+        # self.dip_brush_in_water()
+        # self.rub_brush_on_rag()
+        # self.get_paint(0)
+        # self.get_paint(5)
+        # self.get_paint(6)
+        # self.get_paint(11)
         import time
         p = canvas_to_global_coordinates(0, 0, self.Z_CANVAS, self.opt)
         self.hover_above(p[0], p[1], p[2])
@@ -253,6 +253,7 @@ class Painter():
         self.hover_above(p[0], p[1], p[2])
 
     def dip_brush_in_water(self):
+        self.move_to(self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR)
         self.move_to(self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR)
         positions = []
         positions.append([self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
@@ -275,10 +276,20 @@ class Painter():
         positions.append([self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
         self.move_to_trajectories(positions, orientations)
+    
+    def touch_rag(self):
+        self.move_to(self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR, speed=0.3)
+        positions = []
+        positions.append([self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
+        noise = np.clip(np.random.randn(2)*0.04, a_min=-.04, a_max=0.04)
+        positions.append([self.opt.RAG_POSTITION[0]+noise[0],self.opt.RAG_POSTITION[1]+noise[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
+        positions.append([self.opt.RAG_POSTITION[0]+noise[0],self.opt.RAG_POSTITION[1]+noise[1],self.opt.RAG_POSTITION[2]+0.005])
+        positions.append([self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
+        orientations = [None]*len(positions)
+        self.move_to_trajectories(positions, orientations)
 
     def clean_paint_brush(self):
         if self.opt.simulate: return
-        self.move_to(self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]+0.09, speed=0.3)
         self.dip_brush_in_water()
         self.rub_brush_on_rag()
 
@@ -295,7 +306,7 @@ class Painter():
 
         positions, orientations = [], []
         positions.append([x,y,z+self.opt.HOVER_FACTOR])
-        positions.append([x,y,z+0.02])
+        positions.append([x,y,z+0.04])
         for i in range(3):
             noise = np.clip(np.random.randn(2)*0.004, a_min=-.009, a_max=0.009)
             positions.append([x+noise[0],y+noise[1],z])
@@ -303,6 +314,7 @@ class Painter():
         positions.append([x,y,z+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
         self.move_to_trajectories(positions, orientations)
+        self.touch_rag()
 
 
     def set_height(self, x, y, z, move_amount=0.0015):

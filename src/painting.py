@@ -15,6 +15,7 @@ class Painting(nn.Module):
         # h, w are canvas height and width in pixels
         super(Painting, self).__init__()
         self.background_img = background_img
+        self.strokes_per_batch = opt.strokes_per_batch
 
         if self.background_img is not None and self.background_img.shape[1] == 3: # add alpha channel
             t =  torch.zeros((1,1,self.background_img.shape[2],self.background_img.shape[3])).to(device)
@@ -50,7 +51,7 @@ class Painting(nn.Module):
         return position_opt, rotation_opt, color_opt, path_opt 
 
 
-    def forward(self, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0, efficient=False):
+    def forward(self, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0):
         if self.background_img is None:
             canvas = torch.ones((1,4,h,w)).to(device)
         else:
@@ -60,25 +61,32 @@ class Painting(nn.Module):
         adjust_extreme_alphas = True
         if return_alphas: stroke_alphas = []
 
-        for brush_stroke in self.brush_strokes:
+        def apply_stroke(brush_stroke):
             single_stroke = brush_stroke(h,w, self.param2img)
 
             if adjust_extreme_alphas:
                 single_stroke[:,3][single_stroke[:,3] > 0.5] = 1.
                 single_stroke[:,3][single_stroke[:,3] < 0.05] = 0.
             if return_alphas: stroke_alphas.append(single_stroke[:,3:])
-            
-            if efficient:
-                mask = single_stroke[:,3:].detach()>0.5
-                mask = torch.cat([mask,]*4, dim=1)
-                canvas[mask] *= 0
-                canvas[mask] += 1
-                canvas[:,:3][mask[:,:3]] *= single_stroke[:,:3][mask[:,:3]]
+
+            if use_alpha:
+                canvas = canvas * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke
             else:
-                if use_alpha:
-                    canvas = canvas * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke
-                else:
-                    canvas = canvas[:,:3] * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke[:,:3]
+                canvas = canvas[:,:3] * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke[:,:3]
+
+        # Pick strokes_per_batch random indices to compute gradients on
+        # The rest will be forwarded without gradients to save memory
+        num_with_grad = min(self.strokes_per_batch, len(self.brush_strokes))
+        indices_with_grad = torch.randperm(len(self.brush_strokes))[:num_with_grad]
+        use_grad = [False for _ in range(len(self.brush_strokes))]
+        for i in indices_with_grad:
+            use_grad[i] = True
+
+        for i, brush_stroke in enumerate(self.brush_strokes):
+            if use_grad[i]:
+                apply_stroke(brush_stroke)
+            else:
+                apply_stroke(brush_stroke.detach())
         
         if return_alphas: 
             alphas = torch.cat(stroke_alphas, dim=1)

@@ -72,9 +72,11 @@ if __name__ == '__main__':
         # Optimize strokes one batch at a time, freezing strokes from previous batches
         strokes = []
         current_alphas = None
-        num_batches = (opt.num_strokes // opt.strokes_per_batch) + (1 if opt.num_strokes % opt.strokes_per_batch > 0 else 0)
+        # num_batches = (opt.num_strokes // opt.strokes_per_batch) + (1 if opt.num_strokes % opt.strokes_per_batch > 0 else 0)
+        num_batches = 1
         for batch_ind in range(num_batches):
-            num_strokes = min(opt.strokes_per_batch, opt.num_strokes - batch_ind * opt.strokes_per_batch)
+            # num_strokes = min(opt.strokes_per_batch, opt.num_strokes - batch_ind * opt.strokes_per_batch)
+            num_strokes = opt.num_strokes
 
             painting = random_init_painting(opt, current_canvas, num_strokes, ink=opt.ink)
             painting.to(device)
@@ -82,8 +84,13 @@ if __name__ == '__main__':
             if color_palette is not None:
                 discretize_colors(painting, color_palette)
             
-            painting, color_palette = optimize_painting(opt, painting, 
-                        optim_iter=opt.init_optim_iter, color_palette=color_palette, preexisting_alphas=current_alphas)
+            painting, color_palette = optimize_painting(
+                opt, painting, 
+                optim_iter=opt.init_optim_iter,
+                color_palette=color_palette,
+                preexisting_alphas=current_alphas,
+                fill_weight = opt.fill_weight if num_batches == 1 else opt.fill_weight * batch_ind / (num_batches-1)
+            )
 
             current_canvas, alphas = painting(h_render, w_render, use_alpha=False, return_alphas=True)
             alphas = alphas.clone().detach()
