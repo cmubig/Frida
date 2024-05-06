@@ -130,7 +130,7 @@ def load_objectives_data(opt):
     opt.objective_data_loaded = objective_data
 
 def optimize_painting(opt, painting, optim_iter, color_palette=None,
-                      change_color=True, shuffle_strokes=True, preexisting_alphas=None, fill_weight=0.0):
+                      change_color=True, shuffle_strokes=True):
     """
     kwargs:
         color_palette: if None, then it creates a new one
@@ -157,8 +157,6 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
                 optims[i_o].param_groups[0]['lr'] = og_lrs[i_o]*lr_factor
 
         p, alphas = painting(opt.h_render, opt.w_render, use_alpha=False, return_alphas=True)
-        if preexisting_alphas is not None:
-            alphas = torch.max(preexisting_alphas, alphas)
         
         loss = 0
         for k in range(len(opt.objective)):
@@ -167,8 +165,8 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
                 weight=opt.objective_weight[k],
                 num_augs=opt.num_augs)
         #loss += (1-alphas).mean() * opt.fill_weight
-        if fill_weight > 0:
-            loss += torch.abs(1-alphas).mean() * fill_weight
+        if opt.fill_weight > 0:
+            loss += torch.abs(1-alphas).mean() * opt.fill_weight
         loss.backward()
 
         for o in optims: o.step() if o is not None else None

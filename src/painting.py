@@ -62,8 +62,9 @@ class Painting(nn.Module):
         stroke_alphas = None
         if return_alphas: stroke_alphas = []
 
-        def apply_stroke(brush_stroke, canvas, stroke_alphas):
+        def apply_stroke(brush_stroke, canvas, stroke_alphas, compute_gradients):
             single_stroke = brush_stroke(h,w, self.param2img)
+            if not compute_gradients: single_stroke = single_stroke.detach()
 
             if adjust_extreme_alphas:
                 single_stroke[:,3][single_stroke[:,3] > 0.5] = 1.
@@ -87,10 +88,9 @@ class Painting(nn.Module):
 
         for i, brush_stroke in enumerate(self.brush_strokes):
             if use_grad[i]:
-                canvas, stroke_alphas = apply_stroke(brush_stroke, canvas, stroke_alphas)
+                canvas, stroke_alphas = apply_stroke(brush_stroke, canvas, stroke_alphas, True)
             else:
-                with torch.no_grad():
-                    canvas, stroke_alphas = apply_stroke(brush_stroke, canvas, stroke_alphas)
+                canvas, stroke_alphas = apply_stroke(brush_stroke, canvas, stroke_alphas, False)
         
         if return_alphas: 
             alphas = torch.cat(stroke_alphas, dim=1)

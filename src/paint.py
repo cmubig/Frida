@@ -69,44 +69,13 @@ if __name__ == '__main__':
     load_objectives_data(opt)
 
     if opt.overwrite_painting or opt.painting_path is None or not os.path.exists(opt.painting_path):
-        # Optimize strokes one batch at a time, freezing strokes from previous batches
-        strokes = []
-        current_alphas = None
-        # num_batches = (opt.num_strokes // opt.strokes_per_batch) + (1 if opt.num_strokes % opt.strokes_per_batch > 0 else 0)
-        num_batches = 1
-        for batch_ind in range(num_batches):
-            # num_strokes = min(opt.strokes_per_batch, opt.num_strokes - batch_ind * opt.strokes_per_batch)
-            num_strokes = opt.num_strokes
+        painting = random_init_painting(opt, current_canvas, opt.num_strokes, ink=opt.ink)
+        painting.to(device)
 
-            painting = random_init_painting(opt, current_canvas, num_strokes, ink=opt.ink)
-            painting.to(device)
-
-            if color_palette is not None:
-                discretize_colors(painting, color_palette)
-            
-            painting, color_palette = optimize_painting(
-                opt, painting, 
-                optim_iter=opt.init_optim_iter,
-                color_palette=color_palette,
-                preexisting_alphas=current_alphas,
-                fill_weight = opt.fill_weight if num_batches == 1 else opt.fill_weight * batch_ind / (num_batches-1)
-            )
-
-            current_canvas, alphas = painting(h_render, w_render, use_alpha=False, return_alphas=True)
-            alphas = alphas.clone().detach()
-            if current_alphas is None:
-                current_alphas = alphas
-            else:
-                current_alphas = torch.max(current_alphas, alphas)
-            for bs in painting.brush_strokes:
-                strokes.append(copy.deepcopy(bs))
-
-            painting = None
-            gc.collect()
-            with torch.no_grad():
-                torch.cuda.empty_cache()
-
-        painting = Painting(opt, brush_strokes=strokes)
+        if color_palette is not None:
+            discretize_colors(painting, color_palette)
+        
+        painting, color_palette = optimize_painting(opt, painting, optim_iter=opt.init_optim_iter, color_palette=color_palette)
 
         # Save painting to file
         if opt.painting_path is not None:
