@@ -59,6 +59,7 @@ class Painting(nn.Module):
         canvas[:,3] = 1 # alpha channel
 
         adjust_extreme_alphas = True
+        stroke_alphas = None
         if return_alphas: stroke_alphas = []
 
         def apply_stroke(brush_stroke, canvas, stroke_alphas):
