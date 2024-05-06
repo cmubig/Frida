@@ -61,7 +61,7 @@ class Painting(nn.Module):
         adjust_extreme_alphas = True
         if return_alphas: stroke_alphas = []
 
-        def apply_stroke(brush_stroke):
+        def apply_stroke(brush_stroke, canvas, stroke_alphas):
             single_stroke = brush_stroke(h,w, self.param2img)
 
             if adjust_extreme_alphas:
@@ -70,9 +70,10 @@ class Painting(nn.Module):
             if return_alphas: stroke_alphas.append(single_stroke[:,3:])
 
             if use_alpha:
-                canvas = canvas * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke
+                # copy_ modifies canvas in-place
+                canvas.copy_(canvas * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke)
             else:
-                canvas = canvas[:,:3] * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke[:,:3]
+                canvas.copy_(canvas[:,:3] * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke[:,:3])
 
         # Pick strokes_per_batch random indices to compute gradients on
         # The rest will be forwarded without gradients to save memory
@@ -84,10 +85,10 @@ class Painting(nn.Module):
 
         for i, brush_stroke in enumerate(self.brush_strokes):
             if use_grad[i]:
-                apply_stroke(brush_stroke)
+                apply_stroke(brush_stroke, canvas, stroke_alphas)
             else:
                 with torch.no_grad():
-                    apply_stroke(brush_stroke)
+                    apply_stroke(brush_stroke, canvas, stroke_alphas)
         
         if return_alphas: 
             alphas = torch.cat(stroke_alphas, dim=1)
