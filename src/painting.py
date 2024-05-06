@@ -86,7 +86,8 @@ class Painting(nn.Module):
             if use_grad[i]:
                 apply_stroke(brush_stroke)
             else:
-                apply_stroke(brush_stroke.detach())
+                with torch.no_grad:
+                    apply_stroke(brush_stroke)
         
         if return_alphas: 
             alphas = torch.cat(stroke_alphas, dim=1)
