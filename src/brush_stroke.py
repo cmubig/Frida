@@ -208,7 +208,8 @@ class BrushStroke(nn.Module):
 
     def make_valid(stroke):
         with torch.no_grad():
-            stroke.latent.data.clamp(-2.5, 2.5)
+            # stroke.latent.data.clamp_(-2.5, 2.5)
+            stroke.latent.data.clamp_(-3.5, 3.5)
 
             stroke.xt.data.clamp_(0.05,0.95)
             stroke.yt.data.clamp_(0.05,0.95)
@@ -233,7 +234,8 @@ class BrushStroke(nn.Module):
         path_clone = path.clone()
         if normalize:
             path_clone[:,0:2] = path[:,0:2] / BrushStroke.vae_max_stroke_length * self.MAX_STROKE_LENGTH
-        path_clone[:,2] = path[:,2].clamp(self.MIN_STROKE_Z, 0.95)
+        # path_clone[:,2] = path[:,2].clamp(self.MIN_STROKE_Z, 0.95)
+        path_clone[:,2] = path[:,2].clamp(0.8, 0.9)
         
         return path_clone
 

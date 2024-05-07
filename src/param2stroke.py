@@ -482,12 +482,12 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     best_hasnt_changed_for = 0
 
     # Main Training Loop
-    for it in tqdm(range(3000)):
+    for it in tqdm(range(900)):#tqdm(range(3000)):
         # When to start training conv
         train_conv = it > 300 
 
         # with torch.autograd.set_detect_anomaly(True):
-        if best_hasnt_changed_for >= 400 and it > 2000:
+        if best_hasnt_changed_for >= 400 and it > 1000:
             break # all done :)
         optim.zero_grad()
 
@@ -508,8 +508,10 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
                 + isolated_stroke[:,3:] * isolated_stroke[:,:3]
             
 
-            loss += loss_fcn(predicted_canvas, canvas_after, canvas_before,
-                                         fnl_weight=max(0, 0.5 * ((500-it)/500)))
+            l = loss_fcn(predicted_canvas, canvas_after, canvas_before,
+                                         fnl_weight=max(0.07, 0.5 * ((1000-it)/1000)))
+            l = torch.nan_to_num(l)
+            loss += l
             ep_loss += loss.item()
 
             if (batch_it+1) % batch_size == 0 or batch_it == len(train_brush_strokes)-1:

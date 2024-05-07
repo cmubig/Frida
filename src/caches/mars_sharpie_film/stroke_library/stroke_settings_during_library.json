@@ -1,0 +1,9 @@
+{
+    "MAX_BEND": 0.03,
+    "MIN_STROKE_Z": 0.1,
+    "MIN_STROKE_LENGTH": 0.0025,
+    "MAX_STROKE_LENGTH": 0.05,
+    "MAX_ALPHA": 0,
+    "CANVAS_WIDTH_M": 0.203,
+    "CANVAS_HEIGHT_M": 0.203
+}

@@ -44,7 +44,7 @@ def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
 
             # # Audio Recording and Transcription
             # text_prompt = get_text_from_audio("current_recording.wav")
-            print(f"Audio transcribed from text: {text_prompt}")
+            # print(f"Audio transcribed from text: {text_prompt}")
 
         except SyntaxError:
             continue # No input
@@ -63,12 +63,12 @@ def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
                 ).images[0])
         
         if n_ai_options > 1:
-            # fig, ax = plt.subplots(1,n_ai_options, figsize=(2*n_ai_options,2))
-            # for j in range(n_ai_options):
-            #     ax[j].imshow(target_imgs[j])
-            #     ax[j].set_xticks([])
-            #     ax[j].set_yticks([])
-            #     ax[j].set_title(str(j))
+            fig, ax = plt.subplots(1,n_ai_options, figsize=(10*n_ai_options,10))
+            for j in range(n_ai_options):
+                ax[j].imshow(target_imgs[j])
+                ax[j].set_xticks([])
+                ax[j].set_yticks([])
+                ax[j].set_title(str(j))
             # matplotlib.use('TkAgg')
             plt.show()
             while(True):
@@ -160,7 +160,7 @@ if __name__ == '__main__':
         curr_canvas_pil = curr_canvas_pil#.convert("L").convert('RGB')
 
         # Let the user generate and choose cofrida images to draw
-        n_ai_options = 1
+        n_ai_options = 4
         text_prompt, target_img = get_cofrida_image_to_draw(cofrida_model, 
                                                             curr_canvas_pil, n_ai_options)
         opt.writer.add_image('images/{}_2_target_from_cofrida_{}'.format(i, text_prompt), format_img(target_img), 0)
@@ -168,7 +168,9 @@ if __name__ == '__main__':
         target_img = flip_img(target_img) # Should be upside down for planning
 
         # Ask for how many strokes to use
-        num_strokes = 40#int(input("How many strokes to use in this plan?\n:"))
+        # num_strokes = 90#int(input("How many strokes to use in this plan?\n:"))
+        num_strokes = int(input("How many strokes to use in this plan?\n:"))
+
         
         # Generate initial (random plan)
         # painting = random_init_painting(opt, current_canvas.to(device), num_strokes, ink=opt.ink).to(device)

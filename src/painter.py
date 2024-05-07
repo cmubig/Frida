@@ -194,11 +194,13 @@ class Painter():
         if not self.opt.simulate:
             # self.robot.fa.reset_joints()
             y = 0.4 
+            x = 0
             if self.opt.robot == 'franka':
                 y = 0.4
             elif self.opt.robot == 'xarm':
                 y = 0.1
-            self.move_to_trajectories([[0,y,self.opt.INIT_TABLE_Z]], [None])
+                x = -0.05
+            self.move_to_trajectories([[x,y,self.opt.INIT_TABLE_Z]], [None])
 
     def move_to_trajectories(self, positions, orientations, fast=False):
         for i in range(len(orientations)):
@@ -457,7 +459,7 @@ class Painter():
         real_coords = []
         sim_coords_global = []
         real_coords_global = []
-        
+        print('here')
         for canvas_coord in homography_points:
             try:
                 x_prop, y_prop = canvas_coord 
@@ -471,8 +473,10 @@ class Painter():
                 window = 1 - window
 
                 # plt.imshow(window, cmap='gray', vmin=0, vmax=1)
+                # plt.matshow(window)
+                # plt.colorbar()
                 # plt.show()
-                window = window > 0.5
+                window = window > np.quantile(window, 0.99)#0.25
                 window[:int(0.05*window.shape[0])] = 0
                 window[int(0.95*window.shape[0]):] = 0
                 window[:,:int(0.05*window.shape[1])] = 0

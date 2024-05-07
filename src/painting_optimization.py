@@ -29,6 +29,8 @@ from paint_utils3 import discretize_colors, format_img, load_img, randomize_brus
 
 # from paint_utils3 import *
 
+def flip_img(img):
+    return torch.flip(img, dims=(2,3))
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 if not torch.cuda.is_available():
     print('Using CPU..... good luck')
@@ -47,6 +49,7 @@ def log_progress(painting, opt, log_freq=5, force_log=False, title='plan'):
             #np_painting = painting(h,w, use_alpha=False).detach().cpu().numpy()[0].transpose(1,2,0)
             #opt.writer.add_image('images/{}'.format(title), np.clip(np_painting, a_min=0, a_max=1), local_it)
             p = painting(opt.h_render,opt.w_render, use_alpha=False)
+            p = flip_img(p)
             p = format_img(p)
             opt.writer.add_image('images/{}'.format(title), p, local_it)
             
