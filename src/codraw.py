@@ -14,6 +14,7 @@ import cv2
 from matplotlib import pyplot as plt
 import numpy as np
 import torch
+import easygui
 from torchvision.transforms import Resize
 from tqdm import tqdm
 from PIL import Image
@@ -27,7 +28,7 @@ from options import Options
 from my_tensorboard import TensorBoard
 
 # For Audio Recording and Transcription 
-from audio_test import get_text_from_audio
+# from audio_test import get_text_from_audio
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 if not torch.cuda.is_available():
@@ -36,53 +37,38 @@ if not torch.cuda.is_available():
 def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
     ''' Create a GUI to allow the user to see different CoFRIDA options and pick
     '''
-    satisfied = False
-    while(not satisfied):
-        text_prompt = None
-        try:
-            text_prompt = input('\nIf you would like the robot to draw, type a description then press enter. Type nothing if you do not want to the robot to draw.\n:')
 
-            # # Audio Recording and Transcription
-            # text_prompt = get_text_from_audio("current_recording.wav")
-            # print(f"Audio transcribed from text: {text_prompt}")
+    text_prompt = easygui.enterbox("What do you want the robot to draw?")
 
-        except SyntaxError:
-            continue # No input
-
+    while True:
         with torch.no_grad():
-            target_imgs = []
-            for op in tqdm(range(n_ai_options), desc="CoFRIDA Generating Options"):
-                target_imgs.append(cofrida_model(
-                    text_prompt, 
-                    curr_canvas_pil, 
-                    num_inference_steps=20, 
-                    # generator=generator,
-                    num_images_per_prompt=1,
-                    # image_guidance_scale=2.5,#1.5 is default
-                    image_guidance_scale = 1.5 if op == 0 else random.uniform(1.01, 2.5)
-                ).images[0])
+            target_img = cofrida_model(
+                text_prompt, 
+                curr_canvas_pil, 
+                num_inference_steps=20, 
+                # generator=generator,
+                num_images_per_prompt=1,
+                # image_guidance_scale=2.5,#1.5 is default
+                # image_guidance_scale = 1.5 if op == 0 else random.uniform(1.01, 2.5)
+            ).images[0]
+        target_img.save('target_img_temp.png')
+        image = 'target_img_temp.png'
+        msg = "Should I draw this?"
+        choices = ["Yes","No, give another option","No, I want to type a new text description"]
+        yes = choices[0]
+        new_option = choices[1]
+        new_prompt = choices[2]
+        reply = easygui.buttonbox(msg, image=image, choices=choices)
+        if reply == yes:
+            break 
+        elif reply == new_option:
+            continue
+        elif reply == new_prompt:
+            text_prompt = easygui.enterbox("What do you want the robot to draw?")
+            continue
+
         
-        if n_ai_options > 1:
-            fig, ax = plt.subplots(1,n_ai_options, figsize=(10*n_ai_options,10))
-            for j in range(n_ai_options):
-                ax[j].imshow(target_imgs[j])
-                ax[j].set_xticks([])
-                ax[j].set_yticks([])
-                ax[j].set_title(str(j))
-            # matplotlib.use('TkAgg')
-            plt.show()
-            while(True):
-                try:
-                    target_img_ind = int(input("Type the number of the option you liked most? Type -1 if you don't like any and want more options.\n:"))
-                    break
-                except:
-                    print("Was that a number? Make sure you type the number of the image you liked. Type -1 if you want to generate alternatives.")
-            if target_img_ind < 0:
-                continue
-            target_img = target_imgs[target_img_ind]
-        else:
-            target_img = target_imgs[0]
-        satisfied = True
+ 
     # plt.imshow(target_img)
     # plt.show()
     target_img = torch.from_numpy(np.array(target_img)).permute(2,0,1).float().to(device)[None] / 255.
@@ -138,10 +124,13 @@ if __name__ == '__main__':
         opt.writer.add_image('images/{}_0_canvas_start'.format(i), format_img(current_canvas), 0)
         current_canvas = Resize((h_render,w_render), antialias=True)(current_canvas)
 
-        try:
-            input('\nFeel free to draw, then press enter when done.')
-        except SyntaxError:
-            pass
+        # try:
+        #     input('\nFeel free to draw, then press enter when done.')
+        # except SyntaxError:
+        #     pass
+        msg = "Feel free to draw if you'd like"
+        choices = ["Done"]
+        reply = easygui.buttonbox(msg, choices=choices)
 
         current_canvas = painter.camera.get_canvas_tensor() / 255.
         current_canvas = flip_img(current_canvas)
@@ -169,7 +158,8 @@ if __name__ == '__main__':
 
         # Ask for how many strokes to use
         # num_strokes = 90#int(input("How many strokes to use in this plan?\n:"))
-        num_strokes = int(input("How many strokes to use in this plan?\n:"))
+        # num_strokes = int(input("How many strokes to use in this plan?\n:"))
+        num_strokes = 50
 
         
         # Generate initial (random plan)
@@ -190,11 +180,11 @@ if __name__ == '__main__':
                     log_title='{}_3_plan'.format(i))
         
         # Warn the user plan is ready. Get paint ready.
-        if not painter.opt.simulate:
-            show_img(painter.camera.get_canvas()/255., 
-                    title="Initial plan complete. Ready to start painting."
-                        + "Ensure mixed paint is provided and then exit this to "
-                        + "start painting.")
+        # if not painter.opt.simulate:
+        #     show_img(painter.camera.get_canvas()/255., 
+        #             title="Initial plan complete. Ready to start painting."
+        #                 + "Ensure mixed paint is provided and then exit this to "
+        #                 + "start painting.")
 
         # Execute plan
         for stroke_ind in tqdm(range(len(painting)), desc="Executing plan"):

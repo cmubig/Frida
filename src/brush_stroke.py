@@ -326,17 +326,17 @@ class BrushStroke(nn.Module):
             prev_n = len(all_positions)
             all_positions, all_orientations = remove_redundant_positions(all_positions, all_orientations)
             removed_positions = prev_n - len(all_positions)
-            print('removed positions1', removed_positions)
+            # print('removed positions1', removed_positions)
             
             prev_n = len(all_positions)
             all_positions, all_orientations = remove_redundant_positions(all_positions, all_orientations)
             removed_positions = prev_n - len(all_positions)
-            print('removed positions2', removed_positions)
+            # print('removed positions2', removed_positions)
             
             prev_n = len(all_positions)
             all_positions, all_orientations = remove_redundant_positions(all_positions, all_orientations)
             removed_positions = prev_n - len(all_positions)
-            print('removed positions3', removed_positions)
+            # print('removed positions3', removed_positions)
         
         stroke_complete = painter.move_to_trajectories(all_positions, all_orientations, fast=fast)
 
