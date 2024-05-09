@@ -313,6 +313,9 @@ class StrokeParametersToImage(nn.Module):
         # To be consistent with the way BrushStroke.execute runs trajectories
         traj[:,:,0] = -1.0*traj[:,:,0] # y = -y yeah weird
 
+        traj[:,:,0] += self.y_b
+        traj[:,:,1] += self.x_b
+
         # Rotate before converting to proportions (errors when canvas isn't square)
         traj = self.get_rotated_trajectory(theta, traj)
         

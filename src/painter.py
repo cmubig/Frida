@@ -73,7 +73,7 @@ class Painter():
         # Setup Camera
         while True: 
             try:
-                if not self.opt.simulate:
+                if not self.opt.simulate and not opt.no_camera:
                     self.camera = WebCam(opt)
                 else:
                     self.camera = SimulatedWebCam(opt)
@@ -227,12 +227,12 @@ class Painter():
         self._move(x,y,z, q=q, method=method, speed=speed)
 
     def locate_items(self):
-        # self.dip_brush_in_water()
-        # self.rub_brush_on_rag()
-        # self.get_paint(0)
-        # self.get_paint(5)
-        # self.get_paint(6)
-        # self.get_paint(11)
+        self.dip_brush_in_water()
+        self.rub_brush_on_rag()
+        self.get_paint(0)
+        self.get_paint(5)
+        self.get_paint(6)
+        self.get_paint(11)
         import time
         p = canvas_to_global_coordinates(0, 0, self.Z_CANVAS, self.opt)
         self.hover_above(p[0], p[1], p[2])
@@ -280,7 +280,6 @@ class Painter():
     def touch_rag(self):
         self.move_to(self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR, speed=0.3)
         positions = []
-        positions.append([self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
         noise = np.clip(np.random.randn(2)*0.04, a_min=-.04, a_max=0.04)
         positions.append([self.opt.RAG_POSTITION[0]+noise[0],self.opt.RAG_POSTITION[1]+noise[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
         positions.append([self.opt.RAG_POSTITION[0]+noise[0],self.opt.RAG_POSTITION[1]+noise[1],self.opt.RAG_POSTITION[2]+0.005])
