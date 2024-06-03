@@ -99,6 +99,7 @@ if __name__ == '__main__':
     strokes_per_adaptation = len(painting) // opt.num_adaptations
     strokes_executed, canvas_photos = 0, []
     # for adaptation_it in range(opt.num_adaptations):
+
     while len(painting) > 0:
         ################################
         ### Execute some of the plan ###
