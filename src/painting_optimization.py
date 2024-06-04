@@ -180,7 +180,7 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
             # make sure hidden strokes get some attention
             painting = randomize_brush_stroke_order(painting)
 
-        if (it % 10 == 0 and it > (0.5*optim_iter)) or it > 0.9*optim_iter:
+        if (it % 10 == 0 and it > (0.5*optim_iter)) or it > max(0.9*optim_iter, optim_iter-100):
             if opt.use_colors_from is None:
                 # Cluster the colors from the existing painting
                 if not opt.ink and not use_input_palette:
