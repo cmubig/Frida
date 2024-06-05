@@ -1,4 +1,27 @@
-# FRIDA: A Collaborative Robot Painter with a Differentiable, Real2Sim2Real Simulated Planning Environment  <a href="https://twitter.com/FridaRobot" target="_blank"><img src="https://about.x.com/content/dam/about-twitter/x/brand-toolkit/logo-black.png.twimg.1920.png" height=32/></a> <a href="https://colab.research.google.com/github/pschaldenbrand/Frida/blob/master/Frida.ipynb" target="_blank"><img src="https://pbs.twimg.com/profile_images/1330956917951270912/DyIZtTA8_400x400.png" height=32/></a> <a href="https://arxiv.org/abs/2210.00664" target="_blank"><img src="https://pbs.twimg.com/media/EcglfCHU4AA6-yj.png" height=32/></a><a href="https://www.tiktok.com/@frida_robot?lang=en" target="_blank"><img src="https://sf-tb-sg.ibytedtos.com/obj/eden-sg/uhtyvueh7nulogpoguhm/tiktok-icon2.png" height=32/></a>
+# FRIDA <a href="https://twitter.com/FridaRobot" target="_blank"><img src="https://about.x.com/content/dam/about-twitter/x/brand-toolkit/logo-black.png.twimg.1920.png" height=32/></a>   <a href="https://www.tiktok.com/@frida_robot?lang=en" target="_blank"> <img src="https://sf-tb-sg.ibytedtos.com/obj/eden-sg/uhtyvueh7nulogpoguhm/tiktok-icon2.png" height=32/></a>
+
+FRIDA (A Framework and Robotics Initiative for Developing Arts), is a robotic painting project developed at 
+The Robotics Institute, Carnegie Mellon University.
+This repository contains the code for two ICRA papers described below.
+
+Maintained by Peter Schaldenbrand
+
+
+
+
+# [CoFRIDA: Self-Supervised Fine-Tuning for Human-Robot Co-Painting](https://pschaldenbrand.github.io/cofrida/)
+<b>Best Paper on Human-Robot Interaction, ICRA 2024</b>
+
+[Peter Schaldenbrand](https://pschaldenbrand.github.io/#about.html), [Gaurav Parmar](https://gauravparmar.com/), [Jun-Yan Zhu](https://www.cs.cmu.edu/~junyanz/), [Jim McCann](http://www.cs.cmu.edu/~jmccann/), and [Jean Oh](https://www.cs.cmu.edu/~./jeanoh/)
+
+A collaborative robotic painting assistant. Code for this paper is in the [frida/cofrida directory](https://github.com/cmubig/Frida/tree/master/cofrida).
+
+https://github.com/cmubig/Frida/assets/14282484/693cd7c1-68da-4847-8f68-95364acf14ee
+
+
+# FRIDA: A Collaborative Robot Painter with a Differentiable, Real2Sim2Real Simulated Planning Environment <a href="https://colab.research.google.com/github/pschaldenbrand/Frida/blob/master/Frida.ipynb" target="_blank"><img src="https://pbs.twimg.com/profile_images/1330956917951270912/DyIZtTA8_400x400.png" height=32/></a> <a href="https://arxiv.org/abs/2210.00664" target="_blank"><img src="https://pbs.twimg.com/media/EcglfCHU4AA6-yj.png" height=32/></a>
+
+<b>Finalist for Best Paper in Deployed Systems, ICRA 2023</b>
 
 [Peter Schaldenbrand](https://pschaldenbrand.github.io/#about.html), [Jean Oh](https://www.cs.cmu.edu/~./jeanoh/), [Jim McCann](http://www.cs.cmu.edu/~jmccann/)
 
@@ -147,6 +170,7 @@ python3 paint.py --simulate --use_cache --cache_dir caches/sharpie_short_strokes
 ## Acknowledgements
 
 Thank you to: 
+- Sunyu Wang for the brilliant, spring-loaded Sharpie holding end-effector
 - [Jia Chen Xu](https://github.com/jxu12345) for writing FRIDA's perception code
 - Heera Sekhr and Jesse Ding for their help in the early stages of designing FRIDA's planning algorithms
 - [Vihaan Misra](https://github.com/convexalpha) for writing a sketch and audio loss functions.
