@@ -136,10 +136,10 @@ class Options(object):
         self.opt = {**self.opt, **materials}
 
         thresh = 0.001 # 0.1cm tolerance on overshooting the canvas
-        self.Y_CANVAS_MAX = self.CANVAS_POSITION[1] + self.CANVAS_HEIGHT_M + thresh
-        self.Y_CANVAS_MIN = self.CANVAS_POSITION[1] - thresh
-        self.X_CANVAS_MAX = self.CANVAS_POSITION[0] + self.CANVAS_WIDTH_M/2 + thresh
-        self.X_CANVAS_MIN = self.CANVAS_POSITION[0] - self.CANVAS_WIDTH_M/2 - thresh
+        self.Y_CANVAS_MAX = self.CANVAS_POSITION[1] + self.CANVAS_HEIGHT_M - thresh
+        self.Y_CANVAS_MIN = self.CANVAS_POSITION[1] + thresh
+        self.X_CANVAS_MAX = self.CANVAS_POSITION[0] + self.CANVAS_WIDTH_M/2 - thresh
+        self.X_CANVAS_MIN = self.CANVAS_POSITION[0] - self.CANVAS_WIDTH_M/2 + thresh
 
         if self.use_cache and os.path.exists(os.path.join(self.cache_dir, 'stroke_settings_during_library.json')):
             print("Retrieving settings from stroke library for consistency:")
