@@ -28,6 +28,12 @@ class Options(object):
         parser.add_argument("--robot", type=str, default='franka', help='Which robot to use "franka" "xarm" or "sawyer"')
         parser.add_argument("--xarm_ip", type=str, default='192.168.1.176', help='IP address of XArm.')
 
+        parser.add_argument("--background_image", type=str, 
+            default='../cofrida/blank_canvas.jpg', help='')
+        parser.add_argument("--saved_plan", type=str, 
+            default='./saved_plans/plan.pt', help='')
+        
+
         parser.add_argument('--use_cache', action='store_true')
         parser.add_argument("--materials_json", type=str, 
             default='../materials.json', help='path to json file specifying material locations.')
