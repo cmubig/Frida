@@ -76,86 +76,78 @@ def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
     # target_img = Resize((h,w), antialias=True)(target_img)
     return text_prompt, target_img
 
+def define_prompts_dictionary():
+    # # Hand crafted prompts.
+    prompts_dictionary = {} 
+
+    prompts_dictionary['Painting0']['InitialPrompt'] = 'A black and white sharpie drawing of a single tree on a plain.'
+    prompts_dictionary['Painting1']['InitialPrompt'] = 'A black and white sharpie drawing of a simple park with a bench.'
+    prompts_dictionary['Painting2']['InitialPrompt'] = 'A black and white sharpie drawing of a rainy city street.'
+    prompts_dictionary['Painting3']['InitialPrompt'] = 'A black and white sharpie drawing of a mountain silhouette.'
+    prompts_dictionary['Painting4']['InitialPrompt'] = 'A black and white sharpie drawing of a small boat sailing on a plain lake.'
+    prompts_dictionary['Painting5']['InitialPrompt'] = 'A black and white sharpie drawing of a ruins of an italian building.'
+    prompts_dictionary['Painting6']['InitialPrompt'] = 'A black and white sharpie drawing of a desert with undulating sand dunes'
+    prompts_dictionary['Painting7']['InitialPrompt'] = 'A black and white sharpie drawing of a twilight suburban street.'
+    prompts_dictionary['Painting8']['InitialPrompt'] = 'A black and white sharpie drawing of a park trail with trees on either side.'
+    prompts_dictionary['Painting9']['InitialPrompt'] = 'A black and white sharpie drawing of a simple grassy plain.'
+
+    prompts_dictionary['Painting0']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a hilly landscape and a single tree on top of it.'
+    prompts_dictionary['Painting1']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a quiet park with a single bench beneath a single tree.'
+    prompts_dictionary['Painting2']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a rainy city street with puddles reflecting streetlights.'
+    prompts_dictionary['Painting3']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a mountain range with sparse alpine trees.'
+    prompts_dictionary['Painting4']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a boat sailing on a pretty lake with small waves'
+    prompts_dictionary['Painting5']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a italian monument in Rome'
+    prompts_dictionary['Painting6']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a undulating sand dunes with a few palm trees'
+    prompts_dictionary['Painting7']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a twilight suburban street with a few buildings.'
+    prompts_dictionary['Painting8']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a forest scene with a log cabin in the middle with lush trees in the background.'
+    prompts_dictionary['Painting9']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a grassy plain with one or two trees.'
+
+    prompts_dictionary['Painting0']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a hilly landscape with a single majestic tree on top with clouds swirling in the sky.'
+    prompts_dictionary['Painting1']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a serene city park with a quiet park bench beneath a canopy of several majestic trees.'
+    prompts_dictionary['Painting2']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a rainy city street with puddles reflecting streetlights and umbrellas and a starry sky.'
+    prompts_dictionary['Painting3']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a serene snow-capped mountain range with a lush forest of alpine trees on the base of the mountain'
+    prompts_dictionary['Painting4']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a majestic ship sailing on waves on the ocean with a city skyline in the background.'
+    prompts_dictionary['Painting5']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a majestic Collesium scene from Rome.'
+    prompts_dictionary['Painting6']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a beautiful desert oasis with palm trees and a water body with sand dunes in the background.'
+    prompts_dictionary['Painting7']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a twilight suburban street with a charming buildings and trees lining the street.'
+    prompts_dictionary['Painting8']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a charming rustic cabin in a lush forested woodland.'
+    prompts_dictionary['Painting9']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a beautiful mountainous scene with lush fir trees.'
+
+    return prompts_dictionary
+
 def flip_img(img):
     return torch.flip(img, dims=(2,3))
 
-if __name__ == '__main__':
-    opt = Options()
-    opt.gather_options()
-
-
-    cofrida_model = get_instruct_pix2pix_model(
-                lora_weights_path=opt.cofrida_model, 
-                device=device)
-    cofrida_model.set_progress_bar_config(disable=True)
-    n_ai_options = 6
-
-    date_and_time = datetime.datetime.now()
-    run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
-    opt.writer = TensorBoard('{}/{}'.format(opt.tensorboard_dir, run_name))
-    opt.writer.add_text('args', str(sys.argv), 0)
-
-    painter = Painter(opt)
-    opt = painter.opt 
-
-    painter.to_neutral()
-
-    w_render = int(opt.render_height * (opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
-    h_render = int(opt.render_height)
-    opt.w_render, opt.h_render = w_render, h_render
-
-    consecutive_paints = 0
-    consecutive_strokes_no_clean = 0
-    curr_color = -1
-
-    color_palette = None
-    if opt.use_colors_from is not None:
-        color_palette = get_colors(cv2.resize(cv2.imread(opt.use_colors_from)[:,:,::-1], (256, 256)), 
-                n_colors=opt.n_colors)
-        opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(color_palette), 0)
-
-    # i = 0
-
-    # current_canvas = load_img(opt.background_image, h=h_render,w=w_render).to(device)/255.
-
-    # # current_canvas = painter.camera.get_canvas_tensor() / 255.
-    # # current_canvas = flip_img(current_canvas)
-    # opt.writer.add_image('images/{}_1_canvas_after_human'.format(i), format_img(current_canvas), 0)
-    # current_canvas = Resize((h_render,w_render), antialias=True)(current_canvas)
-
+def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, current_canvas=None):
+    
     #################################
-    ########## Robot Turn ###########
-    #################################
+    # Image generation phase. 
+    #################################   
 
-    # curr_canvas = painter.camera.get_canvas()
-    # curr_canvas = np.flip(curr_canvas, axis=(0,1))
-    # # dark_inds = curr_canvas.mean(axis=2) < 0.81*255
-    # # curr_canvas[dark_inds] = 5
-    # curr_canvas_pil = Image.fromarray(curr_canvas.astype(np.uint8)).resize((512,512))
-    # curr_canvas_pil = curr_canvas_pil#.convert("L").convert('RGB')
+    # First get the prompt. 
+    text_prompt = painting_prompt[prompt_key]
+    # Get image_guidance_scale value. 
+    image_guidance_dict = {'InitialPrompt': 1.9, 'MediumSubsequentPrompt': 1.2, 'GoodSubsequentPrompt': 1.}
 
-
-    curr_canvas_pt = load_img(opt.background_image, h=h_render,w=w_render).to(device)/255.
-    curr_canvas_np = curr_canvas_pt.detach().cpu().numpy()[0].transpose(1,2,0) * 255.
-    # curr_canvas_np = np.flip(curr_canvas_np, axis=(0,1)) # Make it upaside down
-    # dark_inds = curr_canvas.mean(axis=2) < 0.81*255
-    # curr_canvas[dark_inds] = 5
-    curr_canvas_pil = Image.fromarray(curr_canvas_np.astype(np.uint8)).resize((512,512))
-    curr_canvas_pil = curr_canvas_pil#.convert("L").convert('RGB')
-
-    # Let the user generate and choose cofrida images to draw
-    n_ai_options = 4
-    text_prompt, target_img = get_cofrida_image_to_draw(cofrida_model, 
-                                                        curr_canvas_pil, n_ai_options)
-    opt.writer.add_image('images/{}_2_target_from_cofrida_{}'.format(0, text_prompt), format_img(target_img), 0)
+    # Generate image. 
+    target_img = cofrida_model(text_prompt, current_canvas, num_inference_steps=20, \
+                               num_images_per_prompt=1, image_guidance_scale=image_guidance_dict[prompt_key]).images[0]
+    
+    # Log generated image. 
+    opt.writer.add_image('images/target_from_cofrida_{0}_{1}'.format(prompt_key, text_prompt), format_img(target_img), 0)        
     target_img = Resize((h_render, w_render), antialias=True)(target_img)
     target_img = flip_img(target_img) # Should be upside down for planning
+
+    #################################
+    # Plan generation phase. 
+    #################################
 
     # Ask for how many strokes to use
     # num_strokes = 90#int(input("How many strokes to use in this plan?\n:"))
     # num_strokes = int(input("How many strokes to use in this plan?\n:"))
-    num_strokes = 70
 
+    # Locking to 70. 
+    num_strokes = 70
     
     # Generate initial (random plan)
     # painting = random_init_painting(opt, current_canvas.to(device), num_strokes, ink=opt.ink).to(device)
@@ -173,13 +165,118 @@ if __name__ == '__main__':
     painting, _ = optimize_painting(opt, painting, 
                 optim_iter=opt.optim_iter, color_palette=color_palette,
                 log_title='{}_3_plan'.format(0))
+        
+    return painting, target_img
+
+def generate_all_plans(cofrida_model, opt, base_save_dir):
+
+    # Generate the prompts dictionary. 
+    prompts_dictionary = define_prompts_dictionary()
+
+    if True: 
+
+        # Temporarily set n_ai_options to 1 here to generate only 1 image per prompt. 
+        n_ai_options = 1
+        # Set some variables of how many plans etc. 
+        n_paintings = 10
+
+        # Create logger. 
+        date_and_time = datetime.datetime.now()
+        run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
+        opt.writer = TensorBoard('{}/{}'.format(opt.tensorboard_dir, run_name))
+        opt.writer.add_text('args', str(sys.argv), 0)
+
+        # Create painter object. 
+        painter = Painter(opt)
+        opt = painter.opt 
+        painter.to_neutral()
+
+        # Set painting andimage size params. 
+        w_render = int(opt.render_height * (opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
+        h_render = int(opt.render_height)
+        opt.w_render, opt.h_render = w_render, h_render
+
+        consecutive_paints = 0
+        consecutive_strokes_no_clean = 0
+        curr_color = -1
+
+        color_palette = None
+        if opt.use_colors_from is not None:
+            color_palette = get_colors(cv2.resize(cv2.imread(opt.use_colors_from)[:,:,::-1], (256, 256)), 
+                    n_colors=opt.n_colors)
+            opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(color_palette), 0)
+   
+        # The current canvas image used here is really just the blank canvas image. 
+        curr_canvas_pt = load_img(opt.background_image, h=h_render,w=w_render).to(device)/255.
+        curr_canvas_np = curr_canvas_pt.detach().cpu().numpy()[0].transpose(1,2,0) * 255.
+        # curr_canvas_np = np.flip(curr_canvas_np, axis=(0,1)) # Make it upaside down
+        # dark_inds = curr_canvas.mean(axis=2) < 0.81*255
+        # curr_canvas[dark_inds] = 5
+        curr_canvas_pil = Image.fromarray(curr_canvas_np.astype(np.uint8)).resize((512,512))
+        curr_canvas_pil = curr_canvas_pil#.convert("L").convert('RGB')
+
+        # Blank Canvas variable. 
+        blank_canvas_image = curr_canvas_pil
+        
+
+    # Iterate over tree for each painting. 
+    for k in range(n_paintings):
+
+        print("#####################")
+        print("Running iteration ", k)
+        print("#####################")
+
+        ############################################################
+        # Generate image / plan for Initial Prompt
+        ############################################################
+        
+        # First generate image and plan from initial prompt. 
+        painting_object, initial_prompt_target_image = generate_image_and_plan(cofrida_model, opt, prompt_dict['Painting{0}'.format(k)], prompt_key='InitialPrompt', blank_canvas_image)        
+        
+        # Set save directory. 
+        save_dir_suffix = "Painting{0}/InitialPrompt".format(k)
+        save_dir = os.path.join(base_save_dir, save_dir_suffix)
+        
+        # Save the image and the plan for this iteration. 
+        save_image_and_plan(painting_object, initial_prompt_target_image, save_dir)
+        
+        ############################################################
+        # Generate image / plan for Initial Prompt
+        ############################################################
+        
+        # First generate image and plan from initial prompt. 
+        painting_object, target_image = generate_image_and_plan(cofrida_model, opt, prompt_dict['Painting{0}'.format(k)], prompt_key='MediumSubsequentPrompt', initial_prompt_target_image)
+        
+        # Set save directory. 
+        save_dir_suffix = "Painting{0}/MediumSubsequentPrompt".format(k)
+        save_dir = os.path.join(base_save_dir, save_dir_suffix)
+        
+        # Save the image and the plan for this iteration. 
+        save_image_and_plan(painting_object, target_image, save_dir)
+        
+        ############################################################
+        # Generate image / plan for Medium Subsequent Prompt
+        ############################################################
+        
+        # First generate image and plan from initial prompt. 
+        painting_object, target_image = generate_image_and_plan(cofrida_model, opt, prompt_dict['Painting{0}'.format(k)], prompt_key='GoodSubsequentPrompt', initial_prompt_target_image)
+        
+        # Set save directory. 
+        save_dir_suffix = "Painting{0}/GoodSubsequentPrompt".format(k)
+        save_dir = os.path.join(base_save_dir, save_dir_suffix)
+        
+        # Save the image and the plan for this iteration. 
+        save_image_and_plan(painting_object, opt, target_image, save_dir)
+        
+
+
+def save_image_and_plan(painting, opt, target_img, save_dir):
     
     # Save plan and other stuff
-    save_dir = easygui.enterbox("What directory should this be saved in? (e.g., ./saved_plans/unique_name/)")
     os.makedirs(save_dir, exist_ok=True)
 
     # Save rendering of the plan
-    rendered_painting, alphas = painting(h_render, w_render, 
+    rendered_painting, alphas = painting(opt.h_render, opt.w_render, 
                                          use_alpha=False, return_alphas=True)
     rendered_painting = flip_img(rendered_painting) # "Up side down" so that it looks right side up to viewer
     rendered_painting = rendered_painting.detach().cpu().numpy()[0].transpose(1,2,0) * 255.
@@ -194,3 +291,20 @@ if __name__ == '__main__':
 
     # Save plan
     torch.save(painting, os.path.join(save_dir, 'plan.pt'))
+
+if __name__ == '__main__':
+
+    # Create parameter and logger manager. 
+    opt = Options()
+    opt.gather_options()
+
+    # Instantiate Co-FRIDA model. 
+    cofrida_model = get_instruct_pix2pix_model(
+                lora_weights_path=opt.cofrida_model, 
+                device=device)
+    cofrida_model.set_progress_bar_config(disable=True)
+
+    save_dir = easygui.enterbox("What base directory should I save paintings and plans in ? (e.g., ./saved_plans/unique_name/)")
+
+    # Process all prompts. 
+    generate_all_plans(cofrida_model=cofrida_model, opt=opt, base_save_dir=save_dir)
