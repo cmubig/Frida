@@ -80,6 +80,10 @@ def define_prompts_dictionary():
     # # Hand crafted prompts.
     prompts_dictionary = {} 
 
+    n_paintings = 10
+    for k in range(n_paintings):
+        prompts_dictionary['Painting{0}'.format(k)] = {}
+
     prompts_dictionary['Painting0']['InitialPrompt'] = 'A black and white sharpie drawing of a single tree on a plain.'
     prompts_dictionary['Painting1']['InitialPrompt'] = 'A black and white sharpie drawing of a simple park with a bench.'
     prompts_dictionary['Painting2']['InitialPrompt'] = 'A black and white sharpie drawing of a rainy city street.'
@@ -118,7 +122,7 @@ def define_prompts_dictionary():
 def flip_img(img):
     return torch.flip(img, dims=(2,3))
 
-def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, current_canvas=None):
+def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, current_canvas_pil):
     
     #################################
     # Image generation phase. 
@@ -130,13 +134,18 @@ def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, cur
     image_guidance_dict = {'InitialPrompt': 1.9, 'MediumSubsequentPrompt': 1.2, 'GoodSubsequentPrompt': 1.}
 
     # Generate image. 
-    target_img = cofrida_model(text_prompt, current_canvas, num_inference_steps=20, \
-                               num_images_per_prompt=1, image_guidance_scale=image_guidance_dict[prompt_key]).images[0]
-    
+    with torch.no_grad():
+        target_img_pil = cofrida_model(text_prompt, current_canvas_pil, num_inference_steps=20, \
+                                num_images_per_prompt=1, image_guidance_scale=image_guidance_dict[prompt_key]).images[0]
+    target_img = torch.from_numpy(np.array(target_img_pil)).permute(2,0,1).float().to(device)[None] / 255.
     # Log generated image. 
     opt.writer.add_image('images/target_from_cofrida_{0}_{1}'.format(prompt_key, text_prompt), format_img(target_img), 0)        
-    target_img = Resize((h_render, w_render), antialias=True)(target_img)
+    target_img = Resize((opt.h_render, opt.w_render), antialias=True)(target_img)
     target_img = flip_img(target_img) # Should be upside down for planning
+
+
+    current_canvas_pt = torch.from_numpy(np.array(current_canvas_pil)).permute(2,0,1).float().to(device)[None] / 255.
+    current_canvas_pt = Resize((opt.h_render, opt.w_render), antialias=True)(current_canvas_pt)
 
     #################################
     # Plan generation phase. 
@@ -151,7 +160,7 @@ def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, cur
     
     # Generate initial (random plan)
     # painting = random_init_painting(opt, current_canvas.to(device), num_strokes, ink=opt.ink).to(device)
-    curr_canvas_pt = flip_img(curr_canvas_pt) # Should look upside down / real
+    curr_canvas_pt = flip_img(current_canvas_pt) # Should look upside down / real
     painting = initialize_painting(opt, num_strokes, target_img, 
                                     curr_canvas_pt.to(device), opt.ink, device=device)
     color_palette = None #TODO: support input fixed palette
@@ -166,17 +175,25 @@ def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, cur
                 optim_iter=opt.optim_iter, color_palette=color_palette,
                 log_title='{}_3_plan'.format(0))
     
-    rendered_painting, alphas = painting(opt.h_render, opt.w_render, 
-                                         use_alpha=False, return_alphas=True)
+    with torch.no_grad():
+        rendered_painting_pt, alphas = painting(opt.h_render, opt.w_render, 
+                                            use_alpha=False, return_alphas=True)
 
-    rendered_painting = flip_img(rendered_painting) # "Up side down" so that it looks right side up to viewer
+        rendered_painting_pt = flip_img(rendered_painting_pt) # "Up side down" so that it looks right side up to viewer
 
-    return painting, rendered_painting
+
+        rendered_painting_pil, alphas = painting(512,512, use_alpha=False, return_alphas=True)
+        rendered_painting_pil = flip_img(rendered_painting_pil) # "Up side down"
+        rendered_painting_pil = rendered_painting_pil.detach().cpu().numpy()[0].transpose(1,2,0) * 255.
+        
+        rendered_painting_pil = Image.fromarray(rendered_painting_pil.astype(np.uint8)).resize((512,512))
+
+    return painting, rendered_painting_pt, rendered_painting_pil, target_img_pil
 
 def generate_all_plans(cofrida_model, opt, base_save_dir):
 
     # Generate the prompts dictionary. 
-    prompts_dictionary = define_prompts_dictionary()
+    prompt_dict = define_prompts_dictionary()
 
     if True: 
 
@@ -201,9 +218,6 @@ def generate_all_plans(cofrida_model, opt, base_save_dir):
         h_render = int(opt.render_height)
         opt.w_render, opt.h_render = w_render, h_render
 
-        consecutive_paints = 0
-        consecutive_strokes_no_clean = 0
-        curr_color = -1
 
         color_palette = None
         if opt.use_colors_from is not None:
@@ -221,7 +235,7 @@ def generate_all_plans(cofrida_model, opt, base_save_dir):
         curr_canvas_pil = curr_canvas_pil#.convert("L").convert('RGB')
 
         # Blank Canvas variable. 
-        blank_canvas_image = curr_canvas_pil
+        blank_canvas_image = curr_canvas_pil#curr_canvas_pt
         
 
     # Iterate over tree for each painting. 
@@ -236,55 +250,60 @@ def generate_all_plans(cofrida_model, opt, base_save_dir):
         ############################################################
         
         # First generate image and plan from initial prompt. 
-        painting_object, initial_prompt_target_image = generate_image_and_plan(cofrida_model, opt, prompt_dict['Painting{0}'.format(k)], prompt_key='InitialPrompt', blank_canvas_image)        
+        painting_object, initial_prompt_target_image_pt, initial_prompt_target_image_pil, cofrida_output \
+            = generate_image_and_plan(cofrida_model, opt, prompt_dict['Painting{0}'.format(k)], 'InitialPrompt', blank_canvas_image)        
         
         # Set save directory. 
         save_dir_suffix = "Painting{0}/InitialPrompt".format(k)
         save_dir = os.path.join(base_save_dir, save_dir_suffix)
         
         # Save the image and the plan for this iteration. 
-        save_image_and_plan(painting_object, initial_prompt_target_image, save_dir)
+        save_image_and_plan(painting_object, initial_prompt_target_image_pil, save_dir, cofrida_output)
         
         ############################################################
         # Generate image / plan for Initial Prompt
         ############################################################
         
         # First generate image and plan from initial prompt. 
-        painting_object, target_image = generate_image_and_plan(cofrida_model, opt, prompt_dict['Painting{0}'.format(k)], prompt_key='MediumSubsequentPrompt', initial_prompt_target_image)
+        painting_object, target_image_pt, target_image_pil, cofrida_output \
+            = generate_image_and_plan(cofrida_model, opt, prompt_dict['Painting{0}'.format(k)], 'MediumSubsequentPrompt', initial_prompt_target_image_pil)
         
         # Set save directory. 
         save_dir_suffix = "Painting{0}/MediumSubsequentPrompt".format(k)
         save_dir = os.path.join(base_save_dir, save_dir_suffix)
         
         # Save the image and the plan for this iteration. 
-        save_image_and_plan(painting_object, target_image, save_dir)
+        save_image_and_plan(painting_object, target_image_pil, save_dir, cofrida_output)
         
         ############################################################
         # Generate image / plan for Medium Subsequent Prompt
         ############################################################
         
         # First generate image and plan from initial prompt. 
-        painting_object, target_image = generate_image_and_plan(cofrida_model, opt, prompt_dict['Painting{0}'.format(k)], prompt_key='GoodSubsequentPrompt', initial_prompt_target_image)
+        painting_object, target_image_pt, target_image_pil, cofrida_output \
+            = generate_image_and_plan(cofrida_model, opt, prompt_dict['Painting{0}'.format(k)], 'GoodSubsequentPrompt', initial_prompt_target_image_pil)
         
         # Set save directory. 
         save_dir_suffix = "Painting{0}/GoodSubsequentPrompt".format(k)
         save_dir = os.path.join(base_save_dir, save_dir_suffix)
         
         # Save the image and the plan for this iteration. 
-        save_image_and_plan(painting_object, opt, target_image, save_dir)
+        save_image_and_plan(painting_object, target_image_pil, save_dir, cofrida_output)
         
 
 
-def save_image_and_plan(painting, opt, rendered_painting, save_dir):
+def save_image_and_plan(painting, rendered_painting_pil, save_dir, cofrida_output):
     
     # Save plan and other stuff
     os.makedirs(save_dir, exist_ok=True)
 
     # Save rendering of the plan
-    rendered_painting = flip_img(rendered_painting) # "Up side down" so that it looks right side up to viewer
-    rendered_painting = rendered_painting.detach().cpu().numpy()[0].transpose(1,2,0) * 255.
-    rendered_painting = Image.fromarray(rendered_painting.astype(np.uint8)).resize((512,512))
-    rendered_painting.save(os.path.join(save_dir,'rendered_plan.png'))
+    # rendered_painting = flip_img(rendered_painting) # "Up side down" so that it looks right side up to viewer
+    # rendered_painting = rendered_painting.detach().cpu().numpy()[0].transpose(1,2,0) * 255.
+    # rendered_painting = Image.fromarray(rendered_painting.astype(np.uint8)).resize((512,512))
+    # rendered_painting_pil = rendered_painting_pil.rotate(180, Image.NEAREST, expand = 1)
+    rendered_painting_pil.save(os.path.join(save_dir,'rendered_plan.png'))
+    cofrida_output.save(os.path.join(save_dir,'cofrida_output.png'))
 
     # # Save target image
     # target_img = flip_img(target_img) # "Up side down" so that it looks right side up to viewer
@@ -306,7 +325,7 @@ if __name__ == '__main__':
                 device=device)
     cofrida_model.set_progress_bar_config(disable=True)
 
-    save_dir = easygui.enterbox("What base directory should I save paintings and plans in ? (e.g., ./saved_plans/unique_name/)")
+    save_dir = './0'# easygui.enterbox("What base directory should I save paintings and plans in ? (e.g., ./saved_plans/unique_name/)")
 
     # Process all prompts. 
     generate_all_plans(cofrida_model=cofrida_model, opt=opt, base_save_dir=save_dir)
