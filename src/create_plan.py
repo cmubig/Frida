@@ -165,8 +165,13 @@ def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, cur
     painting, _ = optimize_painting(opt, painting, 
                 optim_iter=opt.optim_iter, color_palette=color_palette,
                 log_title='{}_3_plan'.format(0))
-        
-    return painting, target_img
+    
+    rendered_painting, alphas = painting(opt.h_render, opt.w_render, 
+                                         use_alpha=False, return_alphas=True)
+
+    rendered_painting = flip_img(rendered_painting) # "Up side down" so that it looks right side up to viewer
+
+    return painting, rendered_painting
 
 def generate_all_plans(cofrida_model, opt, base_save_dir):
 
@@ -270,24 +275,21 @@ def generate_all_plans(cofrida_model, opt, base_save_dir):
         
 
 
-def save_image_and_plan(painting, opt, target_img, save_dir):
+def save_image_and_plan(painting, opt, rendered_painting, save_dir):
     
     # Save plan and other stuff
     os.makedirs(save_dir, exist_ok=True)
 
     # Save rendering of the plan
-    rendered_painting, alphas = painting(opt.h_render, opt.w_render, 
-                                         use_alpha=False, return_alphas=True)
     rendered_painting = flip_img(rendered_painting) # "Up side down" so that it looks right side up to viewer
     rendered_painting = rendered_painting.detach().cpu().numpy()[0].transpose(1,2,0) * 255.
     rendered_painting = Image.fromarray(rendered_painting.astype(np.uint8)).resize((512,512))
     rendered_painting.save(os.path.join(save_dir,'rendered_plan.png'))
 
-    # Save target image
-    target_img = flip_img(target_img) # "Up side down" so that it looks right side up to viewer
-    target_img = target_img.detach().cpu().numpy()[0].transpose(1,2,0) * 255.
-    target_img = Image.fromarray(target_img.astype(np.uint8)).resize((512,512))
-    target_img.save(os.path.join(save_dir,'image_generator_output.png'))
+    # # Save target image
+    # target_img = flip_img(target_img) # "Up side down" so that it looks right side up to viewer
+    # target_img = target_img.detach().cpu().numpy()[0].transpose(1,2,0) * 255.
+    # target_img = Image.fromarray(target_img.astype(np.uint8)).resize((512,512))
 
     # Save plan
     torch.save(painting, os.path.join(save_dir, 'plan.pt'))
