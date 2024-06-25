@@ -8,14 +8,17 @@
 
 
 import datetime
+import os
 import sys
 import time
+import easygui
 import torch
 from torchvision.transforms import Resize
 from tqdm import tqdm
 from pynput import keyboard
 
 from paint_utils3 import canvas_to_global_coordinates, format_img
+from create_plan import define_prompts_dictionary
 
 from painter import Painter
 from options import Options
@@ -28,53 +31,8 @@ if not torch.cuda.is_available():
 def flip_img(img):
     return torch.flip(img, dims=(2,3))
 
-if __name__ == '__main__':
-    opt = Options()
-    opt.gather_options()
 
-    date_and_time = datetime.datetime.now()
-    run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
-    opt.writer = TensorBoard('{}/{}'.format(opt.tensorboard_dir, run_name))
-    opt.writer.add_text('args', str(sys.argv), 0)
-
-    painter = Painter(opt)
-    opt = painter.opt 
-
-    painter.to_neutral()
-
-    w_render = int(opt.render_height * (opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
-    h_render = int(opt.render_height)
-    opt.w_render, opt.h_render = w_render, h_render
-
-    consecutive_paints = 0
-    consecutive_strokes_no_clean = 0
-    curr_color = -1
-
-    painting = torch.load(opt.saved_plan)
-
-    print('Press any key to pause/continue')
-
-    is_paused = False
-    def on_press(key):
-        try:
-            global is_paused
-            is_paused = not is_paused
-            # print('alphanumeric key {0} pressed'.format(
-            #     key.char))
-            if is_paused:
-                print("Paused")
-            else:
-                print('Resuming')
-        except AttributeError:
-            # print('special key {0} pressed'.format(
-            #     key))
-            print('some error')
-    
-    # ...or, in a non-blocking fashion:
-    listener = keyboard.Listener(
-        on_press=on_press)
-    listener.start()
-
+def execute_painting(painting):
     # Execute plan
     for stroke_ind in tqdm(range(len(painting)), desc="Executing plan"):
         while is_paused:
@@ -96,14 +54,78 @@ if __name__ == '__main__':
 
     painter.to_neutral()
 
+is_paused = False
+
+if __name__ == '__main__':
+    opt = Options()
+    opt.gather_options()
+
+    date_and_time = datetime.datetime.now()
+    run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
+    opt.writer = TensorBoard('{}/{}'.format(opt.tensorboard_dir, run_name))
+    opt.writer.add_text('args', str(sys.argv), 0)
+
+    painter = Painter(opt)
+    opt = painter.opt 
+
+    painter.to_neutral()
+
+    w_render = int(opt.render_height * (opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
+    h_render = int(opt.render_height)
+    opt.w_render, opt.h_render = w_render, h_render
+
+
+    print('Press any key to pause/continue')
+
+    def on_press(key):
+        try:
+            global is_paused
+            is_paused = not is_paused
+            # print('alphanumeric key {0} pressed'.format(
+            #     key.char))
+            if is_paused:
+                print("Paused")
+            else:
+                print('Resuming')
+        except AttributeError:
+            # print('special key {0} pressed'.format(
+            #     key))
+            print('some error')
+    
+
+    # Generate the prompts dictionary. 
+    prompt_dict = define_prompts_dictionary()
+
+    save_dir = opt.saved_plan
+
+    plan_dir_index = int(input('Which plan directory?'))
+
+
+    # ...or, in a non-blocking fashion:
+    listener = keyboard.Listener(
+        on_press=on_press)
+    listener.start()
+
+    plan_dir = os.path.join(save_dir, 'Painting{}'.format(plan_dir_index))
+
+    init_painting_plan = torch.load(os.path.join(plan_dir, 'InitialPrompt', 'plan.pt'))
+
+    execute_painting(init_painting_plan)
+
+
+
+
+
+
+
+
+
+    # Logging if we want.
     current_canvas = painter.camera.get_canvas_tensor() / 255.
     current_canvas = flip_img(current_canvas)
     opt.writer.add_image('images/{}_4_canvas_after_drawing'.format(0), format_img(current_canvas), 0)
     current_canvas = Resize((h_render, w_render), antialias=True)(current_canvas)
     
-    if not painter.opt.ink:
-        painter.clean_paint_brush()
-        painter.clean_paint_brush()
     
     painter.to_neutral()
 

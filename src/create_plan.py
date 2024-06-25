@@ -131,7 +131,7 @@ def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, cur
     # First get the prompt. 
     text_prompt = painting_prompt[prompt_key]
     # Get image_guidance_scale value. 
-    image_guidance_dict = {'InitialPrompt': 1.9, 'MediumSubsequentPrompt': 1.2, 'GoodSubsequentPrompt': 1.}
+    image_guidance_dict = {'InitialPrompt': 2.5, 'MediumSubsequentPrompt': 1.2, 'GoodSubsequentPrompt': 1.}
 
     # Generate image. 
     with torch.no_grad():
@@ -325,7 +325,7 @@ if __name__ == '__main__':
                 device=device)
     cofrida_model.set_progress_bar_config(disable=True)
 
-    save_dir = './0'# easygui.enterbox("What base directory should I save paintings and plans in ? (e.g., ./saved_plans/unique_name/)")
+    save_dir = easygui.enterbox("What base directory should I save paintings and plans in ? (e.g., ./saved_plans/unique_name/)")
 
     # Process all prompts. 
     generate_all_plans(cofrida_model=cofrida_model, opt=opt, base_save_dir=save_dir)
