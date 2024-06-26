@@ -325,7 +325,9 @@ if __name__ == '__main__':
                 device=device)
     cofrida_model.set_progress_bar_config(disable=True)
 
-    save_dir = easygui.enterbox("What base directory should I save paintings and plans in ? (e.g., ./saved_plans/unique_name/)")
+    # save_dir = easygui.enterbox("What base directory should I save paintings and plans in ? (e.g., ./saved_plans/unique_name/)")
+    # Temporarily setting save dir to some constant. 
+    save_dir = '/scratch/tshankar/CoachFrida/Paintings/'
 
     # Process all prompts. 
     generate_all_plans(cofrida_model=cofrida_model, opt=opt, base_save_dir=save_dir)
