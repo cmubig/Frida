@@ -57,6 +57,11 @@ def execute_painting(painting):
 is_paused = False
 
 if __name__ == '__main__':
+
+    ############################
+    # Setting parameters. 
+    ############################
+
     opt = Options()
     opt.gather_options()
 
@@ -74,6 +79,10 @@ if __name__ == '__main__':
     h_render = int(opt.render_height)
     opt.w_render, opt.h_render = w_render, h_render
 
+
+    ############################
+    # Defining logic for pausing drawing during exercise. 
+    ############################
 
     print('Press any key to pause/continue')
 
@@ -93,40 +102,80 @@ if __name__ == '__main__':
             print('some error')
     
 
+    ############################
+    # Defining Prompts
+    ############################
+
     # Generate the prompts dictionary. 
     prompt_dict = define_prompts_dictionary()
+    
 
-    save_dir = opt.saved_plan
+    ############################
+    # Get input for which of the 10 prompts we want to start drawing with. 
+    ############################
 
-    plan_dir_index = int(input('Which plan directory?'))
-
+    plan_dir_index = int(input('Which prompt number should I draw? Please enter a number from 0 to 9.'))
 
     # ...or, in a non-blocking fashion:
     listener = keyboard.Listener(
         on_press=on_press)
     listener.start()
-
+    
+    save_dir = opt.saved_plan
     plan_dir = os.path.join(save_dir, 'Painting{}'.format(plan_dir_index))
 
-    init_painting_plan = torch.load(os.path.join(plan_dir, 'InitialPrompt', 'plan.pt'))
+    ############################
+    # Visualize the planned painting.
+    ############################
 
+    # TODO
+
+    ############################
+    # Run Planning for Initial Prompt. 
+    ############################
+
+    # Load plan from saved directory. 
+    init_painting_plan = torch.load(os.path.join(plan_dir, 'InitialPrompt', 'plan.pt'))   
+
+    # Execute this plan. 
     execute_painting(init_painting_plan)
 
+    ############################
+    # Get input for whether to run the Medium branch or the Good Branch of this tree of prompts. 
+    ############################
 
+    subsequent_plan_branch = int(input('How well did the user perform their exercise? Please enter either "Good" or "Medium". This will determine which branch of the tree I will draw.'))    
+    subsequent_plan_dir = os.path.join(save_dir, 'Painting{}'.format(subsequent_plan_branch))
 
+    ############################
+    # Visualize the planned painting.
+    ############################
 
+    # TODO
 
+    ############################
+    # Run Planning for Subsequent Prompt.
+    ############################
 
+    # Load plan from saved directory. 
+    prompt_key = subsequent_plan_branch+"Prompt"
+    subsequent_painting_plan = torch.load(os.path.join(subsequent_plan_dir, prompt_key, 'plan.pt'))
 
+    # Execute this plan. 
+    execute_painting(subsequent_painting_plan)
 
-
+    ############################
     # Logging if we want.
+    ############################
+
     current_canvas = painter.camera.get_canvas_tensor() / 255.
     current_canvas = flip_img(current_canvas)
     opt.writer.add_image('images/{}_4_canvas_after_drawing'.format(0), format_img(current_canvas), 0)
     current_canvas = Resize((h_render, w_render), antialias=True)(current_canvas)
     
-    
-    painter.to_neutral()
+    ############################
+    # Shutdown. 
+    ############################
 
+    painter.to_neutral()
     painter.robot.good_night_robot()
