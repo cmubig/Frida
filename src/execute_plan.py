@@ -89,9 +89,16 @@ if __name__ == '__main__':
     def on_press(key):
         try:
             global is_paused
-            is_paused = not is_paused
+
+            if key.char == keyboard.Key.f1:
+                is_paused = True
+            if key.char == keyboard.Key.f1:
+                is_paused = False
+
+            # is_paused = not is_paused
             # print('alphanumeric key {0} pressed'.format(
             #     key.char))
+
             if is_paused:
                 print("Paused")
             else:
@@ -99,8 +106,7 @@ if __name__ == '__main__':
         except AttributeError:
             # print('special key {0} pressed'.format(
             #     key))
-            print('some error')
-    
+            print('some error')    
 
     ############################
     # Defining Prompts
