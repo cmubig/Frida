@@ -131,7 +131,9 @@ def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, cur
     # First get the prompt. 
     text_prompt = painting_prompt[prompt_key]
     # Get image_guidance_scale value. 
-    image_guidance_dict = {'InitialPrompt': 2.5, 'MediumSubsequentPrompt': 1.2, 'GoodSubsequentPrompt': 1.}
+    # image_guidance_dict = {'InitialPrompt': 2.5, 'MediumSubsequentPrompt': 1.2, 'GoodSubsequentPrompt': 1.}
+    # Increasing medium prompt image guidance. 
+    image_guidance_dict = {'InitialPrompt': 2.5, 'MediumSubsequentPrompt': 1.5, 'GoodSubsequentPrompt': 1.}
 
     # Generate image. 
     with torch.no_grad():
@@ -142,7 +144,6 @@ def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, cur
     opt.writer.add_image('images/target_from_cofrida_{0}_{1}'.format(prompt_key, text_prompt), format_img(target_img), 0)        
     target_img = Resize((opt.h_render, opt.w_render), antialias=True)(target_img)
     target_img = flip_img(target_img) # Should be upside down for planning
-
 
     current_canvas_pt = torch.from_numpy(np.array(current_canvas_pil)).permute(2,0,1).float().to(device)[None] / 255.
     current_canvas_pt = Resize((opt.h_render, opt.w_render), antialias=True)(current_canvas_pt)
@@ -290,8 +291,6 @@ def generate_all_plans(cofrida_model, opt, base_save_dir):
         # Save the image and the plan for this iteration. 
         save_image_and_plan(painting_object, target_image_pil, save_dir, cofrida_output)
         
-
-
 def save_image_and_plan(painting, rendered_painting_pil, save_dir, cofrida_output):
     
     # Save plan and other stuff
@@ -327,6 +326,8 @@ if __name__ == '__main__':
 
     # save_dir = easygui.enterbox("What base directory should I save paintings and plans in ? (e.g., ./saved_plans/unique_name/)")
     # Temporarily setting save dir to some constant. 
+
+    print("OPTIONS:", opt)
     save_dir = '/scratch/tshankar/CoachFrida/Paintings/'
 
     # Process all prompts. 
