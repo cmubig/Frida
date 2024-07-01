@@ -133,7 +133,7 @@ def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, cur
     # Get image_guidance_scale value. 
     # image_guidance_dict = {'InitialPrompt': 2.5, 'MediumSubsequentPrompt': 1.2, 'GoodSubsequentPrompt': 1.}
     # Increasing medium prompt image guidance. 
-    image_guidance_dict = {'InitialPrompt': 2.5, 'MediumSubsequentPrompt': 2., 'GoodSubsequentPrompt': 1.}
+    image_guidance_dict = {'InitialPrompt': 2.5, 'MediumSubsequentPrompt': 1.7, 'GoodSubsequentPrompt': 1.}
 
     # Generate image. 
     with torch.no_grad():
