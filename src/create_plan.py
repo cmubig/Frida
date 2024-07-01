@@ -329,6 +329,7 @@ if __name__ == '__main__':
 
     # print("OPTIONS:", opt)
     # save_dir = '/scratch/tshankar/CoachFrida/Paintings/Paintings_abc'
+    os.makedirs(opt.save_dir, exist_ok=True)
 
     # Process all prompts. 
     generate_all_plans(cofrida_model=cofrida_model, opt=opt, base_save_dir=opt.save_dir)
