@@ -84,16 +84,16 @@ def define_prompts_dictionary():
     for k in range(n_paintings):
         prompts_dictionary['Painting{0}'.format(k)] = {}
 
-    prompts_dictionary['Painting0']['InitialPrompt'] = 'A black and white sharpie drawing with a blank background of a single tree.'
-    prompts_dictionary['Painting1']['InitialPrompt'] = 'A black and white sharpie drawing with a blank background of a simple park with a bench.'
-    prompts_dictionary['Painting2']['InitialPrompt'] = 'A black and white sharpie drawing with a blank background of a rainy city street.'
-    prompts_dictionary['Painting3']['InitialPrompt'] = 'A black and white sharpie drawing with a blank background of a mountain silhouette.'
-    prompts_dictionary['Painting4']['InitialPrompt'] = 'A black and white sharpie drawing with a blank background of a small boat sailing on a lake.'
-    prompts_dictionary['Painting5']['InitialPrompt'] = 'A black and white sharpie drawing with a blank background of a ruins of an italian building.'
-    prompts_dictionary['Painting6']['InitialPrompt'] = 'A black and white sharpie drawing with a blank background of a desert with undulating sand dunes'
-    prompts_dictionary['Painting7']['InitialPrompt'] = 'A black and white sharpie drawing with a blank background of a twilight suburban street.'
-    prompts_dictionary['Painting8']['InitialPrompt'] = 'A black and white sharpie drawing with a blank background of a park trail with trees on either side.'
-    prompts_dictionary['Painting9']['InitialPrompt'] = 'A black and white sharpie drawing with a blank background of a simple grassy plain.'
+    prompts_dictionary['Painting0']['InitialPrompt'] = 'A black and white sharpie drawing with a blank border and blank background of a single tree.'
+    prompts_dictionary['Painting1']['InitialPrompt'] = 'A black and white sharpie drawing with a blank border and blank background of a simple park with a bench.'
+    prompts_dictionary['Painting2']['InitialPrompt'] = 'A black and white sharpie drawing with a blank border and blank background of a rainy city street.'
+    prompts_dictionary['Painting3']['InitialPrompt'] = 'A black and white sharpie drawing with a blank border and blank background of a mountain silhouette.'
+    prompts_dictionary['Painting4']['InitialPrompt'] = 'A black and white sharpie drawing with a blank border and blank background of a small boat sailing on a lake.'
+    prompts_dictionary['Painting5']['InitialPrompt'] = 'A black and white sharpie drawing with a blank border and blank background of a ruins of an italian building.'
+    prompts_dictionary['Painting6']['InitialPrompt'] = 'A black and white sharpie drawing with a blank border and blank background of a desert with undulating sand dunes'
+    prompts_dictionary['Painting7']['InitialPrompt'] = 'A black and white sharpie drawing with a blank border and blank background of a twilight suburban street.'
+    prompts_dictionary['Painting8']['InitialPrompt'] = 'A black and white sharpie drawing with a blank border and blank background of a park trail with trees on either side.'
+    prompts_dictionary['Painting9']['InitialPrompt'] = 'A black and white sharpie drawing with a blank border and blank background of a simple grassy plain.'
 
     prompts_dictionary['Painting0']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a hilly landscape and a single tree on top of it.'
     prompts_dictionary['Painting1']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a quiet park with a single bench beneath a single tree.'
@@ -106,7 +106,7 @@ def define_prompts_dictionary():
     prompts_dictionary['Painting8']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a forest scene with a log cabin in the middle with lush trees in the background.'
     prompts_dictionary['Painting9']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a grassy plain with one or two trees.'
 
-    prompts_dictionary['Painting0']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a hilly landscape with a single majestic tree on top with clouds swirling in the sky.'
+    prompts_dictionary['Painting0']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a single majestic tree with a majestic mountain range in the background.'
     prompts_dictionary['Painting1']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a serene city park with a quiet park bench beneath a canopy of several majestic trees.'
     prompts_dictionary['Painting2']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a rainy city street with puddles reflecting streetlights and umbrellas and a starry sky.'
     prompts_dictionary['Painting3']['GoodSubsequentPrompt'] = 'A black and white sharpie drawing of a serene snow-capped mountain range with a lush forest of alpine trees on the base of the mountain'
@@ -133,7 +133,7 @@ def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, cur
     # Get image_guidance_scale value. 
     # image_guidance_dict = {'InitialPrompt': 2.5, 'MediumSubsequentPrompt': 1.2, 'GoodSubsequentPrompt': 1.}
     # Increasing medium prompt image guidance. 
-    image_guidance_dict = {'InitialPrompt': 2.5, 'MediumSubsequentPrompt': 1.5, 'GoodSubsequentPrompt': 1.}
+    image_guidance_dict = {'InitialPrompt': 2.5, 'MediumSubsequentPrompt': 2., 'GoodSubsequentPrompt': 1.}
 
     # Generate image. 
     with torch.no_grad():
