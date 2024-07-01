@@ -327,8 +327,8 @@ if __name__ == '__main__':
     # save_dir = easygui.enterbox("What base directory should I save paintings and plans in ? (e.g., ./saved_plans/unique_name/)")
     # Temporarily setting save dir to some constant. 
 
-    print("OPTIONS:", opt)
-    save_dir = '/scratch/tshankar/CoachFrida/Paintings/Paintings_abc'
+    # print("OPTIONS:", opt)
+    # save_dir = '/scratch/tshankar/CoachFrida/Paintings/Paintings_abc'
 
     # Process all prompts. 
-    generate_all_plans(cofrida_model=cofrida_model, opt=opt, base_save_dir=save_dir)
+    generate_all_plans(cofrida_model=cofrida_model, opt=opt, base_save_dir=opt.save_dir)

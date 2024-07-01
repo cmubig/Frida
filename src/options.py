@@ -127,9 +127,13 @@ class Options(object):
         parser.add_argument("--locate_items", action='store_true',
             default=False, help='Just try to find the items on the table')
         
+        # Allow option for painting save dir. 
+        parser.add_argument("--save_dir", type=str, default='/scratch/tshankar/CoachFrida/Paintings/', help='Base save directory to save paintings in.')
         ### Argument is not used, but is allowed for flask compatability ###
         parser.add_argument("--app", type=str, nargs='*',
             default="app run", help='Argument is not used, but is allowed for flask compatability')
+
+
 
         return parser 
 
