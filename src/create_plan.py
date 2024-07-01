@@ -328,7 +328,7 @@ if __name__ == '__main__':
     # Temporarily setting save dir to some constant. 
 
     print("OPTIONS:", opt)
-    save_dir = '/scratch/tshankar/CoachFrida/Paintings/'
+    save_dir = '/scratch/tshankar/CoachFrida/Paintings/Paintings_abc'
 
     # Process all prompts. 
     generate_all_plans(cofrida_model=cofrida_model, opt=opt, base_save_dir=save_dir)
