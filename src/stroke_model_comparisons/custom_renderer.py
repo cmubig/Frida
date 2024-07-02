@@ -14,10 +14,15 @@ class CustomRenderer(nn.Module):
 
         # parameters
         self.radius = nn.Parameter(torch.ones(1)*5)
+        self.dark_mult = nn.Parameter(torch.ones(1)*0.5)
         self.dark_exp = nn.Parameter(torch.ones(1))
+        self.dx = nn.Parameter(torch.zeros(1))
+        self.dy = nn.Parameter(torch.zeros(1))
 
     def forward(self, traj):
         # traj: B x n x 2
+        traj[:,:,0] += self.dx
+        traj[:,:,1] += self.dy
         traj = traj * self.width
         B, n, _ = traj.shape
 
@@ -41,7 +46,9 @@ class CustomRenderer(nn.Module):
         distances = dist_line_segment(coords, vs, ws) # (B, n-1, self.width, self.width)
         distances = torch.min(distances, dim=1).values # (B, self.width, self.width)
 
-        darkness = torch.clamp((self.radius - distances) / self.radius, min=1e-4, max=1.0)
-        darkness = darkness ** self.dark_exp
+        darkness = torch.clamp((self.radius - distances) / self.radius, min=1e-8, max=1.0)
+        # darkness = (darkness ** self.dark_exp) * self.dark_mult
+        darkness = (darkness ** self.dark_exp)
+        darkness = torch.clamp(darkness, min=0.0, max=1.0)
 
         return darkness

@@ -15,6 +15,7 @@ sys.path.append('../')
 from brush_stroke import BrushStroke
 
 ''' Read and preprocess trajectories and canvas befores/afters '''
+# cache_dir = '../caches/vae_brush_final'
 cache_dir = '../caches/vae_sharpie_final'
 canvases_before_fns = glob.glob(os.path.join(cache_dir, 'stroke_library', 'canvases_before_*.npy'))
 canvases_after_fns = glob.glob(os.path.join(cache_dir, 'stroke_library', 'canvases_after_*.npy'))
@@ -137,6 +138,13 @@ test_dataloader = DataLoader(test_dataset, batch_size=16, shuffle=False)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def evaluate_renderer(renderer, dataloader):
+    for name, param in renderer.named_parameters():
+        if 'radius' in name:
+            print(f"radius: {param.data}")
+        elif 'dark_mult' in name:
+            print(f"dark_mult: {param.data}")
+        elif 'dark_exp' in name:
+            print(f"dark_exp: {param.data}")
     with torch.no_grad():
         renderer.eval()
 
@@ -151,6 +159,9 @@ def evaluate_renderer(renderer, dataloader):
             pred = renderer(traj)
             pred = transforms.Resize((canvas_after.shape[1], canvas_after.shape[2]), antialias=True)(pred)
             pred = pred + canvas_before*(1-pred)
+            print("canvas_before", torch.min(canvas_before), torch.max(canvas_before))
+            print("pred", torch.min(pred), torch.max(pred))
+            print("canvas_after", torch.min(canvas_after), torch.max(canvas_after))
 
             for i in range(len(pred)):
                 results.append((pred[i].detach().cpu().numpy(), canvas_after[i].detach().cpu().numpy()))
@@ -225,19 +236,19 @@ from custom_unet_renderer import CustomUnetRenderer
 configs = [
     {
         'renderer': CustomRenderer(256),
-        'epochs': 40,
-        'lr': 1e-1,
+        'epochs': 500,
+        'lr': 1e-2,
         'eval_freq': 10
     },
     {
         'renderer': ConvRenderer(),
-        'epochs': 2000,
+        'epochs': 5000,
         'lr': 1e-3,
         'eval_freq': 100
     },
     {
         'renderer': CoordConvRenderer(),
-        'epochs': 2000,
+        'epochs': 5000,
         'lr': 1e-3,
         'eval_freq': 100
     },
@@ -246,7 +257,7 @@ configs = [
         'epochs': 40,
         'lr': 1e-3,
         'eval_freq': 10,
-        'finetune_epochs': 200
+        'finetune_epochs': 500
     },
     # {
     #     'renderer': DiffVGRenderer(256),
@@ -255,7 +266,7 @@ configs = [
     # }
 ]
 
-idx = 2
+idx = 1
 config = configs[idx]
 renderer = config['renderer']
 renderer.to(device)
