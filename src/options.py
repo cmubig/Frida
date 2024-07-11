@@ -25,7 +25,7 @@ class Options(object):
 
     def initialize(self, parser):
         # Main parameters
-        parser.add_argument("--robot", type=str, default='franka', help='Which robot to use "franka" "xarm" or "sawyer"')
+        parser.add_argument("--robot", type=str, default='drone', help='Which robot to use "franka" "xarm" or "sawyer"')
         parser.add_argument("--xarm_ip", type=str, default='192.168.2.157', help='IP address of XArm.')
 
         parser.add_argument('--use_cache', action='store_true')
@@ -58,8 +58,8 @@ class Options(object):
 
         # Planning Parameters
         parser.add_argument('--dont_plan', action='store_true', help='Use saved plan from last run')
-        parser.add_argument('--num_strokes', type=int, default=400)
-        parser.add_argument('--num_adaptations', type=int, default=4)
+        parser.add_argument('--num_strokes', type=int, default=20)
+        parser.add_argument('--num_adaptations', type=int, default=1)
         parser.add_argument('--fill_weight', type=float, default=0.0, help="Encourage strokes to fill canvas.")
         parser.add_argument('--strokes_per_batch', type=int, default=None)
 

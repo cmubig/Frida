@@ -104,23 +104,24 @@ if __name__ == '__main__':
         ################################
         ### Execute some of the plan ###
         ################################
+        # @Xiaofeng here is the main painting loop
         for stroke_ind in tqdm(range(min(len(painting),strokes_per_adaptation))):
             stroke = painting.pop()            
             
-            # Clean paint brush and/or get more paint
-            if not painter.opt.ink:
-                color_ind, _ = nearest_color(stroke.color_transform.detach().cpu().numpy(), 
-                                             color_palette.detach().cpu().numpy())
-                new_paint_color = color_ind != curr_color
-                if new_paint_color or consecutive_strokes_no_clean > 12:
-                    if new_paint_color: painter.clean_paint_brush()
-                    painter.clean_paint_brush()
-                    consecutive_strokes_no_clean = 0
-                    curr_color = color_ind
-                    new_paint_color = True
-                if consecutive_paints >= opt.how_often_to_get_paint or new_paint_color:
-                    painter.get_paint(color_ind)
-                    consecutive_paints = 0
+            # # Clean paint brush and/or get more paint
+            # if not painter.opt.ink:
+            #     color_ind, _ = nearest_color(stroke.color_transform.detach().cpu().numpy(), 
+            #                                  color_palette.detach().cpu().numpy())
+            #     new_paint_color = color_ind != curr_color
+            #     if new_paint_color or consecutive_strokes_no_clean > 12:
+            #         if new_paint_color: painter.clean_paint_brush()
+            #         painter.clean_paint_brush()
+            #         consecutive_strokes_no_clean = 0
+            #         curr_color = color_ind
+            #         new_paint_color = True
+            #     if consecutive_paints >= opt.how_often_to_get_paint or new_paint_color:
+            #         painter.get_paint(color_ind)
+            #         consecutive_paints = 0
 
             # Convert the canvas proportion coordinates to meters from robot
             x, y = stroke.xt.item(), stroke.yt.item()

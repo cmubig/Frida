@@ -59,6 +59,8 @@ class Painter():
             self.robot = SimulatedRobot(debug=True)
         elif opt.robot == "franka":
             self.robot = Franka(debug=True)
+        elif opt.robot == "drone":
+            self.robot = Drone(debug=True)
         elif opt.robot == "xarm":
             self.robot = XArm(opt.xarm_ip, debug=True)
         elif opt.robot == None:
@@ -87,32 +89,37 @@ class Painter():
                 except SyntaxError:
                     pass
 
-        self.H_coord = None # Translate coordinates based on faulty camera location
+        # self.H_coord = None # Translate coordinates based on faulty camera location
 
         self.to_neutral()
 
-        # Set how high the table is wrt the brush
-        if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, "brush_tip_to_table_calib.json")):
-            params = json.load(open(os.path.join(self.opt.cache_dir, "brush_tip_to_table_calib.json"),'rb'))
-            self.Z_CANVAS = params['Z_CANVAS']
-            self.Z_MAX_CANVAS = params['Z_MAX_CANVAS']
-        else:
-            print('\nBrush tip calibration\n')
-            print('Brush should be at very center of the canvas.')
-            print('Use keys "w" and "s" to set the brush to just bare/localy touch the canvas.')
-            p = canvas_to_global_coordinates(0.5, 0.5, self.opt.INIT_TABLE_Z, self.opt)
-            self.Z_CANVAS = self.set_height(p[0], p[1], self.opt.INIT_TABLE_Z)[2]
+        # # Set how high the table is wrt the brush
+        # if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, "brush_tip_to_table_calib.json")):
+        #     params = json.load(open(os.path.join(self.opt.cache_dir, "brush_tip_to_table_calib.json"),'rb'))
+        #     self.Z_CANVAS = params['Z_CANVAS']
+        #     self.Z_MAX_CANVAS = params['Z_MAX_CANVAS']
+        # else:
+        #     print('\nBrush tip calibration\n')
+        #     print('Brush should be at very center of the canvas.')
+        #     print('Use keys "w" and "s" to set the brush to just bare/localy touch the canvas.')
+        #     p = canvas_to_global_coordinates(0.5, 0.5, self.opt.INIT_TABLE_Z, self.opt)
+        #     self.Z_CANVAS = self.set_height(p[0], p[1], self.opt.INIT_TABLE_Z)[2]
 
-            print('Move the brush to the lowest point it should go again with "w" and "s" keys.')
-            self.Z_MAX_CANVAS = self.set_height(p[0], p[1], self.Z_CANVAS)[2]
-            self.hover_above(p[0], p[1], self.Z_CANVAS, method='direct')
+        #     print('Move the brush to the lowest point it should go again with "w" and "s" keys.')
+        #     self.Z_MAX_CANVAS = self.set_height(p[0], p[1], self.Z_CANVAS)[2]
+        #     self.hover_above(p[0], p[1], self.Z_CANVAS, method='direct')
 
-            params = {'Z_CANVAS':self.Z_CANVAS, 'Z_MAX_CANVAS':self.Z_MAX_CANVAS}
-            if not os.path.exists(self.opt.cache_dir):
-                os.mkdir(self.opt.cache_dir)
-            with open(os.path.join(self.opt.cache_dir, 'brush_tip_to_table_calib.json'),'w') as f:
-                json.dump(params, f, indent=4)
-            self.to_neutral()
+        #     params = {'Z_CANVAS':self.Z_CANVAS, 'Z_MAX_CANVAS':self.Z_MAX_CANVAS}
+        #     if not os.path.exists(self.opt.cache_dir):
+        #         os.mkdir(self.opt.cache_dir)
+        #     with open(os.path.join(self.opt.cache_dir, 'brush_tip_to_table_calib.json'),'w') as f:
+        #         json.dump(params, f, indent=4)
+        #     self.to_neutral()
+        
+        # @Xiaofeng Above is the code for callibrating the length of the tip of the brush. For now,
+        # I've commented it out and just hardcoded it. I don't think you'll need these values
+        self.Z_CANVAS = 0
+        self.Z_MAX_CANVAS = 0
 
         self.Z_RANGE = np.abs(self.Z_MAX_CANVAS - self.Z_CANVAS)
 
@@ -142,15 +149,15 @@ class Painter():
         #             self.move_to(x,y,self.Z_CANVAS+0.03)
         #     self.to_neutral()
 
-        if self.camera is not None:
-            self.camera.debug = True
-            self.camera.calibrate_canvas(use_cache=use_cache)
+        # if self.camera is not None:
+        #     self.camera.debug = True
+        #     self.camera.calibrate_canvas(use_cache=use_cache)
 
         img = self.camera.get_canvas()
         self.opt.CANVAS_WIDTH_PIX, self.opt.CANVAS_HEIGHT_PIX = img.shape[1], img.shape[0]
 
-        # Ensure that x,y on the canvas photograph is x,y for the robot interacting with the canvas
-        self.coordinate_calibration(use_cache=opt.use_cache)
+        # # Ensure that x,y on the canvas photograph is x,y for the robot interacting with the canvas
+        # self.coordinate_calibration(use_cache=opt.use_cache)
 
         # self.paint_fill_in_library() ######################################################
 
@@ -189,6 +196,9 @@ class Painter():
 
 
     def to_neutral(self, speed=0.4):
+        # @Xiaofeng this is the function I call to move the robot out of the way to take pictures.
+        # It's called a few times, so make sure you go through and maybe take it out when 
+        # Not necessary
         # Initial spot
         if not self.opt.simulate:
             # self.robot.fa.reset_joints()
@@ -554,6 +564,9 @@ class Painter():
     def paint_extended_stroke_library(self, save_batch_size=10, image_save_height=768):
         w = self.opt.CANVAS_WIDTH_PIX
         h = self.opt.CANVAS_HEIGHT_PIX
+
+        # @Xiaofeng here is the code for drawing the calibration strokes.
+        # This will save them to --cache_dir
 
         self.to_neutral()
         canvas_without_stroke = self.camera.get_canvas(max_height=image_save_height)

@@ -241,12 +241,12 @@ class BrushStroke(nn.Module):
         all_positions = []
         all_orientations = []
 
-        # Need to translate x,y a bit to be accurate according to camera
-        if painter.H_coord is not None:
-            # Translate the coordinates so they're similar. see coordinate_calibration
-            sim_coords = np.array([x_start, y_start, 1.])
-            real_coords = painter.H_coord.dot(sim_coords)
-            x_start, y_start = real_coords[0]/real_coords[2], real_coords[1]/real_coords[2]
+        # # Need to translate x,y a bit to be accurate according to camera
+        # if painter.H_coord is not None:
+        #     # Translate the coordinates so they're similar. see coordinate_calibration
+        #     sim_coords = np.array([x_start, y_start, 1.])
+        #     real_coords = painter.H_coord.dot(sim_coords)
+        #     x_start, y_start = real_coords[0]/real_coords[2], real_coords[1]/real_coords[2]
 
         z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
 
@@ -255,6 +255,12 @@ class BrushStroke(nn.Module):
         approx_len = 0.0
         for i in range(len(path)-1):
             approx_len += ((path[i,0]-path[i+1,0])**2 + (path[i,1] - path[i+1,1])**2)**0.5
+
+        # @Xiaofeng you can see the approximate length of the brush stroke with the code above. 
+        # I think it'll be like a few centimeters. You could just multiply the whole path by
+        # some value to get it to be bigger.
+        # Maybe like:
+        # path = path[:,:2] * 10
 
         path = BrushStroke.get_rotated_trajectory(rotation, path)
 
@@ -289,6 +295,8 @@ class BrushStroke(nn.Module):
                 all_positions.append([x_next, y_next, z+0.04])
                 all_orientations.append(q)
 
+        #### @Xiaofeng The all_positions will have the [[x,y,z],..] coordinates. You'll have
+        ## To do something different with the z values. Maybe just leaving them as [0,1]
 
         stroke_complete = painter.move_to_trajectories(all_positions, all_orientations)
 

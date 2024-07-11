@@ -88,6 +88,8 @@ class WebCam():
             return img
 
     def get_canvas(self, use_cache=False, max_height=None):
+        # @Xiaofeng You'll need to adapt this function to get an image of the canvas.
+        # It should be a perfect view of the canvas, with a homography warp
         if self.H_canvas is None:
             self.calibrate_canvas(use_cache)
         

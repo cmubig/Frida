@@ -35,6 +35,26 @@ class Robot:
     def go_to_cartesian_pose(self, positions, orientations, precise=False):
         raise Exception("This method must be implemented")
 
+class Drone(Robot, object):
+    def __init__(self, ip, debug):
+        pass
+
+    def debug(self, msg):
+        pass
+
+    def good_morning_robot(self):
+        pass
+
+    def good_night_robot(self):
+        pass
+
+    def go_to_cartesian_pose(self, positions, orientations,
+            speed=250):
+        # positions in meters
+        # @Xiaofeng I created this placeholder class for the drone. You can put code
+        # Or just make your own somewhere else for controlling the drone.
+        pass
+
 class XArm(Robot, object):
     '''
         Low-level action functionality of the robot.
