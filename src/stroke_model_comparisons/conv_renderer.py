@@ -6,7 +6,7 @@ class ConvRenderer(nn.Module):
     def __init__(self):
         super(ConvRenderer, self).__init__()
         
-        self.conv_hidden_dims = [128, 64, 32, 16, 8]
+        self.conv_hidden_dims = [128, 64, 32, 16, 8, 8, 8]
         
         self.fc = nn.Sequential(
             nn.Linear(64, self.conv_hidden_dims[0]*2*2),
@@ -37,7 +37,7 @@ class ConvRenderer(nn.Module):
             nn.LeakyReLU(),
             nn.Conv2d(self.conv_hidden_dims[-1], out_channels=1,
                       kernel_size=3, padding=1),
-            nn.Tanh()
+            nn.Sigmoid()
         ))
         self.conv = nn.Sequential(*decoder_layers)
     
