@@ -6,7 +6,6 @@
 ################ All rights reserved. ####################
 ##########################################################
 
-
 import datetime
 import os
 import sys
@@ -33,10 +32,11 @@ if not torch.cuda.is_available():
     print('Using CPU..... good luck')
 
 def subscriber_callback(data):
-    # rospy.loginfo(rospy.get_caller_id() + "I heard %s", data.data)
-    pass
+    print("Encountered: ", data.data, ". Adding it to the performance queue.")
+    # Appending data to the performance queue. 
+    performance_queue.append(data.data)
 
-def listener():
+def ROS_listener():
            
     # In ROS, nodes are uniquely named. If two nodes with the same
     # name are launched, the previous one is kicked off. The
@@ -50,8 +50,21 @@ def listener():
     # spin() simply keeps python from exiting until this node is stopped
     rospy.spin()
     
+def define_performance_mapping():
+
+    performance_dictionary = {}
+    global performance_dictionary    
+    performance_dictionary['1'] = 'Good'
+    performance_dictionary['0'] = 'Medium'
+
+    return performance_dictionary
+
+def retrieve_queue_performance():
+    # Retrieve the perofrmance value.
+    return performance_dictionary[str(performance_queue.pop(0))]
 
 def flip_img(img):
+    # Utility
     return torch.flip(img, dims=(2,3))
 
 def execute_painting(painting):
@@ -101,7 +114,6 @@ if __name__ == '__main__':
     h_render = int(opt.render_height)
     opt.w_render, opt.h_render = w_render, h_render
 
-
     ############################
     # Defining logic for pausing drawing during exercise. 
     ############################
@@ -136,7 +148,9 @@ if __name__ == '__main__':
 
     # Generate the prompts dictionary. 
     prompt_dict = define_prompts_dictionary()
-    
+    # Defining global performance variable. 
+    performance_queue = []
+    global performance_queue    
 
     ############################
     # Get input for which of the 10 prompts we want to start drawing with. 
@@ -172,9 +186,10 @@ if __name__ == '__main__':
     # Get input for whether to run the Medium branch or the Good Branch of this tree of prompts. 
     ############################
 
-    subsequent_plan_branch = int(input('How well did the user perform their exercise? Please enter either "Good" or "Medium". This will determine which branch of the tree I will draw.'))    
+    # subsequent_plan_branch = int(input('How well did the user perform their exercise? Please enter either "Good" or "Medium". This will determine which branch of the tree I will draw.'))        
+    subsequent_plan_branch = retrieve_queue_performance()
     subsequent_plan_dir = os.path.join(save_dir, 'Painting{}'.format(subsequent_plan_branch))
-
+    
     ############################
     # Visualize the planned painting.
     ############################

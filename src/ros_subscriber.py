@@ -17,8 +17,11 @@ def listener():
 
     rospy.Subscriber("/set_performance", Int32, callback)
 
+    print("hello, I am at part 1")
     # spin() simply keeps python from exiting until this node is stopped
     rospy.spin()
+
+    print("hello, I am at part 2")
 
 if __name__ == '__main__':
     listener()
