@@ -51,9 +51,9 @@ if not torch.cuda.is_available():
 #     rospy.spin()
     
 def define_performance_mapping():
-
-    performance_dictionary = {}
+    
     global performance_dictionary    
+    performance_dictionary = {}
     performance_dictionary['1'] = 'Good'
     performance_dictionary['0'] = 'Medium'
 
@@ -157,8 +157,9 @@ if __name__ == '__main__':
     define_performance_mapping()
     
     # Defining global performance variable. 
-    performance_queue = []
     global performance_queue    
+    performance_queue = []
+    
 
     ############################
     # Get input for which of the 10 prompts we want to start drawing with. 
