@@ -31,24 +31,24 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 if not torch.cuda.is_available():
     print('Using CPU..... good luck')
 
-def subscriber_callback(data):
-    print("Encountered: ", data.data, ". Adding it to the performance queue.")
-    # Appending data to the performance queue. 
-    performance_queue.append(data.data)
+# def subscriber_callback(data):
+#     print("Encountered: ", data.data, ". Adding it to the performance queue.")
+#     # Appending data to the performance queue. 
+#     performance_queue.append(data.data)
 
-def ROS_listener():
+# def ROS_listener():
            
-    # In ROS, nodes are uniquely named. If two nodes with the same
-    # name are launched, the previous one is kicked off. The
-    # anonymous=True flag means that rospy will choose a unique
-    # name for our 'listener' node so that multiple listeners can
-    # run simultaneously.
-    rospy.init_node('exercise_performance_listener', anonymous=True)
+#     # In ROS, nodes are uniquely named. If two nodes with the same
+#     # name are launched, the previous one is kicked off. The
+#     # anonymous=True flag means that rospy will choose a unique
+#     # name for our 'listener' node so that multiple listeners can
+#     # run simultaneously.
+#     rospy.init_node('exercise_performance_listener', anonymous=True)
 
-    rospy.Subscriber("/set_performance", Int32, subscriber_callback)
+#     rospy.Subscriber("/set_performance", Int32, subscriber_callback)
 
-    # spin() simply keeps python from exiting until this node is stopped
-    rospy.spin()
+#     # spin() simply keeps python from exiting until this node is stopped
+#     rospy.spin()
     
 def define_performance_mapping():
 
@@ -143,11 +143,19 @@ if __name__ == '__main__':
             print('some error')    
 
     ############################
+    # Initialize ROS NOde
+    ############################
+
+    rospy.init_node('exercise_performance_subscriber', anonymous=True)
+
+    ############################
     # Defining Prompts
     ############################
 
     # Generate the prompts dictionary. 
     prompt_dict = define_prompts_dictionary()
+    define_performance_mapping()
+    
     # Defining global performance variable. 
     performance_queue = []
     global performance_queue    
@@ -187,7 +195,9 @@ if __name__ == '__main__':
     ############################
 
     # subsequent_plan_branch = int(input('How well did the user perform their exercise? Please enter either "Good" or "Medium". This will determine which branch of the tree I will draw.'))        
-    subsequent_plan_branch = retrieve_queue_performance()
+    performance_measure = rospy.wait_for_message("/set_performance", Int32, timeout=None)
+    subsequent_plan_branch = performance_dictionary[str(performance_measure)]
+    # subsequent_plan_branch = retrieve_queue_performance()
     subsequent_plan_dir = os.path.join(save_dir, 'Painting{}'.format(subsequent_plan_branch))
     
     ############################
