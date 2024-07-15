@@ -8,20 +8,29 @@ def callback(data):
     
 def listener():
 
-    # In ROS, nodes are uniquely named. If two nodes with the same
-    # name are launched, the previous one is kicked off. The
-    # anonymous=True flag means that rospy will choose a unique
-    # name for our 'listener' node so that multiple listeners can
-    # run simultaneously.
     rospy.init_node('exercise_performance_subscriber', anonymous=True)
 
     rospy.Subscriber("/set_performance", Int32, callback)
 
     print("hello, I am at part 1")
+    
     # spin() simply keeps python from exiting until this node is stopped
     rospy.spin()
 
     print("hello, I am at part 2")
 
+def listen_once():
+
+    rospy.init_node('exercise_performance_subscriber', anonymous=True)
+    
+    print("hello I reached part 1")
+    msg = rospy.wait_for_message("/set_performance", Int32, timeout=None)
+
+    print("hello I reached part 2")
+    print("This was the message: ", msg)
+    print("hello I reached part 3")
+    
+
 if __name__ == '__main__':
-    listener()
+    # listener()
+    listen_once()
