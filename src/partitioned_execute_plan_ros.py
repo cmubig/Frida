@@ -96,6 +96,7 @@ if __name__ == '__main__':
         w_render = int(opt.render_height * (opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
         h_render = int(opt.render_height)
         opt.w_render, opt.h_render = w_render, h_render
+        original_painting_length = 100
 
         ############################
         # Defining logic for pausing drawing during exercise. 
@@ -186,7 +187,7 @@ if __name__ == '__main__':
         print("########## DRAWING PHASE 1. #############")
         print("#########################################")
         print(len(init_painting_plan))
-        execute_painting(init_painting_plan, starting_index=0, ending_index=base_fraction*len(init_painting_plan))
+        execute_painting(init_painting_plan, starting_index=0, ending_index=base_fraction*original_painting_length)
 
     ############################
     # Second Painting Phase: During Rest 1 and Set 2
@@ -222,11 +223,11 @@ if __name__ == '__main__':
         print("########## DRAWING PHASE 2. #############")
         print("#########################################")
         # First execute remaining portion of the initial painting. --> 0.33 x 100 strokes --> 33 strokes. 
-        execute_painting(init_painting_plan, starting_index=base_fraction*len(init_painting_plan), ending_index=len(init_painting_plan))
+        execute_painting(init_painting_plan, starting_index=base_fraction*original_painting_length, ending_index=original_painting_length)
         
         # Now execute the first portion of new plan based on how well the first. --> 30-50 strokes. 
         set1_performance_factor = 0.2 + performance_measure.data*0.14 
-        execute_painting(subsequent_painting_plan, starting_index=0, ending_index=set1_performance_factor*len(subsequent_painting_plan))
+        execute_painting(subsequent_painting_plan, starting_index=0, ending_index=set1_performance_factor*original_painting_length)
 
     ############################
     # Third Painting Phase: During Rest 2 and Exit
@@ -243,7 +244,7 @@ if __name__ == '__main__':
         # Now execute the first portion of new plan based on how well the first.. 
         guaranteed = 0.6
         set2_performance_factor = guaranteed + performance_measure.data*(1.-guaranteed)
-        execute_painting(subsequent_painting_plan, starting_index=set1_performance_factor*len(subsequent_painting_plan), ending_index=set2_performance_factor*len((subsequent_painting_plan)))
+        execute_painting(subsequent_painting_plan, starting_index=set1_performance_factor*original_painting_length, ending_index=set2_performance_factor*original_painting_length)
 
     ############################
     # Finish Up
