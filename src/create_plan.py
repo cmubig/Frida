@@ -84,16 +84,16 @@ def define_prompts_dictionary():
     for k in range(n_paintings):
         prompts_dictionary['Painting{0}'.format(k)] = {}
 
-    prompts_dictionary['Painting0']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background drawn with only a few strokes of a single tree.'
-    prompts_dictionary['Painting1']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background drawn with only a few strokes of a simple park with a bench.'
-    prompts_dictionary['Painting2']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background drawn with only a few strokes of a rainy city street.'
-    prompts_dictionary['Painting3']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background drawn with only a few strokes of a mountain silhouette.'
-    prompts_dictionary['Painting4']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background drawn with only a few strokes of a small boat sailing on a lake.'
-    prompts_dictionary['Painting5']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background drawn with only a few strokes of a ruins of an italian building.'
-    prompts_dictionary['Painting6']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background drawn with only a few strokes of a desert with undulating sand dunes'
-    prompts_dictionary['Painting7']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background drawn with only a few strokes of a twilight suburban street.'
-    prompts_dictionary['Painting8']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background drawn with only a few strokes of a park trail with trees on either side.'
-    prompts_dictionary['Painting9']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background drawn with only a few strokes of a simple grassy plain.'
+    prompts_dictionary['Painting0']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background of a single tree.'
+    prompts_dictionary['Painting1']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background of a simple park with a bench.'
+    prompts_dictionary['Painting2']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background of a rainy city street.'
+    prompts_dictionary['Painting3']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background of a mountain silhouette.'
+    prompts_dictionary['Painting4']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background of a small boat sailing on a lake.'
+    prompts_dictionary['Painting5']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background of a ruins of an italian building.'
+    prompts_dictionary['Painting6']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background of a desert with undulating sand dunes'
+    prompts_dictionary['Painting7']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background of a twilight suburban street.'
+    prompts_dictionary['Painting8']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background of a park trail with trees on either side.'
+    prompts_dictionary['Painting9']['InitialPrompt'] = 'A black and white sharpie drawing with a sizeable blank border and blank background of a simple grassy plain.'
 
     prompts_dictionary['Painting0']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a hilly landscape and a single tree on top of it.'
     prompts_dictionary['Painting1']['MediumSubsequentPrompt'] = 'A black and white sharpie drawing of a quiet park with a single bench beneath a single tree.'
