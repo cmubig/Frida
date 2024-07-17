@@ -182,6 +182,10 @@ if __name__ == '__main__':
 
         # Execute this plan. 
         base_fraction = 0.67
+        print("#########################################")
+        print("########## DRAWING PHASE 1. #############")
+        print("#########################################")
+        print(len(init_painting_plan))
         execute_painting(init_painting_plan, starting_index=0, ending_index=base_fraction*len(init_painting_plan))
 
     ############################
@@ -214,6 +218,9 @@ if __name__ == '__main__':
         prompt_key = subsequent_plan_branch+"SubsequentPrompt"
         subsequent_painting_plan = torch.load(os.path.join(plan_dir, prompt_key, 'plan.pt'))
 
+        print("#########################################")
+        print("########## DRAWING PHASE 2. #############")
+        print("#########################################")
         # First execute remaining portion of the initial painting. --> 0.33 x 100 strokes --> 33 strokes. 
         execute_painting(init_painting_plan, starting_index=base_fraction*len(init_painting_plan), ending_index=len(init_painting_plan))
         
@@ -230,6 +237,9 @@ if __name__ == '__main__':
         performance_measure = rospy.wait_for_message("/set_performance", Int32, timeout=None)
         print("Received Message ", performance_measure, performance_measure.data)
         
+        print("#########################################")
+        print("########## DRAWING PHASE 3. #############")
+        print("#########################################")
         # Now execute the first portion of new plan based on how well the first.. 
         guaranteed = 0.6
         set2_performance_factor = guaranteed + performance_measure.data*(1.-guaranteed)
