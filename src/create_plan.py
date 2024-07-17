@@ -157,7 +157,7 @@ def generate_image_and_plan(cofrida_model, opt, painting_prompt, prompt_key, cur
     # num_strokes = int(input("How many strokes to use in this plan?\n:"))
 
     # Locking to 70. 
-    num_strokes = 60
+    num_strokes = 100
     
     # Generate initial (random plan)
     # painting = random_init_painting(opt, current_canvas.to(device), num_strokes, ink=opt.ink).to(device)
