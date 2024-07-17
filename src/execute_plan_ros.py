@@ -32,25 +32,6 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 if not torch.cuda.is_available():
     print('Using CPU..... good luck')
 
-# def subscriber_callback(data):
-#     print("Encountered: ", data.data, ". Adding it to the performance queue.")
-#     # Appending data to the performance queue. 
-#     performance_queue.append(data.data)
-
-# def ROS_listener():
-           
-#     # In ROS, nodes are uniquely named. If two nodes with the same
-#     # name are launched, the previous one is kicked off. The
-#     # anonymous=True flag means that rospy will choose a unique
-#     # name for our 'listener' node so that multiple listeners can
-#     # run simultaneously.
-#     rospy.init_node('exercise_performance_listener', anonymous=True)
-
-#     rospy.Subscriber("/set_performance", Int32, subscriber_callback)
-
-#     # spin() simply keeps python from exiting until this node is stopped
-#     rospy.spin()
-    
 def define_performance_mapping():
     
     global performance_dictionary    
@@ -97,32 +78,33 @@ is_paused = False
 
 if __name__ == '__main__':
 
-    ############################
-    # Setting parameters. 
-    ############################
+    if True:
+        ############################
+        # Setting parameters. 
+        ############################
 
-    opt = Options()
-    opt.gather_options()
+        opt = Options()
+        opt.gather_options()
 
-    date_and_time = datetime.datetime.now()
-    run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
-    opt.writer = TensorBoard('{}/{}'.format(opt.tensorboard_dir, run_name))
-    opt.writer.add_text('args', str(sys.argv), 0)
+        date_and_time = datetime.datetime.now()
+        run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
+        opt.writer = TensorBoard('{}/{}'.format(opt.tensorboard_dir, run_name))
+        opt.writer.add_text('args', str(sys.argv), 0)
 
-    painter = Painter(opt)
-    opt = painter.opt 
+        painter = Painter(opt)
+        opt = painter.opt 
 
-    painter.to_neutral()
+        painter.to_neutral()
 
-    w_render = int(opt.render_height * (opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
-    h_render = int(opt.render_height)
-    opt.w_render, opt.h_render = w_render, h_render
+        w_render = int(opt.render_height * (opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
+        h_render = int(opt.render_height)
+        opt.w_render, opt.h_render = w_render, h_render
 
-    ############################
-    # Defining logic for pausing drawing during exercise. 
-    ############################
+        ############################
+        # Defining logic for pausing drawing during exercise. 
+        ############################
 
-    print('Press any key to pause/continue')
+        print('Press any key to pause/continue')
 
     def on_press(key):
         try:
@@ -164,7 +146,6 @@ if __name__ == '__main__':
     global performance_queue    
     performance_queue = []
     
-
     ############################
     # Get input for which of the 10 prompts we want to start drawing with. 
     ############################
