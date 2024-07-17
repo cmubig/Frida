@@ -31,7 +31,6 @@ if not torch.cuda.is_available():
 def flip_img(img):
     return torch.flip(img, dims=(2,3))
 
-
 def execute_painting(painting):
     # Execute plan
     for stroke_ind in tqdm(range(len(painting)), desc="Executing plan"):
@@ -113,8 +112,7 @@ if __name__ == '__main__':
     ############################
 
     # Generate the prompts dictionary. 
-    prompt_dict = define_prompts_dictionary()
-    
+    prompt_dict = define_prompts_dictionary()   
 
     ############################
     # Get input for which of the 10 prompts we want to start drawing with. 
