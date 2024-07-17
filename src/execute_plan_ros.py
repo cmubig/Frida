@@ -15,6 +15,7 @@ import torch
 from torchvision.transforms import Resize
 from tqdm import tqdm
 from pynput import keyboard
+from IPython import embed
 
 from paint_utils3 import canvas_to_global_coordinates, format_img
 from create_plan import define_prompts_dictionary
@@ -69,7 +70,10 @@ def flip_img(img):
 
 def execute_painting(painting):
     # Execute plan
-    for stroke_ind in tqdm(range(len(painting)), desc="Executing plan"):
+    n_strokes = 50
+    
+    # for stroke_ind in tqdm(range(len(painting)), desc="Executing plan"):
+    for stroke_ind in tqdm(range(n_strokes), desc="Executing plan"):
         while is_paused:
             time.sleep(0.1)
 
@@ -165,12 +169,12 @@ if __name__ == '__main__':
     # Get input for which of the 10 prompts we want to start drawing with. 
     ############################
 
-    plan_dir_index = int(input('Which prompt number should I draw? Please enter a number from 0 to 9.'))
-
+    # plan_dir_index = int(input('Which prompt number should I draw? Please enter a number from 0 to 9.'))
+    plan_dir_index = 1
     # ...or, in a non-blocking fashion:
     listener = keyboard.Listener(
         on_press=on_press)
-    listener.start()
+    # listener.start()
     
     save_dir = opt.saved_plan
     plan_dir = os.path.join(save_dir, 'Painting{}'.format(plan_dir_index))
@@ -197,10 +201,18 @@ if __name__ == '__main__':
 
     # subsequent_plan_branch = int(input('How well did the user perform their exercise? Please enter either "Good" or "Medium". This will determine which branch of the tree I will draw.'))        
     performance_measure = rospy.wait_for_message("/set_performance", Int32, timeout=None)
-    subsequent_plan_branch = performance_dictionary[str(performance_measure)]
-    # subsequent_plan_branch = retrieve_queue_performance()
-    subsequent_plan_dir = os.path.join(save_dir, 'Painting{}'.format(subsequent_plan_branch))
+    # print("received message")
+
+    print("Received Message ", performance_measure, performance_measure.data)
     
+    # embed()
+    subsequent_plan_branch = performance_dictionary[str(performance_measure.data)]
+    print("The plan branch we are going to execute is: ", subsequent_plan_branch)
+    # # subsequent_plan_branch = retrieve_queue_performance()
+    # subsequent_plan_dir = os.path.join(save_dir, 'Painting{}'.format(subsequent_plan_branch))
+    
+    # subsequent_plan_dir = os.path.join(plan_dir, '{}'.format(subsequent_plan_branch))
+
     ############################
     # Visualize the planned painting.
     ############################
@@ -212,8 +224,8 @@ if __name__ == '__main__':
     ############################
 
     # Load plan from saved directory. 
-    prompt_key = subsequent_plan_branch+"Prompt"
-    subsequent_painting_plan = torch.load(os.path.join(subsequent_plan_dir, prompt_key, 'plan.pt'))
+    prompt_key = subsequent_plan_branch+"SubsequentPrompt"
+    subsequent_painting_plan = torch.load(os.path.join(plan_dir, prompt_key, 'plan.pt'))
 
     # Execute this plan. 
     execute_painting(subsequent_painting_plan)
