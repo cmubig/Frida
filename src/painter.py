@@ -73,7 +73,7 @@ class Painter():
         # Setup Camera
         while True: 
             try:
-                if not self.opt.simulate:
+                if not self.opt.simulate and not opt.no_camera:
                     self.camera = WebCam(opt)
                 else:
                     self.camera = SimulatedWebCam(opt)
