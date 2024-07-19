@@ -33,7 +33,8 @@ def flip_img(img):
 
 def execute_painting(painting):
     # Execute plan
-    for stroke_ind in tqdm(range(len(painting)), desc="Executing plan"):
+    # for stroke_ind in tqdm(range(len(painting)), desc="Executing plan"):
+    for stroke_ind in tqdm(range(10), desc="Executing plan"):
         while is_paused:
             time.sleep(0.1)
 
@@ -156,7 +157,7 @@ if __name__ == '__main__':
         input_value = input('How well did the user perform their exercise? Please enter either "0" or "1".')
 
     input_value = int(input_value)
-    
+
     if input_value==0:
         subsequent_plan_branch='Medium'
     if input_value==1:
