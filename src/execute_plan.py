@@ -137,6 +137,13 @@ if __name__ == '__main__':
     ############################
 
     # TODO
+    planned_image = os.path.join(plan_dir, 'InitialPrompt', 'cofrida_output.png')
+    painted_image = os.path.join(plan_dir, 'InitialPrompt', 'rendered_plan.png')
+    both_images = (planned_image, painted_image)
+    title = "Coach Frida's Drawing!"
+    msg = "Based on your choices, here's what I will try to draw! " 
+    choices = ['Yes']
+    reply = easygui.buttonbox(msg=msg, title=title, choices=(choices), image=both_images)
 
     ############################
     # Run Planning for Initial Prompt. 
