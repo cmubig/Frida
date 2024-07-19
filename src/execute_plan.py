@@ -153,7 +153,11 @@ if __name__ == '__main__':
     while input_value not in {'0', '1'}:        
         input_value = input('How well did the user perform their exercise? Please enter either "0" or "1".')
 
-    subsequent_plan_branch = int(input_value)
+    if input_value==0:
+        subsequent_plan_branch='Medium'
+    if input_value==1:
+        subsequent_painting_plan='Good'
+    # subsequent_plan_branch = int(input_value)
     subsequent_plan_dir = os.path.join(save_dir, 'Painting{}'.format(subsequent_plan_branch))
 
     ############################
