@@ -89,9 +89,9 @@ if __name__ == '__main__':
         try:
             global is_paused
 
-            if key.char == keyboard.Key.f1:
+            if key.char == ('p'):
                 is_paused = True
-            if key.char == keyboard.Key.f1:
+            if key.char == ('c'):
                 is_paused = False
 
             # is_paused = not is_paused
@@ -105,7 +105,8 @@ if __name__ == '__main__':
         except AttributeError:
             # print('special key {0} pressed'.format(
             #     key))
-            print('some error')    
+            # print('some error')    
+            print("Waiting for valid input.")
 
     ############################
     # Defining Prompts
@@ -148,7 +149,11 @@ if __name__ == '__main__':
     # Get input for whether to run the Medium branch or the Good Branch of this tree of prompts. 
     ############################
 
-    subsequent_plan_branch = int(input('How well did the user perform their exercise? Please enter either "Good" or "Medium". This will determine which branch of the tree I will draw.'))    
+    input_value = None
+    while input_value not in {'0', '1'}:        
+        input_value = input('How well did the user perform their exercise? Please enter either "0" or "1".')
+
+    subsequent_plan_branch = int(input_value)
     subsequent_plan_dir = os.path.join(save_dir, 'Painting{}'.format(subsequent_plan_branch))
 
     ############################
