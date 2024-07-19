@@ -155,6 +155,8 @@ if __name__ == '__main__':
     while input_value not in {'0', '1'}:        
         input_value = input('How well did the user perform their exercise? Please enter either "0" or "1".')
 
+    input_value = int(input_value)
+    
     if input_value==0:
         subsequent_plan_branch='Medium'
     if input_value==1:
