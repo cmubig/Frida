@@ -121,9 +121,9 @@ if __name__ == '__main__':
     ############################
 
     plan_dir_index = -1
-    while plan_dir_index not in set(k for k in range(10)):
-        plan_dir_index = int(input('Which prompt number should I draw? Please enter a number from 0 to 9.'))
-
+    while plan_dir_index not in set(str(k) for k in range(10)):
+        plan_dir_index = input('Which prompt number should I draw? Please enter a number from 0 to 9.')
+    plan_dir_index = int(plan_dir_index)
     # ...or, in a non-blocking fashion:
     listener = keyboard.Listener(
         on_press=on_press)
