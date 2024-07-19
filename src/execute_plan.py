@@ -33,8 +33,9 @@ def flip_img(img):
 
 def execute_painting(painting):
     # Execute plan
-    # for stroke_ind in tqdm(range(len(painting)), desc="Executing plan"):
-    for stroke_ind in tqdm(range(10), desc="Executing plan"):
+    # for stroke_ind in tqdm(range(10), desc="Executing plan"):
+    for stroke_ind in tqdm(range(len(painting)), desc="Executing plan"):
+    
         while is_paused:
             time.sleep(0.1)
 
