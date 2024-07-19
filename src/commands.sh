@@ -18,3 +18,5 @@ python3 execute_plan_ros.py --use_cache --cache_dir caches/mars_sharpie_film/ --
 # Command for running ROS based pipeline on real robot, but without real camera. 
 python3 execute_plan_ros.py --use_cache --cache_dir caches/mars_sharpie_film/ --materials_json ../materials_mars_8x8.json  --robot xarm --ink  --xarm_ip 192.168.2.157  --dont_retrain_stroke_model --saved_plan  /home/frida/Documents/coach-frida/CoachFrida/Plans/ --no_camera
 
+# Command for running with new input format, all paintings. 
+python3 execute_plan.py --use_cache --cache_dir caches/mars_sharpie_film/ --materials_json ../materials_mars_8x8.json  --robot xarm --ink  --xarm_ip 192.168.2.157  --dont_retrain_stroke_model --simulate --saved_plan /home/frida/Documents/coach-frida/CoachFrida/Plans/GeneratedPaintings/

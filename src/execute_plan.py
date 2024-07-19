@@ -163,7 +163,7 @@ if __name__ == '__main__':
     if input_value==1:
         subsequent_plan_branch='Good'
     # subsequent_plan_branch = int(input_value)
-    subsequent_plan_dir = os.path.join(save_dir, 'Painting{}'.format(subsequent_plan_branch))
+    # subsequent_plan_dir = os.path.join(plan_dir, 'Painting{}'.format(subsequent_plan_branch))
 
     ############################
     # Visualize the planned painting.
@@ -176,8 +176,8 @@ if __name__ == '__main__':
     ############################
 
     # Load plan from saved directory. 
-    prompt_key = subsequent_plan_branch+"Prompt"
-    subsequent_painting_plan = torch.load(os.path.join(subsequent_plan_dir, prompt_key, 'plan.pt'))
+    prompt_key = subsequent_plan_branch+"SubsequentPrompt"
+    subsequent_painting_plan = torch.load(os.path.join(plan_dir, prompt_key, 'plan.pt'))
 
     # Execute this plan. 
     execute_painting(subsequent_painting_plan)
