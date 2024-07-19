@@ -156,7 +156,7 @@ if __name__ == '__main__':
     if input_value==0:
         subsequent_plan_branch='Medium'
     if input_value==1:
-        subsequent_painting_plan='Good'
+        subsequent_plan_plan='Good'
     # subsequent_plan_branch = int(input_value)
     subsequent_plan_dir = os.path.join(save_dir, 'Painting{}'.format(subsequent_plan_branch))
 
