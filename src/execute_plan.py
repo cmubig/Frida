@@ -136,7 +136,6 @@ if __name__ == '__main__':
     # Visualize the planned painting.
     ############################
 
-    # TODO
     planned_image = os.path.join(plan_dir, 'InitialPrompt', 'cofrida_output.png')
     painted_image = os.path.join(plan_dir, 'InitialPrompt', 'rendered_plan.png')
     both_images = (planned_image, painted_image)
@@ -173,18 +172,24 @@ if __name__ == '__main__':
     # subsequent_plan_dir = os.path.join(plan_dir, 'Painting{}'.format(subsequent_plan_branch))
 
     ############################
-    # Visualize the planned painting.
-    ############################
-
-    # TODO
-
-    ############################
     # Run Planning for Subsequent Prompt.
     ############################
 
     # Load plan from saved directory. 
     prompt_key = subsequent_plan_branch+"SubsequentPrompt"
     subsequent_painting_plan = torch.load(os.path.join(plan_dir, prompt_key, 'plan.pt'))
+
+    ############################
+    # Visualize the planned painting.
+    ############################
+
+    planned_image = os.path.join(plan_dir, prompt_key, 'cofrida_output.png')
+    painted_image = os.path.join(plan_dir, prompt_key, 'rendered_plan.png')
+    both_images = (planned_image, painted_image)
+    title = "Coach Frida's Drawing!"
+    msg = "Based on your choices, here's what I will try to draw! " 
+    choices = ['Yes', 'Okay']
+    reply = easygui.buttonbox(msg=msg, title=title, choices=(choices), image=both_images)
 
     # Execute this plan. 
     execute_painting(subsequent_painting_plan)
