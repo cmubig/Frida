@@ -23,7 +23,7 @@ class Painting(nn.Module):
             self.background_img = torch.cat((self.background_img, t), dim=1)
 
         if brush_strokes is None:
-            self.brush_strokes = nn.ModuleList([BrushStroke(opt) for _ in range(n_strokes)])
+            self.brush_strokes = nn.ModuleList([BrushStroke(opt, ink=opt.ink) for _ in range(n_strokes)])
         else:
             self.brush_strokes = nn.ModuleList(brush_strokes)
         

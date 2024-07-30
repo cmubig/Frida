@@ -1,0 +1,1 @@
+python3 train_transformer.py  --use_cache --cache_dir caches/vae_sharpie_final/ --dont_retrain_stroke_model --ink --simulate --vae_path mocap/saved_models/general.pt --ink --materials_json ../materials_vae_sharpie.json

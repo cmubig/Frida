@@ -140,6 +140,7 @@ class BrushStroke(nn.Module):
                 color=None, 
                 ink=False,
                 a=None, xt=None, yt=None,
+                init_differentiably=False,
                 device='cuda',
                 is_dot=False):
         super(BrushStroke, self).__init__()
@@ -150,24 +151,30 @@ class BrushStroke(nn.Module):
         self.MIN_STROKE_Z = opt.MIN_STROKE_Z
         self.max_length_before_new_paint = opt.max_length_before_new_paint
         self.ink = ink
-
-        if color is None: color=(torch.rand(3).to(device)*.4)+0.3
-        if a is None: a=(torch.rand(1)*2-1)*3.14
-        if xt is None: xt=torch.rand(1)
-        if yt is None: yt=torch.rand(1)
-
-        self.xt = nn.Parameter(torch.ones(1)*xt) # Range [0,1]
-        self.yt = nn.Parameter(torch.ones(1)*yt) # Range [0,1]
-        self.a = nn.Parameter(torch.ones(1)*a) # Range [-2pi,2pi]
-
         self.vae_name = opt.vae_path
-        
-        if latent is None: 
-            latent = torch.randn(1, 64)
 
-        self.latent = latent 
-        self.latent.requires_grad = True 
-        self.latent = nn.Parameter(self.latent)
+        if init_differentiably:
+            self.xt = xt # Range [0,1]
+            self.yt = yt # Range [0,1]
+            self.a = a # Range [-2pi,2pi]
+            self.latent = latent 
+        else:
+            if color is None: color=(torch.rand(3).to(device)*.4)+0.3
+            if a is None: a=(torch.rand(1, device=device)*2-1)*3.14
+            if xt is None: xt=torch.rand(1, device=device)
+            if yt is None: yt=torch.rand(1, device=device)
+
+            self.xt = nn.Parameter(torch.ones(1, device=device)*xt) # Range [0,1]
+            self.yt = nn.Parameter(torch.ones(1, device=device)*yt) # Range [0,1]
+            self.a = nn.Parameter(torch.ones(1, device=device)*a) # Range [-2pi,2pi]
+
+            
+            if latent is None: 
+                latent = torch.randn(1, 64)
+
+            self.latent = latent 
+            # self.latent.requires_grad = True 
+            self.latent = nn.Parameter(self.latent)
 
         if not self.ink:
             self.color_transform = nn.Parameter(color)
