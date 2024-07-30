@@ -1,6 +1,7 @@
 import datetime
 import random
 import sys
+import numpy as np
 import torch 
 from torch import nn
 from torchvision import models, transforms
@@ -69,12 +70,13 @@ class StrokePredictor(nn.Module):
         for batch_ind in range(len(current_canvas)):
             predicted_brush_strokes = []
             for stroke_ind in range(self.n_strokes):
+                latent = latents[batch_ind, self.stroke_latent_size*stroke_ind:self.stroke_latent_size*(stroke_ind+1)]
+                a =     rotation[batch_ind, stroke_ind:stroke_ind+1]
+                xt =    position[batch_ind,stroke_ind*2:stroke_ind*2+1]
+                yt =    position[batch_ind,stroke_ind*2+1:stroke_ind*2+2]
                 bs = BrushStroke(self.opt, init_differentiably=True,
-                                 ink=True, 
-                                 latent=latents[batch_ind, stroke_ind:self.stroke_latent_size*(stroke_ind+1)],
-                                 a=rotation[batch_ind, stroke_ind:stroke_ind+1],
-                                 xt=position[batch_ind,stroke_ind*2:stroke_ind*2+1],
-                                 yt=position[batch_ind,stroke_ind*2+1:stroke_ind*2+2])
+                                 ink=True,  latent=latent, a=a,
+                                 xt=xt, yt=yt)
                 predicted_brush_strokes.append(bs)
             # predicted_painting = Painting(self.opt,
             #         background_img=current_canvas[batch_ind:batch_ind+1], 
@@ -102,6 +104,43 @@ def get_random_brush_strokes(opt, n_strokes=random.randint(0,20)):
 
 l1_loss = torch.nn.L1Loss()
 
+
+def stroke_distance(bs0, bs1):
+    # Euclidian distance between starting points of two strokes
+    return ((bs0.xt-bs1.xt)**2 + (bs0.yt-bs1.yt)**2)**0.5
+
+from scipy.optimize import linear_sum_assignment
+def match_brush_strokes(strokes0, strokes1):
+    '''
+        Re-order a list of strokes (strokes1) to have the strokes in an order
+        such that comparing 1-to-1 to strokes0 minimizes differences in stroke position (x,y) 
+        args:
+            strokes0 List[BrushStroke()]
+            strokes1 List[BrushStroke()]
+        return:
+            List[BrushStroke()] : the re-ordered strokes1
+    '''
+    # Create the cost matrix
+    cost = np.empty((len(strokes0), len(strokes1)))
+    for i in range(len(strokes0)):
+        for j in range(len(strokes1)):
+            cost[i,j] = stroke_distance(strokes0[i], strokes1[j])
+    # print('cost\n', cost)
+            
+    # Perform linear sum assignment
+    row_ind, col_ind = linear_sum_assignment(cost)
+    
+    # Re-order strokes1 to reduce costs
+    reordered_strokes1 = [strokes1[i] for i in col_ind]
+
+    # Confirm that the costs go down or are equal when comparing
+    # cost_prev_order = np.sum(np.array([stroke_distance(strokes0[i], strokes1[i]).cpu().detach().numpy() for i in range(len(strokes0))]))
+    # cost_new_order = np.sum(np.array([stroke_distance(strokes0[i], reordered_strokes1[i]).cpu().detach().numpy() for i in range(len(strokes0))]))
+    # print(cost_prev_order, cost_new_order, cost_prev_order-cost_new_order, sep='\t')
+    
+    return reordered_strokes1
+
+
 def brush_stroke_parameter_loss_fcn(predicted_strokes, true_strokes):
     '''
         Calculate loss between brush strokes
@@ -113,15 +152,16 @@ def brush_stroke_parameter_loss_fcn(predicted_strokes, true_strokes):
     loss_x, loss_y, loss_rot, loss_latent = 0,0,0,0
 
     for batch_ind in range(len(predicted_brush_strokes)):
+        true_strokes_reordered = match_brush_strokes(predicted_brush_strokes[batch_ind], true_strokes[batch_ind])
         for stroke_ind in range(len(predicted_brush_strokes[batch_ind])):
             pred_bs = predicted_strokes[batch_ind][stroke_ind]
-            true_bs = true_strokes[batch_ind][stroke_ind]
+            true_bs = true_strokes_reordered[stroke_ind]
 
             loss_x += l1_loss(pred_bs.xt, true_bs.xt)
             # print(pred_bs.xt, true_bs.xt)
             loss_y += l1_loss(pred_bs.yt, true_bs.yt)
             loss_rot += l1_loss(pred_bs.a, true_bs.a)
-            loss_latent += l1_loss(pred_bs.latent, true_bs.latent) * 1e-3 ############################
+            loss_latent += l1_loss(pred_bs.latent, true_bs.latent) * 1e-2 ############################
     
     loss = loss_x + loss_y + loss_rot + loss_latent 
     loss /= len(predicted_brush_strokes)
@@ -143,7 +183,8 @@ if __name__ == '__main__':
     h_render = int(opt.render_height)
     opt.w_render, opt.h_render = w_render, h_render
 
-    stroke_predictor = StrokePredictor(opt)
+    stroke_predictor = StrokePredictor(opt, 
+            n_strokes=opt.n_predicted_strokes)
     stroke_predictor.to(device)
     for param in stroke_predictor.vit_model.parameters(): # These might not be necessary
         param.requires_grad = True
@@ -152,11 +193,11 @@ if __name__ == '__main__':
 
     print('# of parameters in stroke_predictor: ', get_n_params(stroke_predictor))
     
-    optim = torch.optim.Adam(stroke_predictor.parameters(), lr=1e-3)
+    optim = torch.optim.Adam(stroke_predictor.parameters(), lr=1e-2)
 
     pix_loss_fcn = torch.nn.L1Loss()
     # torch.autograd.set_detect_anomaly(True)
-    batch_size = 64
+    batch_size = 32
 
     for batch_ind in tqdm(range(200000)):
         # print(stroke_predictor.latent_head.weight[0,:7]) # Check if weights are changing
@@ -180,7 +221,7 @@ if __name__ == '__main__':
 
             # Generate a random brush stroke(s) to add. Render it to create the target canvas
             with torch.no_grad():
-                true_brush_stroke = get_random_brush_strokes(opt, n_strokes=1)
+                true_brush_stroke = get_random_brush_strokes(opt, n_strokes=opt.n_predicted_strokes)
 
                 # Render the strokes onto the current canvas
                 target_painting = Painting(opt, background_img=current_canvases[it], 
@@ -211,7 +252,7 @@ if __name__ == '__main__':
                 = brush_stroke_parameter_loss_fcn(predicted_brush_strokes, true_brush_strokes)
 
         # Weight losses
-        loss = pix_loss*1e-3 + stroke_param_loss
+        loss = pix_loss*1e-1 + stroke_param_loss
         
         loss.backward()
         optim.step()

@@ -124,6 +124,11 @@ class Options(object):
         ### Argument is not used, but is allowed for flask compatability ###
         parser.add_argument("--app", type=str, nargs='*',
             default="app run", help='Argument is not used, but is allowed for flask compatability')
+        
+        # Stroke Predictor Arguments
+        parser.add_argument("--n_predicted_strokes", type=int,
+            default=5, help='Number of strokes the stroke predictor should output')
+        
 
         return parser 
 
