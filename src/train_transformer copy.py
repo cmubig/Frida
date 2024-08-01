@@ -10,7 +10,6 @@ import clip
 from tqdm import tqdm
 from torchvision.models import vgg16, resnet18
 import torch.nn.functional as F
-from transformers import ViTImageProcessor, BertTokenizer, VisionEncoderDecoderModel
 
 from brush_stroke import BrushStroke
 from options import Options
@@ -20,9 +19,53 @@ from my_tensorboard import TensorBoard
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+class TransformerModel(nn.Transformer):
+    """Container module with an encoder, a recurrent or transformer module, and a decoder."""
+
+    def __init__(self, ntoken, ninp, nhead, nhid, nlayers, dropout=0.5):
+        '''
+            ninp : size of word embeddings
+        '''
+        super(TransformerModel, self).__init__(d_model=ninp, nhead=nhead, dim_feedforward=nhid, num_encoder_layers=nlayers)
+        self.model_type = 'Transformer'
+        self.src_mask = None
+        # self.pos_encoder = PositionalEncoding(ninp, dropout)
+
+        # self.input_emb = nn.Embedding(ntoken, ninp)
+        self.ninp = ninp
+        self.decoder = nn.Linear(ninp, ntoken)
+
+        self.init_weights()
+
+    # def _generate_square_subsequent_mask(self, sz):
+    #     return torch.log(torch.tril(torch.ones(sz,sz)))
+
+    def init_weights(self):
+        initrange = 0.1
+        # nn.init.uniform_(self.input_emb.weight, -initrange, initrange)
+        nn.init.zeros_(self.decoder.bias)
+        nn.init.uniform_(self.decoder.weight, -initrange, initrange)
+
+    def forward(self, src, has_mask=True):
+        # if has_mask:
+        #     device = src.device
+        #     if self.src_mask is None or self.src_mask.size(0) != len(src):
+        #         mask = self._generate_square_subsequent_mask(len(src)).to(device)
+        #         self.src_mask = mask
+        # else:
+        #     self.src_mask = None
+
+        # src = self.input_emb(src) * math.sqrt(self.ninp)
+        # src = self.pos_encoder(src) # TODO: is this necessary?
+        # output = self.encoder(src, mask=self.src_mask)
+        output = src
+        print('output', output.shape)
+        output = self.decoder(output)
+        return output#F.log_softmax(output, dim=-1)
     
 class StrokePredictor(nn.Module):
     def __init__(self, opt,
+                 clip_model_name='ViT-B/32', 
                  n_strokes=1,
                  stroke_latent_size=64):
         '''
@@ -33,73 +76,58 @@ class StrokePredictor(nn.Module):
         self.n_strokes = n_strokes
         self.opt = opt
 
-        self.vit_model = VisionEncoderDecoderModel.from_encoder_decoder_pretrained(
-            "facebook/deit-tiny-patch16-224", "gaunernst/bert-tiny-uncased"
-        #     "google/vit-base-patch16-224-in21k", "google-bert/bert-base-uncased"
-        #     "facebook/deit-small-distilled-patch16-224", "gaunernst/bert-tiny-uncased"
-        )
-        # print(self.vit_model)
+        # self.vit_model, clip_preprocess \
+        #     = clip.load(clip_model_name, device, jit=False)
+        # self.vit_model = vgg16()
+        self.vit_model = resnet18(weights='DEFAULT')
 
-        image_processor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k")
-        tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")
-        self.vit_model.config.decoder_start_token_id = tokenizer.cls_token_id
-        self.vit_model.config.pad_token_id = tokenizer.pad_token_id
+        self.vit_out_size = 1000#512 # self.vit_model.ln_final.shape 
 
-        self.vit_out_size = 128#768
-        self.latent_head   = nn.Linear(self.vit_out_size, self.stroke_latent_size)
-        self.position_head = nn.Linear(self.vit_out_size, 2)
-        self.rotation_head = nn.Linear(self.vit_out_size, 1)
-        # self.color_head    = nn.Linear(self.vit_out_size, 3)
+        # Define output layers for each of the brush stroke variables
+        # self.latent_head   = nn.Linear(self.vit_out_size, self.stroke_latent_size * n_strokes)
+        # self.position_head = nn.Linear(self.vit_out_size, 2 * n_strokes)
+        # self.rotation_head = nn.Linear(self.vit_out_size, 1 * n_strokes)
+        # self.color_head    = nn.Linear(self.vit_out_size, 3 * n_strokes)
+        self.latent_head = TransformerModel(ntoken=self.stroke_latent_size, 
+                    ninp=self.vit_out_size, nhead=200, nhid=200, nlayers=2)
+        self.position_head = TransformerModel(ntoken=2, 
+                    ninp=self.vit_out_size, nhead=200, nhid=200, nlayers=2)
+        self.rotation_head = TransformerModel(ntoken=1, 
+                    ninp=self.vit_out_size, nhead=200, nhid=200, nlayers=2)
+        # self.color_head = TransformerModel(ntoken=3, 
+        #             ninp=self.vit_out_size, nhead=200, nhid=200, nlayers=2)
 
         self.resize_normalize = transforms.Compose([
             transforms.Resize((224,224), antialias=True),
             # transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
         ])
 
-    def forward(self, current_canvas, target_canvas, training=True):
-        '''
-            Given the current canvas and the target, predict the next n_strokes
-            return:
-                List[List[BrushStroke()]] : batch_size x n_strokes
-        '''
+    def forward(self, current_canvas, target_canvas):
 
         current_canvas = self.resize_normalize(current_canvas)
         target_canvas = self.resize_normalize(target_canvas)
 
         diff = target_canvas - current_canvas
 
-        if training:
-            # Labels is [batch_size, sequence_length]
-            labels = torch.zeros((len(current_canvas), self.n_strokes), device=current_canvas.device, dtype=int)
-            feats = self.vit_model(pixel_values=diff, output_hidden_states=True, labels=labels)#.float()
-        else:
-            feats = self.vit_model(pixel_values=diff, output_hidden_states=True)#.float()
+        # feats = self.vit_model.encode_image(diff)#.float()
+        feats = self.vit_model(diff)#.float()
         
-        # print('feats', feats)
-            
-        # print('encoder_last_hidden_state', feats.encoder_last_hidden_state.shape)
-        # print('decoder_hidden_states', feats.decoder_hidden_states[-1].shape)
-        # print('decoder_attentions', feats.decoder_attentions[-1].shape)
-
-        feats = feats.decoder_hidden_states[-1]
-
         latents = self.latent_head(feats)#.float()
-        # print('predicted latents size', latents.shape)
+        print('predicted latents size', latents.shape)
         position = self.position_head(feats)#.float()
         rotation = self.rotation_head(feats)#.float()
-        # print('predicted rotation size', rotation.shape)
+        print('predicted rotation size', rotation.shape)
         # colors = self.color_head(feats)
 
-        # Convert the output of the Transformer into BrushStroke Classes
         paintings = []
         brush_strokes_list = []
         for batch_ind in range(len(current_canvas)):
             predicted_brush_strokes = []
             for stroke_ind in range(self.n_strokes):
-                latent = latents[batch_ind, stroke_ind, :]
-                a =     rotation[batch_ind, stroke_ind, :]
-                xt =    position[batch_ind, stroke_ind, :1]
-                yt =    position[batch_ind, stroke_ind, -1:]
+                latent = latents[batch_ind, self.stroke_latent_size*stroke_ind:self.stroke_latent_size*(stroke_ind+1)]
+                a =     rotation[batch_ind, stroke_ind:stroke_ind+1]
+                xt =    position[batch_ind,stroke_ind*2:stroke_ind*2+1]
+                yt =    position[batch_ind,stroke_ind*2+1:stroke_ind*2+2]
                 bs = BrushStroke(self.opt, init_differentiably=True,
                                  ink=True,  latent=latent, a=a,
                                  xt=xt, yt=yt)
@@ -109,7 +137,7 @@ class StrokePredictor(nn.Module):
             #         brush_strokes=predicted_brush_strokes)
             # paintings.append(predicted_painting)
             brush_strokes_list.append(predicted_brush_strokes)
-        return brush_strokes_list
+        return brush_strokes_list, latents
 
 def get_n_params(model):
     pp = 0
@@ -155,7 +183,6 @@ def match_brush_strokes(strokes0, strokes1):
             
     # Perform linear sum assignment
     row_ind, col_ind = linear_sum_assignment(cost)
-    # print(row_ind, col_ind)
     
     # Re-order strokes1 to reduce costs
     reordered_strokes1 = [strokes1[i] for i in col_ind]
@@ -188,13 +215,12 @@ def brush_stroke_parameter_loss_fcn(predicted_strokes, true_strokes):
             # print(pred_bs.xt, true_bs.xt)
             loss_y += l1_loss(pred_bs.yt, true_bs.yt)
             loss_rot += l1_loss(pred_bs.a, true_bs.a)
-            loss_latent += l1_loss(pred_bs.latent, true_bs.latent) * 1e-3 ############################
+            loss_latent += l1_loss(pred_bs.latent, true_bs.latent) * 1e-2 ############################
     
     loss = loss_x + loss_y + loss_rot + loss_latent 
     loss /= len(predicted_brush_strokes)
 
-    n_batch, n_strokes = len(predicted_brush_strokes), len(predicted_brush_strokes[0])
-    n = n_batch * n_strokes
+    n = len(predicted_brush_strokes)
     loss_x, loss_y, loss_rot, loss_latent = loss_x/n, loss_y/n, loss_rot/n, loss_latent/n
     return loss, loss_x, loss_y, loss_rot, loss_latent
 
@@ -213,7 +239,6 @@ if __name__ == '__main__':
 
     stroke_predictor = StrokePredictor(opt, 
             n_strokes=opt.n_predicted_strokes)
-            # n_strokes=2)
     stroke_predictor.to(device)
     for param in stroke_predictor.vit_model.parameters(): # These might not be necessary
         param.requires_grad = True
@@ -221,16 +246,12 @@ if __name__ == '__main__':
         param.requires_grad = True
 
     print('# of parameters in stroke_predictor: ', get_n_params(stroke_predictor))
-    print('# of parameters in latent_head: ', get_n_params(stroke_predictor.latent_head))
-    print('# of parameters in vit_model: ', get_n_params(stroke_predictor.vit_model))
-    print('# of parameters in encoder: ', get_n_params(stroke_predictor.vit_model.encoder))
-    print('# of parameters in decoder: ', get_n_params(stroke_predictor.vit_model.decoder))
     
-    optim = torch.optim.Adam(stroke_predictor.parameters(), lr=1e-4)
+    optim = torch.optim.Adam(stroke_predictor.parameters(), lr=1e-2)
 
     pix_loss_fcn = torch.nn.L1Loss()
     # torch.autograd.set_detect_anomaly(True)
-    batch_size = 16
+    batch_size = 32
 
     for batch_ind in tqdm(range(200000)):
         # print(stroke_predictor.latent_head.weight[0,:7]) # Check if weights are changing
@@ -268,7 +289,7 @@ if __name__ == '__main__':
         target_canvases = torch.cat(target_canvases, dim=0)
 
         # Perform the prediction to estimate the added stroke(s)
-        predicted_brush_strokes = stroke_predictor(current_canvases, target_canvases)
+        predicted_brush_strokes, lat = stroke_predictor(current_canvases, target_canvases)
 
         # Render the predicted strokes
         for it in range(batch_size):
@@ -285,7 +306,7 @@ if __name__ == '__main__':
                 = brush_stroke_parameter_loss_fcn(predicted_brush_strokes, true_brush_strokes)
 
         # Weight losses
-        loss = pix_loss*1e-3 + stroke_param_loss
+        loss = pix_loss*1e-1 + stroke_param_loss
         
         loss.backward()
         optim.step()
