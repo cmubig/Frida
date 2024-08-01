@@ -128,6 +128,8 @@ class Options(object):
         # Stroke Predictor Arguments
         parser.add_argument("--n_predicted_strokes", type=int,
             default=5, help='Number of strokes the stroke predictor should output')
+        parser.add_argument("--continue_training", type=str,
+            default=None, help='Path to a .pth model to continue training')
         
 
         return parser 
