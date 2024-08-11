@@ -119,6 +119,7 @@ class CLIPConvLoss(torch.nn.Module):
             transforms.ToTensor(),
         ])  # clip normalisation
         clip_preprocess.transforms[0].antialias = True
+        clip_preprocess.transforms[1].antialias = True
         self.normalize_transform = transforms.Compose([
             clip_preprocess.transforms[0],  # Resize
             clip_preprocess.transforms[1],  # CenterCrop

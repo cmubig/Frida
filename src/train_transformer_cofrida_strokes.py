@@ -11,13 +11,16 @@ import clip
 from tqdm import tqdm
 from torchvision.models import vgg16, resnet18
 import torch.nn.functional as F
+import torchvision.transforms.v2 as transforms
 from transformers import ViTImageProcessor, BertTokenizer, VisionEncoderDecoderModel
 
 from brush_stroke import BrushStroke
+from cofrida import get_instruct_pix2pix_model
 from options import Options
 from paint_utils3 import format_img, load_img, show_img
 from painting import Painting
 from my_tensorboard import TensorBoard
+from losses.clip_loss import clip_conv_loss
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -222,10 +225,10 @@ def brush_stroke_parameter_loss_fcn(predicted_strokes, true_strokes):
     '''
     loss_x, loss_y, loss_rot, loss_latent, loss_wasserstein = 0,0,0,0,0
 
-    for batch_ind in range(len(predicted_brush_strokes)):
+    for batch_ind in range(len(predicted_strokes)):
         with torch.no_grad():
-            true_strokes_reordered = match_brush_strokes(predicted_brush_strokes[batch_ind], true_strokes[batch_ind])
-        for stroke_ind in range(len(predicted_brush_strokes[batch_ind])):
+            true_strokes_reordered = match_brush_strokes(predicted_strokes[batch_ind], true_strokes[batch_ind])
+        for stroke_ind in range(len(predicted_strokes[batch_ind])):
             pred_bs = predicted_strokes[batch_ind][stroke_ind]
             # true_bs = true_strokes_reordered[stroke_ind]
             true_bs = true_strokes_reordered[min(len(true_strokes_reordered)-1, stroke_ind)]
@@ -237,13 +240,231 @@ def brush_stroke_parameter_loss_fcn(predicted_strokes, true_strokes):
             loss_latent += l1_loss(pred_bs.latent, true_bs.latent) #* 1e-3 ############################
             loss_wasserstein += wasserstein_distance(pred_bs, true_bs)
 
-    n_batch, n_strokes = len(predicted_brush_strokes), len(predicted_brush_strokes[0])
+    n_batch, n_strokes = len(predicted_strokes), len(predicted_strokes[0])
     n = n_batch * n_strokes
     loss_x, loss_y, loss_rot, loss_latent, loss_wasserstein = loss_x/n, loss_y/n, loss_rot/n, loss_latent/n, loss_wasserstein/n
 
     loss = loss_x + loss_y + loss_rot + loss_latent #+ loss_wasserstein
 
     return loss, loss_x, loss_y, loss_rot, loss_latent, loss_wasserstein
+
+def compute_stroke_parameter_loss():
+    current_canvases = []
+    target_canvases = []
+    true_brush_strokes = []
+    predicted_brush_strokes = []
+    predicted_next_canvases = []
+
+    # Get the ground truth data
+    for it in range(batch_size):
+        # Get a current canvas
+        with torch.no_grad():
+            current_painting = get_random_painting(opt,
+                    background_img=current_canvas_aug(blank_canvas)).to(device)
+            current_canvas = current_painting(h_render, w_render, use_alpha=False)[:,:3]
+            current_canvas = current_canvas_aug(current_canvas)
+            current_canvases.append(current_canvas)
+
+        # Generate a random brush stroke(s) to add. Render it to create the target canvas
+        with torch.no_grad():
+            true_brush_stroke = get_random_brush_strokes(opt, 
+                    n_strokes=opt.n_gt_strokes)
+                    # n_strokes=random.randint(opt.n_predicted_strokes, 20)) # Variable number of target strokes
+
+            # Render the strokes onto the current canvas
+            target_painting = Painting(opt, background_img=current_canvases[it], 
+                    brush_strokes=true_brush_stroke).to(device)
+            target_canvas = target_painting(h_render, w_render, use_alpha=False)
+
+            true_brush_strokes.append(true_brush_stroke)
+            target_canvases.append(target_canvas)
+        
+    current_canvases = torch.cat(current_canvases, dim=0)[:,:3]
+    target_canvases = torch.cat(target_canvases, dim=0)
+
+    # Augment the target_canvases to reduce sim2real gap
+    with torch.no_grad():
+        target_canvases = target_img_aug(target_canvases)
+
+    # Perform the prediction to estimate the added stroke(s)
+    if opt.n_predicted_strokes_low is not None:
+        n_strokes = random.randint(opt.n_predicted_strokes_low,opt.n_predicted_strokes_high) 
+    else: 
+        n_strokes = opt.n_predicted_strokes
+    predicted_brush_strokes = stroke_predictor(current_canvases, target_canvases,
+            n_strokes=n_strokes)
+
+    loss, loss_x, loss_y, loss_rot, loss_latent, loss_wasserstein \
+            = brush_stroke_parameter_loss_fcn(predicted_brush_strokes, true_brush_strokes)
+    
+    loss.backward(retain_graph=True)
+
+    # Log losses
+    if batch_ind % 10 == 0:
+        opt.writer.add_scalar('loss/loss_stroke_parameters', loss, batch_ind)
+
+        opt.writer.add_scalar('loss/loss_latent', loss_latent, batch_ind)
+        opt.writer.add_scalar('loss/loss_x', loss_x, batch_ind)
+        opt.writer.add_scalar('loss/loss_y', loss_y, batch_ind)
+        opt.writer.add_scalar('loss/loss_rot', loss_rot, batch_ind)
+        opt.writer.add_scalar('loss/loss_wasserstein', loss_wasserstein, batch_ind)
+
+        opt.writer.add_scalar('loss/lr', optim.param_groups[0]['lr'], batch_ind)
+
+    # Log images
+    if batch_ind % 50 == 0:
+        with torch.no_grad():
+            if len(predicted_next_canvases) == 0:
+                # Render the predicted strokes
+                for it in range(batch_size):
+                    # Render the strokes onto the current canvas
+                    predicted_painting = Painting(opt, background_img=current_canvases[it:it+1], 
+                                brush_strokes=predicted_brush_strokes[it]).to(device)
+                    predicted_next_canvas = predicted_painting(h_render, w_render, use_alpha=False)[:,:3]
+                    predicted_next_canvases.append(predicted_next_canvas)
+                predicted_next_canvases = torch.cat(predicted_next_canvases, dim=0)
+            # Log some images
+            for log_ind in range(min(10, batch_size)):
+                # Log canvas with gt strokes, canvas with predicted strokes
+                t = target_canvases[log_ind:log_ind+1].clone()
+                t[:,:,:,-2:] = 0
+                log_img = torch.cat([t, predicted_next_canvases[log_ind:log_ind+1]], dim=3)
+                opt.writer.add_image('images_stroke_param/train{}'.format(str(log_ind)), 
+                        format_img(log_img), batch_ind)
+                
+                # Log target_strokes-current_canvas and predicted_strokes-current_canvas
+                pred_diff_img = torch.abs(predicted_next_canvases[log_ind:log_ind+1] - current_canvases[log_ind:log_ind+1])
+                true_diff_img = torch.abs(target_canvases[log_ind:log_ind+1] - current_canvases[log_ind:log_ind+1])
+                
+                pred_diff_img_bool = pred_diff_img.mean(dim=1) > 0.3
+                true_diff_img_bool = true_diff_img.mean(dim=1) > 0.3
+                colored_img = torch.zeros(true_diff_img.shape).to(device)
+                colored_img[:,1][pred_diff_img_bool & true_diff_img_bool] = 1 # Green for true positives
+                colored_img[:,0][~pred_diff_img_bool & true_diff_img_bool] = 1 # Red for False negatives
+                colored_img[:,2][pred_diff_img_bool & ~true_diff_img_bool] = 1 # Blue for False positives
+                pred_diff_img[:,:,:,:2] = 1 # Draw a border
+                colored_img[:,:,:,:2] = 1 # Draw a border
+
+                log_img = torch.cat([true_diff_img, pred_diff_img, colored_img], dim=3)
+                opt.writer.add_image('images_stroke_param/train{}_diff'.format(str(log_ind)), 
+                        format_img(log_img), batch_ind)
+    return loss
+
+target_canvas_bank = []
+cofrida_starting_canvases_og = None
+
+def compute_cofrida_loss():
+    global target_canvas_bank, cofrida_starting_canvases_og
+
+    # Generate a new bunch of target images every few iterations
+    if batch_ind % 50 == 0:
+        # Generate target images
+        target_canvas_bank = []
+        for it in range(batch_size*5):
+            with torch.no_grad():
+                target_canvas_bank.append(sd_interactive_pipeline(
+                    'A random drawing', 
+                    blank_canvas, num_inference_steps=10, 
+                    num_images_per_prompt=1,
+                    output_type='pt',
+                    # image_guidance_scale=2.5,#1.5 is default
+                ).images[0].unsqueeze(0))
+        target_canvas_bank = torch.cat(target_canvas_bank, dim=0)
+        
+    if cofrida_starting_canvases_og is None:
+        with torch.no_grad():
+            cofrida_starting_canvases = blank_canvas.repeat((batch_size, 1,1,1)).to(device)
+            cofrida_starting_canvases_og = cofrida_starting_canvases.detach().clone()
+
+    # Get target canvases from the canvas bank
+    with torch.no_grad():
+        n_bank = len(target_canvas_bank)
+        # Random sample from bank
+        rand_ind = torch.randperm(n_bank)
+        target_canvases = target_canvas_bank[rand_ind[:batch_size]]
+        # Augment the target_canvases to reduce sim2real gap
+        target_canvases = cofrida_target_img_aug(target_canvases)
+
+    # Compute the loss
+    current_canvases = cofrida_starting_canvases_og.clone()
+    custom_pix_loss_tot, pix_loss_tot, clip_loss_tot, loss_tot = 0,0,0,0
+    for pred_it in range(opt.num_prediction_rounds): # num times to predict a batch of strokes
+        predicted_brush_strokes = []
+        predicted_next_canvases = []
+        # optim.zero_grad()
+
+        # Perform the prediction to estimate the added stroke(s)
+        predicted_brush_strokes = stroke_predictor(current_canvases, target_canvases)
+
+        # Render the predicted strokes
+        for it in range(batch_size):
+            
+
+            # Render the strokes onto the current canvas
+            predicted_painting = Painting(opt, background_img=current_canvases[it:it+1], 
+                        brush_strokes=predicted_brush_strokes[it]).to(device)
+            predicted_next_canvas = predicted_painting(h_render, w_render, use_alpha=False)
+            predicted_next_canvases.append(predicted_next_canvas.detach())
+
+            # Calculate losses. pix_loss in pixel space, and stroke_param_loss in stroke space
+            target_canvas = target_canvases[it:it+1]
+
+            pix_loss = pix_loss_fcn(predicted_next_canvas, target_canvas)
+            custom_pix_loss = custom_pix_loss_fcn(predicted_next_canvas, target_canvas)
+            clip_loss = clip_conv_loss(target_canvas, predicted_next_canvas[:,:3]) 
+
+            # loss = custom_pix_loss*0.25 + clip_loss*0.75
+            loss = clip_loss
+            
+            custom_pix_loss_tot += custom_pix_loss.item()
+            pix_loss_tot += pix_loss.item()
+            clip_loss_tot += clip_loss.item()
+            loss_tot += loss.item()
+
+            loss.backward(retain_graph=True)
+
+        predicted_next_canvases = torch.cat(predicted_next_canvases, dim=0)
+        current_canvases = predicted_next_canvases.detach()
+
+    # Log losses
+    if batch_ind % 10 == 0:
+        opt.writer.add_scalar('loss/pix_loss', pix_loss_tot, batch_ind)
+        opt.writer.add_scalar('loss/custom_pix_loss', custom_pix_loss_tot, batch_ind)
+        opt.writer.add_scalar('loss/clip_loss', clip_loss_tot, batch_ind)
+        opt.writer.add_scalar('loss/loss_cofrida', loss_tot, batch_ind)
+
+        opt.writer.add_scalar('loss/lr', optim.param_groups[0]['lr'], batch_ind)
+
+    # Log images
+    if batch_ind % 50 == 0:
+        with torch.no_grad():
+            # Log some images
+            for log_ind in range(min(10, batch_size)):
+                # Log canvas with gt strokes, canvas with predicted strokes
+                t = target_canvases[log_ind:log_ind+1].clone()
+                t[:,:,:,-2:] = 0
+                log_img = torch.cat([t, predicted_next_canvases[log_ind:log_ind+1]], dim=3)
+                opt.writer.add_image('images_cofrida/train{}'.format(str(log_ind)), 
+                        format_img(log_img), batch_ind)
+                
+                # Log target_strokes-current_canvas and predicted_strokes-current_canvas
+                pred_diff_img = torch.abs(predicted_next_canvases[log_ind:log_ind+1] - cofrida_starting_canvases_og[log_ind:log_ind+1])
+                true_diff_img = torch.abs(target_canvases[log_ind:log_ind+1] - cofrida_starting_canvases_og[log_ind:log_ind+1])
+                
+                pred_diff_img_bool = pred_diff_img.mean(dim=1) > 0.3
+                true_diff_img_bool = true_diff_img.mean(dim=1) > 0.3
+                colored_img = torch.zeros(true_diff_img.shape).to(device)
+                colored_img[:,1][pred_diff_img_bool & true_diff_img_bool] = 1 # Green for true positives
+                colored_img[:,0][~pred_diff_img_bool & true_diff_img_bool] = 1 # Red for False negatives
+                colored_img[:,2][pred_diff_img_bool & ~true_diff_img_bool] = 1 # Blue for False positives
+                pred_diff_img[:,:,:,:2] = 1 # Draw a border
+                colored_img[:,:,:,:2] = 1 # Draw a border
+
+                log_img = torch.cat([true_diff_img, pred_diff_img, colored_img], dim=3)
+                opt.writer.add_image('images_cofrida/train{}_diff'.format(str(log_ind)), 
+                        format_img(log_img), batch_ind)
+                    
+    return loss_tot
 
 if __name__ == '__main__':
     opt = Options()
@@ -284,9 +505,22 @@ if __name__ == '__main__':
     optim = torch.optim.Adam(stroke_predictor.parameters(), lr=opt.sp_lr)
 
     pix_loss_fcn = torch.nn.L1Loss()
+
+    def custom_pix_loss_fcn(canvas, goal_canvas):
+        black_mask = (goal_canvas <= 0.2).float() # B x CANVAS_SIZE x CANVAS_SIZE
+        white_mask = 1 - black_mask # B x CANVAS_SIZE x CANVAS_SIZE
+        l2 = ((canvas - goal_canvas) ** 2) # B x CANVAS_SIZE x CANVAS_SIZE
+        black_loss = (l2 * black_mask).mean(1).mean(1).mean(1) # B
+        white_loss = (l2 * white_mask).mean(1).mean(1).mean(1) # B
+        return (0.6 * black_loss + 0.4 * white_loss).mean() # 1
+    
     # torch.autograd.set_detect_anomaly(True)
     batch_size = opt.sp_training_batch_size
 
+    sd_interactive_pipeline = get_instruct_pix2pix_model(
+        instruct_pix2pix_path=opt.cofrida_model, 
+        device=device)
+    
     import torchvision.transforms.v2 as transforms
     target_img_aug = transforms.RandomPhotometricDistort(
         brightness=(0.75,1.25),
@@ -304,148 +538,37 @@ if __name__ == '__main__':
     )
     blank_canvas_aug = transforms.Compose([
         current_canvas_aug,
-        transforms.RandomResizedCrop((h_render,w_render), scale=(0.7, 1.0), ratio=(0.8,1.0))
+        transforms.RandomResizedCrop((h_render,w_render), scale=(0.7, 1.0), ratio=(0.8,1.0), antialias=True)
+    ])
+    cofrida_target_img_aug = transforms.Compose([
+        transforms.RandomPhotometricDistort(
+            brightness=(0.75,1.05),
+            contrast=(0.5,1.5),
+            saturation=(0.5,1.5),
+            hue=(-0.1,0.1),
+            p=0.75
+        ),
+        transforms.RandomResizedCrop((h_render,w_render), scale=(0.7, 1.0), ratio=(0.8,1.0), antialias=True)
     ])
 
     total_epochs = 100000
     for batch_ind in tqdm(range(total_epochs)):
-        # print(stroke_predictor.latent_head.weight[0,:7]) # Check if weights are changing
-
         optim.param_groups[0]['lr'] *= 0.99995
-        
         stroke_predictor.train()
         optim.zero_grad()
 
-        current_canvases = []
-        target_canvases = []
-        true_brush_strokes = []
-        predicted_brush_strokes = []
-        predicted_next_canvases = []
+        loss_stroke_param = compute_stroke_parameter_loss()
+        loss_cofrida = compute_cofrida_loss()
 
-        # Get the ground truth data
-        for it in range(batch_size):
-            # Get a current canvas
-            with torch.no_grad():
-                current_painting = get_random_painting(opt,
-                        background_img=current_canvas_aug(blank_canvas)).to(device)
-                current_canvas = current_painting(h_render, w_render, use_alpha=False)[:,:3]
-                current_canvas = current_canvas_aug(current_canvas)
-                current_canvases.append(current_canvas)
+        loss_total = loss_stroke_param + loss_cofrida
 
-            # Generate a random brush stroke(s) to add. Render it to create the target canvas
-            with torch.no_grad():
-                true_brush_stroke = get_random_brush_strokes(opt, 
-                        n_strokes=opt.n_gt_strokes)
-                        # n_strokes=random.randint(opt.n_predicted_strokes, 20)) # Variable number of target strokes
-
-                # Render the strokes onto the current canvas
-                target_painting = Painting(opt, background_img=current_canvases[it], 
-                        brush_strokes=true_brush_stroke).to(device)
-                target_canvas = target_painting(h_render, w_render, use_alpha=False)
-
-                true_brush_strokes.append(true_brush_stroke)
-                target_canvases.append(target_canvas)
-            
-        current_canvases = torch.cat(current_canvases, dim=0)[:,:3]
-        target_canvases = torch.cat(target_canvases, dim=0)
-
-        # Augment the target_canvases to reduce sim2real gap
-        with torch.no_grad():
-            # print(target_canvases.shape)
-            target_canvases = target_img_aug(target_canvases)
-            # print(target_canvases.shape)
-
-        # Perform the prediction to estimate the added stroke(s)
-        if opt.n_predicted_strokes_low is not None:
-            n_strokes = random.randint(opt.n_predicted_strokes_low,opt.n_predicted_strokes_high) 
-        else: 
-            n_strokes = opt.n_predicted_strokes
-        predicted_brush_strokes = stroke_predictor(current_canvases, target_canvases,
-                n_strokes=n_strokes)
-
-        if not opt.sp_no_pix_loss:
-            # Render the predicted strokes
-            for it in range(batch_size):
-                # Render the strokes onto the current canvas
-                predicted_painting = Painting(opt, background_img=current_canvases[it:it+1], 
-                            brush_strokes=predicted_brush_strokes[it]).to(device)
-                predicted_next_canvas = predicted_painting(h_render, w_render, use_alpha=False)[:,:3]
-                predicted_next_canvases.append(predicted_next_canvas)
-            predicted_next_canvases = torch.cat(predicted_next_canvases, dim=0)
-
-            # Calculate losses. pix_loss in pixel space, and stroke_param_loss in stroke space
-            pix_loss = pix_loss_fcn(predicted_next_canvases, target_canvases)
-        else:
-            pix_loss = 0
-        stroke_param_loss, loss_x, loss_y, loss_rot, loss_latent, loss_wasserstein \
-                = brush_stroke_parameter_loss_fcn(predicted_brush_strokes, true_brush_strokes)
-
-        # Weight losses
-        pix_loss_weight = (batch_ind / total_epochs)
-        stroke_param_loss_weight = 1 - pix_loss_weight
-        
-        if opt.sp_no_pix_loss:
-            loss = stroke_param_loss
-        else:
-            loss = pix_loss*pix_loss_weight + stroke_param_loss * stroke_param_loss_weight
-        
-        loss.backward()
+        # loss_total.backward(retain_graph=True) # It's already been back propagated
         optim.step()
 
-        # Log losses
         if batch_ind % 10 == 0:
-            opt.writer.add_scalar('loss/pix_loss', pix_loss, batch_ind)
-            opt.writer.add_scalar('loss/pix_loss_weight', pix_loss_weight, batch_ind)
-            opt.writer.add_scalar('loss/stroke_param_loss', stroke_param_loss, batch_ind)
-            opt.writer.add_scalar('loss/loss', loss, batch_ind)
-
-            opt.writer.add_scalar('loss/loss_latent', loss_latent, batch_ind)
-            opt.writer.add_scalar('loss/loss_x', loss_x, batch_ind)
-            opt.writer.add_scalar('loss/loss_y', loss_y, batch_ind)
-            opt.writer.add_scalar('loss/loss_rot', loss_rot, batch_ind)
-            opt.writer.add_scalar('loss/loss_wasserstein', loss_wasserstein, batch_ind)
-
-            opt.writer.add_scalar('loss/lr', optim.param_groups[0]['lr'], batch_ind)
+            opt.writer.add_scalar('loss/loss', loss_total.item(), batch_ind)
 
         # Periodically save
         if batch_ind % 1000 == 0:
             torch.save(stroke_predictor.state_dict(), os.path.join(save_dir, 'stroke_predictor_weights.pth'))
 
-        # Log images
-        if batch_ind % 100 == 0:
-            with torch.no_grad():
-                if len(predicted_next_canvases) == 0:
-                    # Render the predicted strokes
-                    for it in range(batch_size):
-                        # Render the strokes onto the current canvas
-                        predicted_painting = Painting(opt, background_img=current_canvases[it:it+1], 
-                                    brush_strokes=predicted_brush_strokes[it]).to(device)
-                        predicted_next_canvas = predicted_painting(h_render, w_render, use_alpha=False)[:,:3]
-                        predicted_next_canvases.append(predicted_next_canvas)
-                    predicted_next_canvases = torch.cat(predicted_next_canvases, dim=0)
-                # Log some images
-                for log_ind in range(min(10, batch_size)):
-                    # Log canvas with gt strokes, canvas with predicted strokes
-                    t = target_canvases[log_ind:log_ind+1].clone()
-                    t[:,:,:,-2:] = 0
-                    log_img = torch.cat([t, predicted_next_canvases[log_ind:log_ind+1]], dim=3)
-                    opt.writer.add_image('images/train{}'.format(str(log_ind)), 
-                            format_img(log_img), batch_ind)
-                    
-                    # Log target_strokes-current_canvas and predicted_strokes-current_canvas
-                    pred_diff_img = torch.abs(predicted_next_canvases[log_ind:log_ind+1] - current_canvases[log_ind:log_ind+1])
-                    true_diff_img = torch.abs(target_canvases[log_ind:log_ind+1] - current_canvases[log_ind:log_ind+1])
-                    
-                    pred_diff_img_bool = pred_diff_img.mean(dim=1) > 0.3
-                    true_diff_img_bool = true_diff_img.mean(dim=1) > 0.3
-                    colored_img = torch.zeros(true_diff_img.shape).to(device)
-                    colored_img[:,1][pred_diff_img_bool & true_diff_img_bool] = 1 # Green for true positives
-                    colored_img[:,0][~pred_diff_img_bool & true_diff_img_bool] = 1 # Red for False negatives
-                    colored_img[:,2][pred_diff_img_bool & ~true_diff_img_bool] = 1 # Blue for False positives
-                    pred_diff_img[:,:,:,:2] = 1 # Draw a border
-                    colored_img[:,:,:,:2] = 1 # Draw a border
-
-                    log_img = torch.cat([true_diff_img, pred_diff_img, colored_img], dim=3)
-                    opt.writer.add_image('images/train{}_diff'.format(str(log_ind)), 
-                            format_img(log_img), batch_ind)
-                    
