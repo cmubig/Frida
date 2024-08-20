@@ -49,9 +49,14 @@ sudo apt install gphoto2 libgphoto2*
 
 # (optional) For training CoFRIDA, you'll need additional installation steps
 cd Frida/src
+
 pip3 install git+https://github.com/facebookresearch/segment-anything.git
 wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
 git clone https://github.com/jmhessel/clipscore.git
+
+# cofrida with audio:
+pip install wave pyaudio
+pip install git+https://github.com/openai/whisper.git 
 ```
 
 ### Run with a robot

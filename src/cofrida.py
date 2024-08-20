@@ -11,7 +11,7 @@ import numpy as np
 import PIL.Image
 import torch
 import matplotlib.pyplot as plt
-
+import traceback
 
 def add_imgs_together(imgs):
     # Take  list of images and add all the dark parts together
@@ -36,6 +36,7 @@ def get_instruct_pix2pix_model(lora_weights_path, original_model_name_or_path="t
     
     model_loaded = False
     try:
+        print(f"loading lora_weights: {lora_weights_path}")
         pipeline.unet.load_attn_procs(lora_weights_path)
         print('Loaded LoRA')
         model_loaded = True
@@ -50,7 +51,9 @@ def get_instruct_pix2pix_model(lora_weights_path, original_model_name_or_path="t
         )
         print('Loaded Unet Params. No LoRA')
         model_loaded = True 
-    except:
+    except Exception as e:
+        # print(e)
+        # traceback.print_exc()
         pass 
 
     if not model_loaded:

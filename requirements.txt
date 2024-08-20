@@ -25,7 +25,7 @@ git+https://github.com/openai/CLIP.git
 librosa
 timm
 transformers
-diffusers
+diffusers==0.18.1
 accelerate
 transformers
 whisper
