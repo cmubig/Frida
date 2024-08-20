@@ -574,8 +574,13 @@ class Painter():
                             self.get_paint(0)
                             strokes_without_cleaning, strokes_without_getting_new_paint = 0, 0
                             distance_since_getting_paint = 0
+<<<<<<< HEAD
                         # if distance_since_getting_paint >= self.opt.max_length_before_new_paint:
                         if strokes_without_getting_new_paint >=  self.opt.how_often_to_get_paint:
+=======
+                        # if strokes_without_getting_new_paint >= 6:
+                        if distance_since_getting_paint >= self.opt.max_length_before_new_paint:
+>>>>>>> ffd451483ca3dcd3e79e4fd838237c30c732a213
                             self.get_paint(0)
                             strokes_without_getting_new_paint = 0
                             distance_since_getting_paint = 0

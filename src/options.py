@@ -125,6 +125,7 @@ class Options(object):
         parser.add_argument("--app", type=str, nargs='*',
             default="app run", help='Argument is not used, but is allowed for flask compatability')
 
+<<<<<<< HEAD
         parser.add_argument("--webcam_interface", action='store_true', help='Use webcam to take a portrait. overrides objective_data with the new portrait image.')
         parser.add_argument("--save_painting", action='store_true', help='')
         parser.add_argument("--recover_painting", action='store_true', help='')
@@ -132,6 +133,8 @@ class Options(object):
         parser.add_argument("--painting_name", type=str, default='painting', help='Path to the painting name.')
 
 
+=======
+>>>>>>> ffd451483ca3dcd3e79e4fd838237c30c732a213
         return parser 
 
     def gather_options(self):
