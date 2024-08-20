@@ -3,10 +3,6 @@
 *.mp4
 *.gif
 src/cache/colors_updated.npt
-<<<<<<< HEAD
 src/cache/next_brush_strokes.csv
 **/*.pth
 *.pth
-=======
-src/cache/next_brush_strokes.csv
->>>>>>> ffd451483ca3dcd3e79e4fd838237c30c732a213

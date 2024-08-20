@@ -144,7 +144,6 @@ class XArm(Robot, object):
                 # print('dist', dist)
                 # Dist in mm
                 if dist < 5:
-<<<<<<< HEAD
                     # wait=False
                     speed=1000
                     # print('less')
@@ -153,12 +152,6 @@ class XArm(Robot, object):
             #         x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw,
             #         speed=speed, wait=wait, mvacc=5000
             # )
-=======
-                    wait=False
-                    speed=1000
-                    # print('less')
-
->>>>>>> ffd451483ca3dcd3e79e4fd838237c30c732a213
             try:
                 r = self.arm.set_position(
                         x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw,
@@ -167,13 +160,8 @@ class XArm(Robot, object):
                 # print(r)
                 if r:
                     print("failed to go to pose, resetting.")
-<<<<<<< HEAD
                     # self.arm.clean_error()
                     # self.good_morning_robot()
-=======
-                    self.arm.clean_error()
-                    self.good_morning_robot()
->>>>>>> ffd451483ca3dcd3e79e4fd838237c30c732a213
                     self.arm.set_position(
                             x=x, y=y, z=z+5, roll=roll, pitch=pitch, yaw=yaw,
                             speed=speed, wait=True
@@ -187,11 +175,7 @@ class XArm(Robot, object):
                 print('Cannot go to position', e)
     
     def go_to_cartesian_pose_fast(self, positions, orientations,
-<<<<<<< HEAD
             speed=250):
-=======
-            speed=150):
->>>>>>> ffd451483ca3dcd3e79e4fd838237c30c732a213
         '''
         args:
             positions [np.array(3)] list of 3D coordinates in meters
@@ -227,7 +211,6 @@ class XArm(Robot, object):
                 angle = np.arccos(cosine_angle)
                 angle = np.degrees(angle)
                 angle = np.nan_to_num(angle)
-<<<<<<< HEAD
                 # print(angle)
                 if np.abs(180-angle) > 40:
 
@@ -242,18 +225,6 @@ class XArm(Robot, object):
                     # except Exception as e:
                     #     print('Cannot go to position', e)
                     # paths = paths[-1:]
-=======
-                print(angle)
-                if np.abs(180-angle) > 40:
-                    # Run the previous points
-                    try:
-                        self.arm.move_arc_lines(
-                            paths=paths[:-1], speed=speed, wait=True, mvacc=500,#mvacc=1#mvacc=50
-                        )
-                    except Exception as e:
-                        print('Cannot go to position', e)
-                    paths = paths[-1:]
->>>>>>> ffd451483ca3dcd3e79e4fd838237c30c732a213
         if len(paths) > 0:
             try:
                 self.arm.move_arc_lines(
@@ -553,11 +524,7 @@ class SimulatedRobot(Robot, object):
     def good_night_robot(self):
         pass
 
-<<<<<<< HEAD
     def go_to_cartesian_pose(self, position, orientation, fast=None):
-=======
-    def go_to_cartesian_pose(self, position, orientation):
->>>>>>> ffd451483ca3dcd3e79e4fd838237c30c732a213
         pass
 
 
@@ -622,11 +589,7 @@ class Sawyer(Robot, object):
         rospy.signal_shutdown("Example finished.")
         self.debug("Done")
 
-<<<<<<< HEAD
     def go_to_cartesian_pose(self, position, orientation, fast=None):
-=======
-    def go_to_cartesian_pose(self, position, orientation):
->>>>>>> ffd451483ca3dcd3e79e4fd838237c30c732a213
         #if len(position)
         position, orientation = np.array(position), np.array(orientation)
         if len(position.shape) == 1:
@@ -778,8 +741,4 @@ class Sawyer(Robot, object):
         cameras.start_streaming(camera)
         cameras.set_callback(camera, show_image_callback,
             rectify_image=False)
-<<<<<<< HEAD
         input('Attach the paint brush now. Press enter to continue:')
-=======
-        raw_input('Attach the paint brush now. Press enter to continue:')
->>>>>>> ffd451483ca3dcd3e79e4fd838237c30c732a213
