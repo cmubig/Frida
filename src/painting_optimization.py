@@ -220,7 +220,7 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
 
         for o in optims: o.step() if o is not None else None
 
-        painting.validate()
+        painting.validate(brush_width=(1-(it/optim_iter))*0.2+0.45)
 
         if it < 0.4*optim_iter:
             with torch.no_grad():
@@ -277,7 +277,7 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
                 discretize_colors(painting, color_palette)
         log_progress(painting, opt, log_freq=opt.log_frequency, title=log_title)#, force_log=True)
 
-    painting.validate()
+    painting.validate(brush_width=0.45)
     if not use_input_palette and not opt.ink:
         color_palette = painting.cluster_colors(opt.n_colors)
 

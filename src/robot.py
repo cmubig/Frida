@@ -212,19 +212,23 @@ class XArm(Robot, object):
                 angle = np.degrees(angle)
                 angle = np.nan_to_num(angle)
                 # print(angle)
-                if np.abs(180-angle) > 40:
+                if True:#np.abs(180-angle) > 40:
 
                     
-                    paths = paths[:-1] +[paths[-2]]*100 + paths[-1:]
+                    paths = paths[:-1] +[paths[-2]]*150 + paths[-1:]
 
-                    # Run the previous points
-                    # try:
-                    #     self.arm.move_arc_lines(
-                    #         paths=paths[:-1], speed=speed, wait=True, mvacc=500,#mvacc=1#mvacc=50
-                    #     )
-                    # except Exception as e:
-                    #     print('Cannot go to position', e)
-                    # paths = paths[-1:]
+                #     # Run the previous points
+                #     # try:
+                #     #     self.arm.move_arc_lines(
+                #     #         paths=paths[:-1], speed=speed, wait=True, mvacc=500,#mvacc=1#mvacc=50
+                #     #     )
+                #     # except Exception as e:
+                #     #     print('Cannot go to position', e)
+                #     # paths = paths[-1:]
+                # if np.abs(180-angle) > 40:
+                #     paths = paths[:-1] +[paths[-2]]*200 + paths[-1:]
+                # else:
+                #     paths = paths[:-1] +[paths[-2]]*50 + paths[-1:]
         if len(paths) > 0:
             try:
                 self.arm.move_arc_lines(

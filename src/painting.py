@@ -103,10 +103,10 @@ class Painting(nn.Module):
         alphas, _ = torch.max(alphas, dim=1)#alphas.max(dim=1)
         return alphas
 
-    def validate(self):
+    def validate(self, brush_width=None):
         ''' Make sure all brush strokes have valid parameters '''
         for s in self.brush_strokes:
-            BrushStroke.make_valid(s)
+            BrushStroke.make_valid(s, brush_width=brush_width)
 
 
     def cluster_colors(self, n_colors):
