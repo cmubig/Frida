@@ -10,7 +10,7 @@ bicubic = InterpolationMode.BICUBIC
 import warnings
 import numpy as np
 from scipy.interpolate import make_interp_spline
-from traj_vae.autoencoders import MLP_VAE
+from mocap.autoencoders import MLP_VAE
 
 # from param2stroke import special_sigmoid
 
@@ -131,22 +131,17 @@ def get_translation_transform(xt, yt):
     return A
 
 class BrushStroke(nn.Module):
-    vae = MLP_VAE(32, 16, 32)
-    vae.load_state_dict(torch.load("traj_vae/saved_models/model.pt"))
+    vaes = {}
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # Bounds for the x/y coordinates the VAE can generate
-    # These values are calculated based on the imposed max stroke length of 0.25 in the JSPaint webapp,
-    # in conjunction with the fact that the stroke starts at (0,0) and is rotated to be horizontal
-    vae_max_stroke_length = 0.25
-    vae_x_bounds = (-vae_max_stroke_length/2, vae_max_stroke_length)
-    vae_y_bounds = (-vae_max_stroke_length/2, vae_max_stroke_length/2)
 
     def __init__(self, 
                  opt,
                 latent=None,
+                path=None,
                 color=None, 
                 ink=False,
                 a=None, xt=None, yt=None,
+                init_differentiably=False,
                 device='cuda',
                 is_dot=False):
         super(BrushStroke, self).__init__()
@@ -157,32 +152,56 @@ class BrushStroke(nn.Module):
         self.MIN_STROKE_Z = opt.MIN_STROKE_Z
         self.max_length_before_new_paint = opt.max_length_before_new_paint
         self.ink = ink
+        self.vae_name = opt.vae_path
 
-        if color is None: color=(torch.rand(3).to(device)*.4)+0.3
-        if a is None: a=(torch.rand(1)*2-1)*3.14#torch.zeros(1)#(torch.rand(1)*2-1)*3.14#torch.zeros(1)#
-        if xt is None: xt=torch.rand(1)
-        if yt is None: yt=torch.rand(1)
+        if init_differentiably:
+            self.xt = xt # Range [0,1]
+            self.yt = yt # Range [0,1]
+            self.a = a # Range [-2pi,2pi]
+            self.latent = latent 
+            self.path = path
+        else:
+            if color is None: color=(torch.rand(3).to(device)*.4)+0.3
+            if a is None: a=(torch.rand(1, device=device)*2-1)*3.14
+            if xt is None: xt=torch.rand(1, device=device)
+            if yt is None: yt=torch.rand(1, device=device)
 
-        self.xt = nn.Parameter(torch.ones(1)*xt) # Range [0,1]
-        self.yt = nn.Parameter(torch.ones(1)*yt) # Range [0,1]
-        self.a = nn.Parameter(torch.ones(1)*a) # Range [-2pi,2pi]
-        
-        if latent is None: 
-            latent = torch.randn(1, BrushStroke.vae.latent_dim)
+            self.xt = nn.Parameter(torch.ones(1, device=device)*xt) # Range [0,1]
+            self.yt = nn.Parameter(torch.ones(1, device=device)*yt) # Range [0,1]
+            self.a = nn.Parameter(torch.ones(1, device=device)*a) # Range [-2pi,2pi]
 
-        self.latent = latent 
-        self.latent.requires_grad = True 
-        self.latent = nn.Parameter(self.latent)
+            
+            if latent is None: 
+                latent = torch.randn(1, 64)
+
+            self.latent = latent 
+            # self.latent.requires_grad = True 
+            self.latent = nn.Parameter(self.latent)
+            self.path = path # TODO make this an optional parameter
+            if True:
+                self.path = self.get_path().detach().unsqueeze(0)
+                self.path = nn.Parameter(self.path)
 
         if not self.ink:
             self.color_transform = nn.Parameter(color)
         else:
             self.color_transform = torch.zeros(3).to(device)
 
+    def get_transformed_path(self, param2img, use_conv=True):
+        if self.path is None:
+            full_param = self.get_path().unsqueeze(0) # 1 x 32 x 3
+        else:
+            full_param = self.path#.unsqueeze(0) # 1 x 32 x 3
+        
+        return param2img(full_param, self.xt, self.yt, self.a, use_conv=use_conv, return_trajectory=True)
+
     def forward(self, h, w, param2img, use_conv=True):
         # Do rigid body transformation
-        full_param = self.get_path(normalize=False).unsqueeze(0) # 1 x 32 x 3
-        
+        if self.path is None:
+            full_param = self.get_path().unsqueeze(0) # 1 x 32 x 3
+        else:
+            full_param = self.path # 1 x 32 x 3
+
         stroke = param2img(full_param, self.xt, self.yt, self.a, use_conv=use_conv).unsqueeze(0)
 
         # Pad 1 or two to make it fit
@@ -208,11 +227,13 @@ class BrushStroke(nn.Module):
 
     def make_valid(stroke):
         with torch.no_grad():
-            # stroke.latent.data.clamp_(-2.5, 2.5)
-            stroke.latent.data.clamp_(-3.5, 3.5)
+            stroke.latent.data.clamp_(-1.0, 1.0)
+            # stroke.latent.data.clamp_(-3.0, 3.0)
+            if stroke.path is not None:
+                stroke.path[:,:,-1].data.clamp_(0.75,0.75)
 
-            stroke.xt.data.clamp_(0.05,0.95)
-            stroke.yt.data.clamp_(0.05,0.95)
+            stroke.xt.data.clamp_(0,1.)
+            stroke.yt.data.clamp_(0,1.)
 
             #stroke.color_transform.data.clamp_(0.02,0.75)
             if stroke.color_transform.min() < 0.35:
@@ -222,20 +243,23 @@ class BrushStroke(nn.Module):
                 # Well balanced RGB, less constraint
                 stroke.color_transform.data.clamp_(0.02,0.85)
 
-    def get_path(self, normalize=True):
+    def get_path(self):
         if self.is_dot:
             path = torch.zeros((4,4))
             path[:,2] = 0.75
             return path
-        BrushStroke.vae.to(self.latent.device)
-        path = BrushStroke.vae.decode(self.latent)
+        if self.vae_name not in BrushStroke.vaes:
+            vae = MLP_VAE(32, 64, 32)
+            vae.load_state_dict(torch.load(self.vae_name))
+            BrushStroke.vaes[self.vae_name] = vae
+
+        BrushStroke.vaes[self.vae_name].to(self.latent.device)
+        path = BrushStroke.vaes[self.vae_name].decode(self.latent)
 
         # Clone the path so that the operation is not in-place (PyTorch quirk; allows gradients to flow through)
         path_clone = path.clone()
-        if normalize:
-            path_clone[:,0:2] = path[:,0:2] / BrushStroke.vae_max_stroke_length * self.MAX_STROKE_LENGTH
-        # path_clone[:,2] = path[:,2].clamp(self.MIN_STROKE_Z, 0.95)
-        path_clone[:,2] = path[:,2].clamp(0.8, 0.9)
+        path_clone[:,2] = path[:,2].clamp(self.MIN_STROKE_Z, 0.95)
+        # print('path ',path_clone.shape)
         
         return path_clone
 
@@ -254,7 +278,7 @@ class BrushStroke(nn.Module):
 
         z_range = np.abs(painter.Z_MAX_CANVAS - painter.Z_CANVAS)
 
-        path = self.get_path()
+        path = self.get_path() if self.path is None else self.path[0]
 
         approx_len = 0.0
         for i in range(len(path)-1):

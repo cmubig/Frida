@@ -154,14 +154,17 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
 
     for it in tqdm(range(optim_iter), desc='Optimizing {} Strokes'.format(str(len(painting.brush_strokes)))):
         for o in optims: o.zero_grad() if o is not None else None
+        # print(painting.brush_strokes[0].path[0,:5])
 
         lr_factor = (1 - 2*np.abs(it/optim_iter - 0.5)) + 0.005
-        if it < 0.25*optim_iter:
-            lr_factor += 0.3
+        # if it < 0.25*optim_iter:
+        #     lr_factor += 0.3
         # lr_factor = (1 - np.abs(it/optim_iter)) + 0.001 # 1.001 -> 0.001
         for i_o in range(len(optims)):
             if optims[i_o] is not None:
                 optims[i_o].param_groups[0]['lr'] = og_lrs[i_o]*lr_factor
+                # if i_o == 3:
+                #     print(optims[i_o].param_groups[0]['lr'])
 
         p, alphas = painting(opt.h_render, opt.w_render, use_alpha=False, return_alphas=True)
         
@@ -200,6 +203,17 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
         #     latent_reg_loss *= stroke_latent_reg_loss_weight
         #     if latent_reg_loss != 0:
         #         loss += latent_reg_loss
+        
+        path_loss_weight = 50.0
+        if path_loss_weight > 0:
+            path_loss = 0
+            for bs in painting.brush_strokes:
+                path = bs.path
+                point_wise_dist = (path[:,1:,0]-path[:,:-1,0])**2 + (path[:,1:,1]-path[:,:-1,1])**2
+                path_loss += point_wise_dist.sum()
+            path_loss = path_loss / len(painting.brush_strokes)
+            print(path_loss)
+            loss += path_loss * path_loss_weight
                 
         
         loss.backward()

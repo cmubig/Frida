@@ -26,6 +26,7 @@ from painting_optimization import optimize_painting
 from painter import Painter
 from options import Options
 from my_tensorboard import TensorBoard
+from train_transformer_cofrida_strokes import StrokePredictor
 
 # For Audio Recording and Transcription 
 # from audio_test import get_text_from_audio
@@ -34,7 +35,7 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 if not torch.cuda.is_available():
     print('Using CPU..... good luck')
 
-def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
+def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil):
     ''' Create a GUI to allow the user to see different CoFRIDA options and pick
     '''
 
@@ -59,6 +60,7 @@ def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil, n_ai_options):
         new_option = choices[1]
         new_prompt = choices[2]
         reply = easygui.buttonbox(msg, image=image, choices=choices)
+        
         if reply == yes:
             break 
         elif reply == new_option:
@@ -87,7 +89,6 @@ if __name__ == '__main__':
                 lora_weights_path=opt.cofrida_model, 
                 device=device)
     cofrida_model.set_progress_bar_config(disable=True)
-    n_ai_options = 6
 
     date_and_time = datetime.datetime.now()
     run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
@@ -102,6 +103,14 @@ if __name__ == '__main__':
     w_render = int(opt.render_height * (opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
     h_render = int(opt.render_height)
     opt.w_render, opt.h_render = w_render, h_render
+
+    stroke_predictor = None 
+    if opt.continue_training is not None:
+        stroke_predictor = StrokePredictor(opt, 
+            n_strokes=opt.n_predicted_strokes)
+        stroke_predictor.load_state_dict(torch.load(opt.continue_training))
+        stroke_predictor.to(device)
+        stroke_predictor.eval()
 
     consecutive_paints = 0
     consecutive_strokes_no_clean = 0
@@ -149,9 +158,8 @@ if __name__ == '__main__':
         curr_canvas_pil = curr_canvas_pil#.convert("L").convert('RGB')
 
         # Let the user generate and choose cofrida images to draw
-        n_ai_options = 4
         text_prompt, target_img = get_cofrida_image_to_draw(cofrida_model, 
-                                                            curr_canvas_pil, n_ai_options)
+                                                            curr_canvas_pil)
         opt.writer.add_image('images/{}_2_target_from_cofrida_{}'.format(i, text_prompt), format_img(target_img), 0)
         target_img = Resize((h_render, w_render), antialias=True)(target_img)
         target_img = flip_img(target_img) # Should be upside down for planning
@@ -159,14 +167,16 @@ if __name__ == '__main__':
         # Ask for how many strokes to use
         # num_strokes = 90#int(input("How many strokes to use in this plan?\n:"))
         # num_strokes = int(input("How many strokes to use in this plan?\n:"))
-        num_strokes = 50
+        num_strokes = 20
 
         
         # Generate initial (random plan)
         # painting = random_init_painting(opt, current_canvas.to(device), num_strokes, ink=opt.ink).to(device)
         current_canvas = flip_img(current_canvas) # Should look upside down / real
         painting = initialize_painting(opt, num_strokes, target_img, 
-                                       current_canvas.to(device), opt.ink, device=device)
+                                       current_canvas.to(device), opt.ink, 
+                                       stroke_predictor=stroke_predictor,
+                                       device=device)
         color_palette = None #TODO: support input fixed palette
 
         # Set variables for planning algorithm

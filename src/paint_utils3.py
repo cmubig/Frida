@@ -379,9 +379,17 @@ def init_brush_strokes(opt, diff, n_strokes, ink):
         brush_strokes.append(brush_stroke)
     return brush_strokes
 
-def initialize_painting(opt, n_strokes, target_img, background_img, ink, device='cuda'):
-    attn = (target_img[0,:3] - background_img[0,:3]).abs().mean(dim=0)
-    brush_strokes = init_brush_strokes(opt, attn, n_strokes, ink)
+def initialize_painting(opt, n_strokes, target_img, background_img, ink, stroke_predictor=None, device='cuda'):
+    if stroke_predictor is None:
+        attn = (target_img[0,:3] - background_img[0,:3]).abs().mean(dim=0)
+        brush_strokes = init_brush_strokes(opt, attn, n_strokes, ink)
+    else:
+        brush_strokes = []
+        for i in range(0, n_strokes, stroke_predictor.n_strokes):
+            with torch.no_grad():
+                bs = stroke_predictor(background_img[:,:3], target_img[:,:3],
+                    n_strokes=n_strokes, init_differentiably=False)
+            brush_strokes += bs[0][:n_strokes-len(brush_strokes)]
     painting = Painting(opt, 0, background_img=background_img, 
         brush_strokes=brush_strokes).to(device)
     return painting
