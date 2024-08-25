@@ -2,6 +2,7 @@
 import os
 import numpy as np
 import time
+import random
 
 from brush_stroke import euler_from_quaternion
 
@@ -62,6 +63,143 @@ class XArm(Robot, object):
     def good_night_robot(self):
         self.arm.disconnect()
 
+# pre-defined motion of looking at canvas
+    def look_at_canvas(self):
+        # print('in look_at_canvas')
+        positions = [[[0.0045, 0.1801, 0.474],], [[0.0045, 0.1801, 0.474],],  
+                    [[0.0045, 0.1801, 0.474],], [[0.0045, 0.1801, 0.474],], 
+                    # [[0.0409, 0.1746, 0.4739],],
+                    [[0.0409, 0.1746, 0.4739],], [[-0.0315, 0.1786, 0.4739],], ]
+        orientations = [[[-175.9, 0, -75.5, 1],], [[157.6, 14.5, 25, 1],], 
+                        [[-175.9, 0, -75.5, 1],], [[-153.8, -42.2, 41.4, 1],], 
+                        # [[175.1, -11.2, -55.4, 1],], 
+                        [[-170.8, 17.5, -87.9, 1],], [[175.1, -11.2, -55.4, 1],], ]
+        for i in range(len(positions)):
+            self.go_to_cartesian_pose(positions[i], orientations[i], motion=True)
+        self.go_to_cartesian_pose([[0.002, 0.2,0.2],], [[180, 0, 0, 1],], motion=True) 
+
+
+# pre-defined motion of signing on canvas
+    def sign_on_canvas(self, canvas_height, canvas_width, canvas_x_min, 
+                       canvas_y_min, canvas_z):
+        
+        # print("----------in sign_n_canvas")
+        # print("canvas_height = ", canvas_height)
+        # print("canvas_width = ", canvas_width)
+        # print("canvas_x_min = ", canvas_x_min)
+        # print("canvas_y_min = ", canvas_y_min)
+
+        margin = 0.01 # 1cm margin off of the bottom right corner of the canvas
+        # find leftmost upmost point of signature
+        sig_start_up = canvas_y_min + margin + 0.01 #1cm tall signature
+        sig_start_left = canvas_x_min  + canvas_width/2 - margin - 0.035
+        sig_end_down = canvas_y_min + margin         
+        sig_end_right = canvas_x_min + canvas_width/2 - margin#3cm long signature
+
+        # draw the F first
+        x = sig_start_left
+        bot_left_f = sig_start_up-0.004
+        positions_f = [[[sig_start_up, x,  canvas_z],[sig_end_down, x,  canvas_z],], 
+                      [[sig_start_up, x,  canvas_z], [sig_start_up, x+0.006,  canvas_z],[sig_start_up, x,  canvas_z], ],
+                      [[bot_left_f, x,  canvas_z], [bot_left_f,x+0.006,  canvas_z],],]
+        orientations_f = [[[180, 0, 0, 1], [180, 0, 0, 1],],
+                          [[180, 0, 0, 1], [180, 0, 0, 1], [180, 0, 0, 1],], 
+                          [[180, 0, 0, 1], [180, 0, 0, 1],],]
+        for i in range(len(positions_f)):
+           self.go_to_cartesian_pose(positions_f[i], orientations_f[i])
+
+        positions = []
+        orientations = []
+        # xs = []
+        # ys = []
+        control_points = []
+        while x < sig_end_right:
+            incre = (random.randint(3, 9)/1000)
+            vari = random.choice([-1, 1])
+            x += incre
+            control_points.append((x, sig_start_up))
+            control_points.append((x, sig_end_down))
+
+        # bezier interpolate attempt
+        # new_points = []
+        # for i in range(0, len(control_points)-3, 3):
+        #     p0, p1, p2, p3 = control_points[i:i+4]
+        #     t_values = np.linspace(0, 1, 30)
+        #     for t in t_values:
+        #         p = (1-t)**p0 + 3*(1-t)**2*t*p1 + 3*(1-t)*t**2*p2 + t**3*p3
+        #         new_points.append(p)
+
+        for i in range(len(control_points)):
+            # positions.append([new_points[i][1], new_points[i][0], canvas_z])
+            # orientations.append([180, 0, 0, 1])
+            positions.append([control_points[i][1], control_points[i][0], canvas_z])
+            # positions.append([x, sig_end_down, canvas_z + 0.02])
+            
+            orientations.append([180, 0, 0, 1])
+            # orientations.append([180, 0, 0, 1])
+            
+
+        
+        if (len(positions)!= len(orientations)):
+            # throw an error
+            print("Error: positions and orientations are not the same length")
+
+        
+        # for i in range(len(positions)):
+            # print("ith position", i)
+            # print("position", positions[i])
+        self.go_to_cartesian_pose(positions, orientations, fast=True)
+        self.go_to_cartesian_pose([[0.002, 0.2,0.2],], [[180, 0, 0, 1],], motion=True) 
+
+        
+# idle animation -> show aspects of frida nonverbally or verbally
+    def idle_anim(self, speed=200):
+        # choose random action
+        x = random.randint(0, 2)
+        # x = 1
+        # print("x is", x)
+        match (x):
+            case 0:
+                positions = [[0.088, 0.172, 0.2586], [0.0596, 0.1468, 0.2755], [0.1073, 0.1655, 0.2555],
+                            [0.0596, 0.1468, 0.2755], [0.088, 0.172, 0.2586], ]
+                orientations = [[-178, 15.8, -51.8, 1], [-172.8, -47.8, -116.1, 1], [-173.9, -1.4, -43.5, 1],
+                                [-172.8, -47.8, -116.1, 1], [-178, 15.8, -51.8, 1],]
+                
+                self.go_to_cartesian_pose(positions, orientations, motion=True, speed=speed)
+
+                # return
+            case 1:
+                positions = [[0.1366, 0.1734, 0.2245], [0.1202, 0.1485, 0.3571], 
+                            [0.1149, 0.1491, 0.3013],
+                            [0.0963, 0.1594, 0.3111], [0.130, 0.1248, 0.3013], 
+                            [0.1149, 0.1491, 0.3013],]
+                orientations = [[179.5, -6.8, -57.1, 1], [179.4, -7.6, -58.4, 1], [-174.6, -9.7, -89.2, 1],
+                                [-177.7, -14.4, -39.5, 1],
+                                [165.9, -33.4, -31.4, 1], [-179.4, 14, -12.3, 1],
+                                [-177.7, -14.4, -39.5, 1],]
+                # for i in range(3):
+                self.go_to_cartesian_pose(positions, orientations, motion=True, speed=speed)
+
+                # return
+            case 2:
+                positions = [[0.104, 0.1792, 0.3921], [0.0023, 0.1874, 0.4303], 
+                            [-0.0901, 0.1643, 0.3973], [0.0023, 0.1874, 0.4303], ]
+                orientations = [[157.2, -12.9, -22.3, 1], [-174.6, 0.3, -50, 1], 
+                                [-1582, 30.8, -82.9, 1], [-174.6, 0.3, -50, 1],]
+            
+                self.go_to_cartesian_pose(positions, orientations, motion=True, speed=speed)
+
+            #     return
+            case _:
+                positions = [[0.002, 0.24, 0.45], [0.002, 0.24, 0.45], [0.002, 0.24, 0.45],]
+                orientations = [[-180, 0, 20, 1], [-180, 0, -60, 1], [-180, 0, 0, 1],]
+                # for i in range(3):
+                self.go_to_cartesian_pose(positions, orientations, motion=True)
+
+                # return
+        self.go_to_cartesian_pose([[0.002, 0.2,0.2],], [[180, 0, 0, 1],], motion=True, speed=speed) 
+        pass
+
     # def go_to_cartesian_pose(self, positions, orientations,
     #         speed=350, fast=False):
     #     fast = False
@@ -116,8 +254,9 @@ class XArm(Robot, object):
     #             self.good_morning_robot()
     #             print('Cannot go to position', e)
 
+    
     def go_to_cartesian_pose(self, positions, orientations,
-            speed=350, fast=False):
+            speed=350, fast=False, motion=False):
         # fast = False
         if fast:
             return self.go_to_cartesian_pose_fast(positions, orientations)
@@ -131,9 +270,17 @@ class XArm(Robot, object):
             x,y,z = x*1000, y*-1000, z*1000 #m to mm
             q = orientations[i]
             
-            euler= euler_from_quaternion(q[0], q[1], q[2], q[3])#quaternion.as_quat_array(orientations[i])
-            roll, pitch, yaw = 180, 0, 0#euler[0], euler[1], euler[2]
-            # https://github.com/xArm-Developer/xArm-Python-SDK/blob/0fd107977ee9e66b6841ea9108583398a01f227b/xarm/x3/xarm.py#L214
+            # print("not in fast mode")
+            # print('x', x)
+            # print('y', y)
+            # print('z', z)
+            if (motion):
+                # print('in motion')
+                roll, pitch, yaw = orientations[i][0], orientations[i][1], orientations[i][2]
+            else:
+                # euler= euler_from_quaternion(q[0], q[1], q[2], q[3])#quaternion.as_quat_array(orientations[i])
+                roll, pitch, yaw = 180, 0, 0#euler[0], euler[1], euler[2]
+                # https://github.com/xArm-Developer/xArm-Python-SDK/blob/0fd107977ee9e66b6841ea9108583398a01f227b/xarm/x3/xarm.py#L214
             
             wait = True 
             failure, state = self.arm.get_position()
@@ -155,7 +302,7 @@ class XArm(Robot, object):
             try:
                 r = self.arm.set_position(
                         x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw,
-                        speed=speed, wait=wait, mvacc=5000
+                        speed=speed, wait=wait, mvacc=5000, radius=3 if motion else None
                 )
                 # print(r)
                 if r:
@@ -215,7 +362,7 @@ class XArm(Robot, object):
                 if True:#np.abs(180-angle) > 40:
 
                     
-                    paths = paths[:-1] +[paths[-2]]*150 + paths[-1:]
+                    paths = paths[:-1] +[paths[-2]]*100 + paths[-1:]
 
                 #     # Run the previous points
                 #     # try:

@@ -18,6 +18,8 @@ import easygui
 from torchvision.transforms import Resize
 from tqdm import tqdm
 from PIL import Image
+import subprocess
+import os
 
 from cofrida import get_instruct_pix2pix_model
 from paint_utils3 import canvas_to_global_coordinates, format_img, get_colors, initialize_painting, nearest_color, random_init_painting, save_colors, show_img
@@ -68,6 +70,7 @@ def get_cofrida_image_to_draw(cofrida_model, curr_canvas_pil):
         elif reply == new_prompt:
             text_prompt = easygui.enterbox("What do you want the robot to draw?")
             continue
+
 
         
  
@@ -122,7 +125,7 @@ if __name__ == '__main__':
                 n_colors=opt.n_colors)
         opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(color_palette), 0)
 
-    for i in range(9): # Max number of turns to take
+    for i in range(99): # Max number of turns to take
 
         ##################################
         ########## Hooman Turn ###########
@@ -138,8 +141,21 @@ if __name__ == '__main__':
         # except SyntaxError:
         #     pass
         msg = "Feel free to draw if you'd like"
-        choices = ["Done"]
+        choices = ["Ready for the robot's turn", "I'm done with this, sign the work."]
+        all_done = choices[1]
         reply = easygui.buttonbox(msg, choices=choices)
+
+        if reply == all_done:
+            # Sign canvas and finish. @Lorie
+            print("This is where it should sign the canvas")
+            # painter.robot.sign_on_canvas(opt.CANVAS_HEIGHT_M, opt.CANVAS_WIDTH_M,
+            #              opt.X_CANVAS_MAX, opt.Y_CANVAS_MIN,
+            #              painter.Z_CANVAS)
+
+            # Restart
+            msg = "Feel free to draw if you'd like"
+            choices = ["Ready for the robot's turn"]
+            reply = easygui.buttonbox(msg, choices=choices)
 
         current_canvas = painter.camera.get_canvas_tensor() / 255.
         current_canvas = flip_img(current_canvas)
@@ -163,6 +179,11 @@ if __name__ == '__main__':
         opt.writer.add_image('images/{}_2_target_from_cofrida_{}'.format(i, text_prompt), format_img(target_img), 0)
         target_img = Resize((h_render, w_render), antialias=True)(target_img)
         target_img = flip_img(target_img) # Should be upside down for planning
+
+        # Run idle animation while we wait @Lorie
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        subprocess.Popen(["python3 " + os.path.join(dir_path, "run_idle_anim.py")], shell=True)
+
 
         # Ask for how many strokes to use
         # num_strokes = 90#int(input("How many strokes to use in this plan?\n:"))

@@ -212,7 +212,7 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
                 point_wise_dist = (path[:,1:,0]-path[:,:-1,0])**2 + (path[:,1:,1]-path[:,:-1,1])**2
                 path_loss += point_wise_dist.sum()
             path_loss = path_loss / len(painting.brush_strokes)
-            print(path_loss)
+            # print(path_loss)
             loss += path_loss * path_loss_weight
                 
         
