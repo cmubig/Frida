@@ -25,8 +25,13 @@ from my_tensorboard import TensorBoard
 from painting_optimization import load_objectives_data, optimize_painting
 from camera.webcam_portrait import WebcamInterface
 import threading
-# import matplotlib
-# matplotlib.use('TkAgg')
+import traceback
+import matplotlib
+matplotlib.use('TkAgg')
+
+import logging
+# disable warning messages from QObject::moveToThread: Current thread
+logging.getLogger().setLevel(logging.CRITICAL)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -71,7 +76,7 @@ class PaintingExecutor():
             #set --objective_data to the path of the webcam portrait
             print(self.opt.init_optim_iter, type(self.opt.init_optim_iter))
             print(f'last portrait: {self.webcam_interface.last_portrait_path}')
-            self.opt.objective_data = [self.webcam_interface .last_portrait_path]
+            self.opt.objective_data = [self.webcam_interface.last_portrait_path]
             # print(type(opt.objective_data), opt.objective_data)
             error, num_iter, num_strokes = self.webcam_interface.run()
             print(num_iter, type(num_iter))
@@ -148,6 +153,7 @@ class PaintingExecutor():
                 self.painting_plan = pickle.load(f)
             print("Loaded!!")
         except Exception as e:
+            print(traceback.format_exc())
             print(e)
             print(f"couldn't load the painting plan: {painting_file}")
 
@@ -162,6 +168,8 @@ class PaintingExecutor():
                 print("starting interface loop")
                 self.compute_plan()
             except Exception as e:
+                print(traceback.format_exc())
+
                 print(e)
             time.sleep(1)
 

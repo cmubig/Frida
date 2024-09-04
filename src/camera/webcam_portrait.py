@@ -6,10 +6,14 @@ import easygui
 import unicodedata
 import numpy as np
 class WebcamInterface():
-    def __init__(self, num_iter=1000,num_strokes=8, cascade_path=None, img_path=None, alpha=0.9, ratio=None):
-        self.cascPath = cascade_path if cascade_path is not None else os.environ['CONDA_PREFIX']+ "/lib/python3.8/site-packages/cv2/data/haarcascade_frontalface_default.xml"
+    def __init__(self, num_iter=1000,num_strokes=8, cascade_path="haarcascade_frontalface_default.xml", img_path=None, alpha=0.9, ratio=None):
+        self.cascPath = cascade_path if cascade_path is not None else os.environ['CONDA_PREFIX']+ "/lib/python3.11/site-packages/cv2/data/haarcascade_frontalface_default.xml"
         self.faceCascade = cv2.CascadeClassifier(self.cascPath)
         self.img_path = os.environ['HOME'] +  "/imgs/" if img_path is None else img_path
+        # create path if it does not exist
+        if not os.path.exists(self.img_path):
+            os.makedirs(self.img_path)
+
         self.alpha = alpha
         self.x,self.y,self.w,self.h = -1,-1,-1,-1
         self.w_offset, self.h_offset = 60,125
@@ -114,13 +118,16 @@ class WebcamInterface():
                 print("no webcam connected")
                 frame = np.zeros((500,500,3), dtype=np.uint8)
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = self.faceCascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30, 30),
-            flags=cv2.CASCADE_SCALE_IMAGE
-            )
+            try:
+                faces = self.faceCascade.detectMultiScale(
+                gray,
+                scaleFactor=1.1,
+                minNeighbors=5,
+                minSize=(30, 30),
+                flags=cv2.CASCADE_SCALE_IMAGE
+                )
+            except:
+                faces = []
 
             self.get_trackbar_data()
             

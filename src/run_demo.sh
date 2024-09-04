@@ -1,0 +1,2 @@
+cd /home/frida/Documents/vihaanm/mars_final/Frida/src/
+python3 paint.py --use_cache --cache_dir caches/mars_brush_lift4 --n_colors 4 --use_colors_from 4grey.png --materials_json ../materials_mars_7x7.json  --objective clip_conv_loss --objective_data /home/frida/imgs/last_portrait.png --objective_weight 1.0  --num_adaptations 1  --num_strokes 49 --init_optim_iter 1000 --lr_multiplier 2.5   --robot xarm --xarm_ip 192.168.1.168 --dont_retrain_stroke_model --webcam_interface --save_painting
