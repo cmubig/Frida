@@ -139,7 +139,8 @@ class BrushStroke(nn.Module):
                 latent=None,
                 color=None, 
                 ink=False,
-                a=None, xt=None, yt=None,
+                a=None, xt=None, yt=None, 
+                z=None,
                 device='cuda',
                 is_dot=False):
         super(BrushStroke, self).__init__()
@@ -155,10 +156,12 @@ class BrushStroke(nn.Module):
         if a is None: a=(torch.rand(1)*2-1)*3.14
         if xt is None: xt=torch.rand(1)
         if yt is None: yt=torch.rand(1)
+        if z is None: z=torch.rand(4)
 
         self.xt = nn.Parameter(torch.ones(1)*xt) # Range [0,1]
         self.yt = nn.Parameter(torch.ones(1)*yt) # Range [0,1]
         self.a = nn.Parameter(torch.ones(1)*a) # Range [-2pi,2pi]
+        self.z = nn.Parameter(torch.ones(4)*z) # Range [0,1]
 
         self.vae_name = opt.vae_path
         
@@ -169,6 +172,7 @@ class BrushStroke(nn.Module):
         self.latent.requires_grad = True 
         self.latent = nn.Parameter(self.latent)
 
+
         if not self.ink:
             self.color_transform = nn.Parameter(color)
         else:
@@ -177,7 +181,11 @@ class BrushStroke(nn.Module):
     def forward(self, h, w, param2img, use_conv=True):
         # Do rigid body transformation
         full_param = self.get_path().unsqueeze(0) # 1 x 32 x 3
-        
+
+        # Hack to add the z values in from the learnable parameter
+        z = torch.nn.functional.interpolate(self.z, size=32, scale_factor=None, mode='linear') # (4,) -> (32,)
+        full_param[:,:,-1] = z # Hopefully this is a differentiable op?
+
         stroke = param2img(full_param, self.xt, self.yt, self.a, use_conv=use_conv).unsqueeze(0)
 
         # Pad 1 or two to make it fit

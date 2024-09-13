@@ -33,6 +33,7 @@ class Painting(nn.Module):
         xt = []
         yt = []
         a = []
+        z = []
         color = []
         latent = []
         
@@ -41,14 +42,16 @@ class Painting(nn.Module):
             if "xt" in n.split('.')[-1]: xt.append(p)
             if "yt" in n.split('.')[-1]: yt.append(p)
             if "a" in n.split('.')[-1]: a.append(p)
+            if "z" in n.split('.')[-1]: z.append(p)
             if "color_transform" in n.split('.')[-1]: color.append(p)
 
         path_opt = torch.optim.RMSprop(latent, lr=1e-1)
         position_opt = torch.optim.RMSprop(xt + yt, lr=5e-3*multiplier)
+        height_opt = torch.optim.RMSprop(z, lr=5e-3*multiplier)
         rotation_opt = torch.optim.RMSprop(a, lr=1e-2*multiplier)
         color_opt = None if ink else torch.optim.RMSprop(color, lr=5e-3*multiplier)
 
-        return position_opt, rotation_opt, color_opt, path_opt 
+        return position_opt, height_opt, rotation_opt, color_opt, path_opt 
 
 
     def forward(self, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0):
