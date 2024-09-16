@@ -58,6 +58,7 @@ def get_colors(img, n_colors=6):
     kmeans = KMeans(n_clusters=n_colors, random_state=0)
     kmeans.fit(img.reshape((img.shape[0]*img.shape[1],3)))
     colors = [kmeans.cluster_centers_[i] for i in range(len(kmeans.cluster_centers_))]
+    colors = sorted(colors, key=lambda x : x.mean())
     colors = (torch.from_numpy(np.array(colors)) / 255.).float()
     return colors
 

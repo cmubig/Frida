@@ -61,7 +61,7 @@ class Painting(nn.Module):
             canvas = T.Resize((h,w), bicubic, antialias=True)(self.background_img).detach()
         canvas[:,3] = 1 # alpha channel
 
-        adjust_extreme_alphas = True
+        adjust_extreme_alphas = False#True
         stroke_alphas = None
         if return_alphas: stroke_alphas = []
 

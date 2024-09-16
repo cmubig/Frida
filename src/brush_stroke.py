@@ -182,10 +182,6 @@ class BrushStroke(nn.Module):
         # Do rigid body transformation
         full_param = self.get_path().unsqueeze(0) # 1 x 32 x 3
 
-        # Hack to add the z values in from the learnable parameter
-        z = torch.nn.functional.interpolate(self.z, size=32, scale_factor=None, mode='linear') # (4,) -> (32,)
-        full_param[:,:,-1] = z # Hopefully this is a differentiable op?
-
         stroke = param2img(full_param, self.xt, self.yt, self.a, use_conv=use_conv).unsqueeze(0)
 
         # Pad 1 or two to make it fit
@@ -211,10 +207,13 @@ class BrushStroke(nn.Module):
 
     def make_valid(stroke):
         with torch.no_grad():
-            stroke.latent.data.clamp_(-1.0, 1.0)
+            stroke.latent.data.clamp_(-1.5, 1.5)
 
             stroke.xt.data.clamp_(0,1.)
             stroke.yt.data.clamp_(0,1.)
+            stroke.z.data.clamp_(0.02,0.98)
+            stroke.z[0].data.clamp_(0.1,0.1) # So the brush doesn't fan out
+            # stroke.z.data.clamp_(0.5,0.5)################3
 
             #stroke.color_transform.data.clamp_(0.02,0.75)
             if stroke.color_transform.min() < 0.35:
@@ -236,6 +235,14 @@ class BrushStroke(nn.Module):
 
         BrushStroke.vaes[self.vae_name].to(self.latent.device)
         path = BrushStroke.vaes[self.vae_name].decode(self.latent)
+
+        # Hack to add the z values in from the learnable parameter
+        z = self.z[None,None] # (1,1,4)
+        # Linearly interpolate the 4 z values into 32 for each waypoint on trajectory
+        z = torch.nn.functional.interpolate(z, size=32, scale_factor=None, mode='linear') # (4,) -> (32,)
+        z = z[0,0] # (32,)
+        # print(path[:,-1].mean(), z.mean())
+        path[:,-1] = z # Hopefully this is a differentiable op?
 
         # Clone the path so that the operation is not in-place (PyTorch quirk; allows gradients to flow through)
         path_clone = path.clone()
