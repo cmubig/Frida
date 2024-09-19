@@ -203,7 +203,7 @@ class Painter():
         for i in range(len(orientations)):
             if orientations[i] is None:
                 orientations[i] = PERPENDICULAR_QUATERNION
-        return self.robot.go_to_cartesian_pose(positions, orientations)
+        return self.robot.go_to_cartesian_pose(positions, orientations, fast=True)
 
     def _move(self, x, y, z, q=None, timeout=20, method='direct', 
             step_size=.1, speed=0.1, duration=5):
@@ -253,7 +253,7 @@ class Painter():
         self.hover_above(p[0], p[1], p[2])
 
     def dip_brush_in_water(self):
-        self.move_to(self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR)
+        # self.move_to(self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR)
         self.move_to(self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR)
         positions = []
         positions.append([self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
@@ -313,7 +313,8 @@ class Painter():
         positions.append([x,y,z+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
         self.move_to_trajectories(positions, orientations)
-        self.touch_rag()
+        # self.touch_rag()
+        # self.to_neutral()
 
 
     def set_height(self, x, y, z, move_amount=0.0015):
