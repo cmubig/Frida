@@ -26,7 +26,7 @@ class Options(object):
     def initialize(self, parser):
         # Main parameters
         parser.add_argument("--robot", type=str, default='franka', help='Which robot to use "franka" "xarm" or "sawyer"')
-        parser.add_argument("--xarm_ip", type=str, default='192.168.1.176', help='IP address of XArm.')
+        parser.add_argument("--xarm_ip", type=str, default='192.168.2.157', help='IP address of XArm.')
 
         parser.add_argument('--use_cache', action='store_true')
         parser.add_argument("--materials_json", type=str, 
@@ -34,8 +34,12 @@ class Options(object):
         parser.add_argument("--cache_dir", type=str,
             default='./caches/cache_6_6_cvpr', help='Where to store cached files.')
         parser.add_argument('--simulate', action='store_true', help="Don't execute. Just plan without a robot. Requires already cached data.")
+        parser.add_argument('--no_camera', action='store_true', help="No camera; use if you just want to execute without adaptations.")
         parser.add_argument('--ink', action='store_true')
         parser.add_argument('--paint_from_image', action='store_true')
+        parser.add_argument('--vae_path', type=str)
+        parser.add_argument('--painting_path', type=str, default=None)
+        parser.add_argument('--overwrite_painting', action='store_true')
 
         # Color parameters
         parser.add_argument('--calib_colors', action='store_true', help='Use this to calibrate colors using MacBeth color checker')
@@ -48,7 +52,7 @@ class Options(object):
         parser.add_argument('--render_height', default=256, type=int, help='How much to downscale canvas for simulated environment')
 
         # Stroke Library Parameters
-        parser.add_argument('--num_papers', default=4, type=int, help='How papers of strokes to paint for stroke modelling data.')
+        parser.add_argument('--num_papers', default=40, type=int, help='How papers of strokes to paint for stroke modelling data.')
         parser.add_argument('--dont_retrain_stroke_model', action='store_true')
         parser.add_argument('--brush_length', type=float, default=None)
 
@@ -57,6 +61,7 @@ class Options(object):
         parser.add_argument('--num_strokes', type=int, default=400)
         parser.add_argument('--num_adaptations', type=int, default=1)
         parser.add_argument('--fill_weight', type=float, default=0.0, help="Encourage strokes to fill canvas.")
+        parser.add_argument('--strokes_per_batch', type=int, default=None)
 
         # Optimization Parameters
         parser.add_argument('--objective', nargs='*', type=str, help='text|style|clip_conv_loss|l2|clip_fc_loss')
@@ -70,6 +75,8 @@ class Options(object):
 
         # Painting Parameters
         parser.add_argument('--how_often_to_get_paint', type=int, default=4)
+        parser.add_argument('--max_length_before_new_paint', type=float, default=0.75,
+                            help="Maximum length (in meters) to paint without getting new paint from palette")
 
         # Logging Parameters
         parser.add_argument("--tensorboard_dir", type=str,
@@ -77,6 +84,7 @@ class Options(object):
         parser.add_argument('--plan_gif_dir', type=str, default='../outputs/')
         parser.add_argument('--log_frequency', type=int, default=5, help="Log to TB after this many optim. iters.")
         parser.add_argument("--output_dir", type=str, default="../outputs/", help='Where to write output to.')
+        parser.add_argument('--log_photo_frequency', type=int, default=20, help="Log to TB after this many strokes painted.")
 
 
         # CoFRIDA Run-Time Parameters
@@ -141,9 +149,9 @@ class Options(object):
         self.X_CANVAS_MAX = self.CANVAS_POSITION[0] + self.CANVAS_WIDTH_M/2 - thresh
         self.X_CANVAS_MIN = self.CANVAS_POSITION[0] - self.CANVAS_WIDTH_M/2 + thresh
 
-        if self.use_cache and os.path.exists(os.path.join(self.cache_dir, 'stroke_settings_during_library.json')):
+        if self.use_cache and os.path.exists(os.path.join(self.cache_dir, 'stroke_library', 'stroke_settings_during_library.json')):
             print("Retrieving settings from stroke library for consistency:")
-            with open(os.path.join(self.cache_dir, 'stroke_settings_during_library.json'), 'r') as f:
+            with open(os.path.join(self.cache_dir, 'stroke_library', 'stroke_settings_during_library.json'), 'r') as f:
                 settings = json.load(f)
                 print(settings)
                 self.MAX_BEND = settings['MAX_BEND']
@@ -153,6 +161,15 @@ class Options(object):
                 self.MAX_ALPHA = settings['MAX_ALPHA']
                 self.STROKE_LIBRARY_CANVAS_WIDTH_M = settings['CANVAS_WIDTH_M']
                 self.STROKE_LIBRARY_CANVAS_HEIGHT_M = settings['CANVAS_HEIGHT_M']
+
+        if self.MAX_STROKE_LENGTH is None:
+            self.MAX_STROKE_LENGTH = 0.8 * self.CANVAS_WIDTH_M
+        
+        if not os.path.exists(self.plan_gif_dir): os.mkdir(self.plan_gif_dir)
+        if not os.path.exists(self.output_dir): os.mkdir(self.output_dir)
+
+        if self.opt['strokes_per_batch'] is None:
+            self.opt['strokes_per_batch'] = self.opt['num_strokes']
 
     def __getattr__(self, attr_name):
         return self.opt[attr_name]

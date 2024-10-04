@@ -6,15 +6,22 @@
 ################ All rights reserved. ####################
 ##########################################################
 
+import copy
+import os
 import sys
+import time
 import cv2
 import datetime
 import numpy as np
+import gc
+import pickle
 
 import torch
-from paint_utils3 import canvas_to_global_coordinates, get_colors, nearest_color, random_init_painting, save_colors, show_img
+from tqdm import tqdm
+from paint_utils3 import canvas_to_global_coordinates, discretize_colors, get_colors, nearest_color, random_init_painting, save_colors, show_img, to_video
 
 from painter import Painter
+from painting import Painting
 from options import Options
 # from paint_planner import paint_planner_new
 
@@ -41,8 +48,6 @@ if __name__ == '__main__':
         except SyntaxError:
             pass
 
-    # paint_planner_new(painter)
-
     painter.to_neutral()
 
     w_render = int(opt.render_height * (opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
@@ -63,28 +68,43 @@ if __name__ == '__main__':
 
     load_objectives_data(opt)
 
-    painting = random_init_painting(opt, current_canvas, opt.num_strokes, ink=opt.ink)
-    painting.to(device)
+    if opt.overwrite_painting or opt.painting_path is None or not os.path.exists(opt.painting_path):
+        painting = random_init_painting(opt, current_canvas, opt.num_strokes, ink=opt.ink)
+        painting.to(device)
 
-    # Do the initial optimization
-    painting, color_palette = optimize_painting(opt, painting, 
-                optim_iter=opt.init_optim_iter, color_palette=color_palette)
-    
+        if color_palette is not None:
+            discretize_colors(painting, color_palette)
+        
+        painting, color_palette = optimize_painting(opt, painting, optim_iter=opt.init_optim_iter, color_palette=color_palette)
 
-    if not painter.opt.simulate:
-        show_img(painter.camera.get_canvas()/255., 
-                 title="Initial plan complete. Ready to start painting. \
-                    Ensure mixed paint is provided and then exit this to \
-                    start painting.")
+        # Save painting to file
+        if opt.painting_path is not None:
+            pickle.dump((painting, color_palette), open(opt.painting_path, 'wb'))
+        painting.to(device)
+    else:
+        painting, color_palette = pickle.load(open(opt.painting_path, 'rb'))
+        painting.to(device)
+
+    # Log colors so user can start to mix them
+    if not opt.ink:
+        opt.writer.add_image('paint_colors/mix_these_colors', save_colors(color_palette), 0)
+        opt.writer.add_image('paint_colors/mix_these_colors', save_colors(color_palette), 1)
 
 
-    strokes_per_adaptation = int(len(painting) / opt.num_adaptations)
+    if not opt.simulate and not opt.ink:
+        show_img(save_colors(color_palette), 
+                 title="Initial plan complete. Ready to start painting. Ensure mixed paint is provided and then exit this to start painting.")
+
+
+    strokes_per_adaptation = len(painting) // opt.num_adaptations
+    strokes_executed, canvas_photos = 0, []
     # for adaptation_it in range(opt.num_adaptations):
+
     while len(painting) > 0:
         ################################
         ### Execute some of the plan ###
         ################################
-        for stroke_ind in range(min(len(painting),strokes_per_adaptation)):
+        for stroke_ind in tqdm(range(min(len(painting),strokes_per_adaptation))):
             stroke = painting.pop()            
             
             # Clean paint brush and/or get more paint
@@ -93,7 +113,7 @@ if __name__ == '__main__':
                                              color_palette.detach().cpu().numpy())
                 new_paint_color = color_ind != curr_color
                 if new_paint_color or consecutive_strokes_no_clean > 12:
-                    painter.clean_paint_brush()
+                    if new_paint_color: painter.clean_paint_brush()
                     painter.clean_paint_brush()
                     consecutive_strokes_no_clean = 0
                     curr_color = color_ind
@@ -103,13 +123,22 @@ if __name__ == '__main__':
                     consecutive_paints = 0
 
             # Convert the canvas proportion coordinates to meters from robot
-            x, y = stroke.transformation.xt.item()*0.5+0.5, stroke.transformation.yt.item()*0.5+0.5
+            x, y = stroke.xt.item(), stroke.yt.item()
             y = 1-y
             x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
             x_glob, y_glob,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
             # Runnit
-            stroke.execute(painter, x_glob, y_glob, stroke.transformation.a.item())
+            stroke.execute(painter, x_glob, y_glob, stroke.a.item())
+
+            strokes_executed += 1
+            consecutive_paints += 1
+            consecutive_strokes_no_clean += 1
+
+            if strokes_executed % opt.log_photo_frequency == 0:
+                painter.to_neutral()
+                canvas_photos.append(painter.camera.get_canvas())
+                painter.writer.add_image('images/canvas', canvas_photos[-1]/255., strokes_executed)
 
         #######################
         ### Update the plan ###
@@ -120,12 +149,17 @@ if __name__ == '__main__':
         painting, _ = optimize_painting(opt, painting, 
                     optim_iter=opt.optim_iter, color_palette=color_palette)
 
+    painter.to_neutral()
+    canvas_photos.append(painter.camera.get_canvas())
+    painter.writer.add_image('images/canvas', canvas_photos[-1]/255., strokes_executed)
 
+    if not painter.opt.ink:
+        for i in range(3): painter.clean_paint_brush()
 
-    # to_video(plans, fn=os.path.join(opt.plan_gif_dir,'sim_canvases{}.mp4'.format(str(time.time()))))
+    to_video(canvas_photos, fn=os.path.join(opt.plan_gif_dir,'sim_canvases{}.mp4'.format(str(time.time()))))
     # with torch.no_grad():
     #     save_image(painting(h*4,w*4, use_alpha=False), os.path.join(opt.plan_gif_dir, 'init_painting_plan{}.png'.format(str(time.time()))))
-
+    # save_image(canvas_photos[-1], os.path.join(opt.plan_gif_dir, 'init_painting_plan{}.png'.format(str(time.time()))))
 
     painter.robot.good_night_robot()
 

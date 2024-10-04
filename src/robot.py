@@ -62,8 +62,62 @@ class XArm(Robot, object):
     def good_night_robot(self):
         self.arm.disconnect()
 
+    # def go_to_cartesian_pose(self, positions, orientations,
+    #         speed=250):
+    #     # positions in meters
+    #     positions, orientations = np.array(positions), np.array(orientations)
+    #     if len(positions.shape) == 1:
+    #         positions = positions[None,:]
+    #         orientations = orientations[None,:]
+    #     for i in range(len(positions)):
+    #         x,y,z = positions[i][1], positions[i][0], positions[i][2]
+    #         x,y,z = x*1000, y*-1000, z*1000 #m to mm
+    #         q = orientations[i]
+            
+    #         euler= euler_from_quaternion(q[0], q[1], q[2], q[3])#quaternion.as_quat_array(orientations[i])
+    #         roll, pitch, yaw = 180, 0, 0#euler[0], euler[1], euler[2]
+    #         # https://github.com/xArm-Developer/xArm-Python-SDK/blob/0fd107977ee9e66b6841ea9108583398a01f227b/xarm/x3/xarm.py#L214
+            
+    #         wait = True 
+    #         failure, state = self.arm.get_position()
+    #         if not failure:
+    #             curr_x, curr_y, curr_z = state[0], state[1], state[2]
+    #             # print('curr', curr_y, y)
+    #             dist = ((x-curr_x)**2 + (y-curr_y)**2 + (z-curr_z)**2)**0.5
+    #             # print('dist', dist)
+    #             # Dist in mm
+    #             if dist < 5:
+    #                 wait=False
+    #                 speed=600
+    #                 # print('less')
+
+    #         try:
+    #             r = self.arm.set_position(
+    #                     x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw,
+    #                     speed=speed, wait=wait
+    #             )
+    #             # print(r)
+    #             if r:
+    #                 print("failed to go to pose, resetting.")
+    #                 self.arm.clean_error()
+    #                 self.good_morning_robot()
+    #                 self.arm.set_position(
+    #                         x=x, y=y, z=z+5, roll=roll, pitch=pitch, yaw=yaw,
+    #                         speed=speed, wait=True
+    #                 )
+    #                 self.arm.set_position(
+    #                         x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw,
+    #                         speed=speed, wait=True
+    #                 )
+    #         except Exception as e:
+    #             self.good_morning_robot()
+    #             print('Cannot go to position', e)
+
     def go_to_cartesian_pose(self, positions, orientations,
-            speed=250):
+            speed=250, fast=False, motion=False):
+        # fast = False
+        if fast:
+            return self.go_to_cartesian_pose_fast(positions, orientations)
         # positions in meters
         positions, orientations = np.array(positions), np.array(orientations)
         if len(positions.shape) == 1:
@@ -74,9 +128,17 @@ class XArm(Robot, object):
             x,y,z = x*1000, y*-1000, z*1000 #m to mm
             q = orientations[i]
             
-            euler= euler_from_quaternion(q[0], q[1], q[2], q[3])#quaternion.as_quat_array(orientations[i])
-            roll, pitch, yaw = 180, 0, 0#euler[0], euler[1], euler[2]
-            # https://github.com/xArm-Developer/xArm-Python-SDK/blob/0fd107977ee9e66b6841ea9108583398a01f227b/xarm/x3/xarm.py#L214
+            # print("not in fast mode")
+            # print('x', x)
+            # print('y', y)
+            # print('z', z)
+            if (motion):
+                # print('in motion')
+                roll, pitch, yaw = orientations[i][0], orientations[i][1], orientations[i][2]
+            else:
+                # euler= euler_from_quaternion(q[0], q[1], q[2], q[3])#quaternion.as_quat_array(orientations[i])
+                roll, pitch, yaw = 180, 0, 0#euler[0], euler[1], euler[2]
+                # https://github.com/xArm-Developer/xArm-Python-SDK/blob/0fd107977ee9e66b6841ea9108583398a01f227b/xarm/x3/xarm.py#L214
             
             wait = True 
             failure, state = self.arm.get_position()
@@ -87,20 +149,24 @@ class XArm(Robot, object):
                 # print('dist', dist)
                 # Dist in mm
                 if dist < 5:
-                    wait=False
-                    speed=600
+                    # wait=False
+                    speed=1000
                     # print('less')
 
+            # r = self.arm.set_position(
+            #         x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw,
+            #         speed=speed, wait=wait, mvacc=5000
+            # )
             try:
                 r = self.arm.set_position(
                         x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw,
-                        speed=speed, wait=wait
+                        speed=speed, wait=wait, mvacc=5000, radius=3 if motion else None
                 )
                 # print(r)
                 if r:
                     print("failed to go to pose, resetting.")
-                    self.arm.clean_error()
-                    self.good_morning_robot()
+                    # self.arm.clean_error()
+                    # self.good_morning_robot()
                     self.arm.set_position(
                             x=x, y=y, z=z+5, roll=roll, pitch=pitch, yaw=yaw,
                             speed=speed, wait=True
@@ -112,7 +178,69 @@ class XArm(Robot, object):
             except Exception as e:
                 self.good_morning_robot()
                 print('Cannot go to position', e)
+    
+    def go_to_cartesian_pose_fast(self, positions, orientations,
+            speed=150):
+        '''
+        args:
+            positions [np.array(3)] list of 3D coordinates in meters
+            orientations [p.array(4)] (not actual quaternion). It's just [[roll,pitch,yaw,other value],...]
+        '''
+        positions, orientations = np.array(positions), np.array(orientations)
+        if len(positions.shape) == 1:
+            positions = positions[None,:]
+            orientations = orientations[None,:]
+        
+        paths = []
+            
+        for i in range(len(positions)):
+            x,y,z = positions[i][1], positions[i][0], positions[i][2]
+            x,y,z = x*1000, y*-1000, z*1000 #m to mm
+            q = orientations[i]
+            q = (q / np.pi) * 180 # radian to degrees
+            # For xarm, we feed in euler angle instead of quaternion
+            # roll, pitch, yaw = q[0], q[1], q[2]
+            roll, pitch, yaw = 180, 0, 0
 
+            radius = 0.0
+            paths.append([x,y,z,roll,pitch,yaw,radius]) #TODO: set radius?
+            # paths.append([x,y,z,roll,pitch,yaw]) #TODO: set radius?
+            # https://github.com/xArm-Developer/xArm-Python-SDK/blob/master/doc/api/xarm_api.md#def-move_arc_linesself-paths-is_radiannone-times1-first_pause_time01-repeat_pause_time0-automatic_calibrationtrue-speednone-mvaccnone-mvtimenone-waitfalse
+
+            if len(paths) > 2:
+                # Calculate the angle of the turn that the newest point creates
+                ba = np.array(paths[-3][:3]) - np.array(paths[-2][:3])
+                bc = np.array(paths[-1][:3]) - np.array(paths[-2][:3])
+
+                cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+                angle = np.arccos(cosine_angle)
+                angle = np.degrees(angle)
+                angle = np.nan_to_num(angle)
+                # print(angle)
+                if True:#np.abs(180-angle) > 40:
+
+                    
+                    paths = paths[:-1] +[paths[-2]]*70 + paths[-1:]
+
+                #     # Run the previous points
+                #     # try:
+                #     #     self.arm.move_arc_lines(
+                #     #         paths=paths[:-1], speed=speed, wait=True, mvacc=500,#mvacc=1#mvacc=50
+                #     #     )
+                #     # except Exception as e:
+                #     #     print('Cannot go to position', e)
+                #     # paths = paths[-1:]
+                # if np.abs(180-angle) > 40:
+                #     paths = paths[:-1] +[paths[-2]]*200 + paths[-1:]
+                # else:
+                #     paths = paths[:-1] +[paths[-2]]*50 + paths[-1:]
+        if len(paths) > 0:
+            try:
+                self.arm.move_arc_lines(
+                    paths=paths, speed=speed, wait=True, mvacc=500,#mvacc=1#mvacc=50
+                )
+            except Exception as e:
+                print('Cannot go to position', e)
 
 class Franka(Robot, object):
     '''

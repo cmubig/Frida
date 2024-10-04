@@ -14,11 +14,10 @@ class Painting(nn.Module):
     def __init__(self, opt, n_strokes=None, background_img=None, brush_strokes=None):
         # h, w are canvas height and width in pixels
         super(Painting, self).__init__()
-        self.n_strokes = n_strokes
-
         self.background_img = background_img
+        self.strokes_per_batch = opt.strokes_per_batch
 
-        if self.background_img.shape[1] == 3: # add alpha channel
+        if self.background_img is not None and self.background_img.shape[1] == 3: # add alpha channel
             t =  torch.zeros((1,1,self.background_img.shape[2],self.background_img.shape[3])).to(device)
             # t[:,:3] = self.background_img
             self.background_img = torch.cat((self.background_img, t), dim=1)
@@ -34,65 +33,67 @@ class Painting(nn.Module):
         xt = []
         yt = []
         a = []
-        length = []
         z = []
-        bend = []
         color = []
+        latent = []
         
         for n, p in self.named_parameters():
+            if "latent" in n.split('.')[-1]: latent.append(p)
             if "xt" in n.split('.')[-1]: xt.append(p)
             if "yt" in n.split('.')[-1]: yt.append(p)
             if "a" in n.split('.')[-1]: a.append(p)
-            if "stroke_length" in n.split('.')[-1]: length.append(p)
-            if "stroke_z" in n.split('.')[-1]: z.append(p)
-            if "stroke_bend" in n.split('.')[-1]: bend.append(p)
+            if "z" in n.split('.')[-1]: z.append(p)
             if "color_transform" in n.split('.')[-1]: color.append(p)
 
+        path_opt = torch.optim.RMSprop(latent, lr=1e-1)
         position_opt = torch.optim.RMSprop(xt + yt, lr=5e-3*multiplier)
+        height_opt = torch.optim.RMSprop(z, lr=5e-3*multiplier)
         rotation_opt = torch.optim.RMSprop(a, lr=1e-2*multiplier)
         color_opt = None if ink else torch.optim.RMSprop(color, lr=5e-3*multiplier)
-        bend_opt = torch.optim.RMSprop(bend, lr=3e-3*multiplier)
-        length_opt = torch.optim.RMSprop(length, lr=3e-3*multiplier)
-        thickness_opt = torch.optim.RMSprop(z, lr=1e-2*multiplier)
-        
-        # t=5
-        # position_opt = torch.optim.Adam(xt + yt, lr=5e-3*multiplier*t)
-        # rotation_opt = torch.optim.Adam(a, lr=1e-2*multiplier*t)
-        # color_opt = torch.optim.Adam(color, lr=5e-3*multiplier*t)
-        # bend_opt = torch.optim.Adam(bend, lr=3e-3*multiplier*t)
-        # length_opt = torch.optim.Adam(length, lr=1e-2*multiplier*t)
-        # thickness_opt = torch.optim.Adam(z, lr=1e-2*multiplier*t)
 
-        return position_opt, rotation_opt, color_opt, bend_opt, length_opt, thickness_opt
+        return position_opt, height_opt, rotation_opt, color_opt, path_opt 
 
 
-    def forward(self, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0, efficient=False):
+    def forward(self, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0):
         if self.background_img is None:
             canvas = torch.ones((1,4,h,w)).to(device)
         else:
             canvas = T.Resize((h,w), bicubic, antialias=True)(self.background_img).detach()
         canvas[:,3] = 1 # alpha channel
 
-        mostly_opaque = False#True
+        adjust_extreme_alphas = False#True
+        stroke_alphas = None
         if return_alphas: stroke_alphas = []
 
-        for brush_stroke in self.brush_strokes:
+        def apply_stroke(brush_stroke, canvas, stroke_alphas, compute_gradients):
             single_stroke = brush_stroke(h,w, self.param2img)
+            if not compute_gradients: single_stroke = single_stroke.detach()
 
-            if mostly_opaque: single_stroke[:,3][single_stroke[:,3] > 0.5] = 1.
+            if adjust_extreme_alphas:
+                single_stroke[:,3][single_stroke[:,3] > 0.5] = 1.
+                single_stroke[:,3][single_stroke[:,3] < 0.05] = 0.
             if return_alphas: stroke_alphas.append(single_stroke[:,3:])
-            
-            if efficient:
-                mask = single_stroke[:,3:].detach()>0.5
-                mask = torch.cat([mask,]*4, dim=1)
-                canvas[mask] *= 0
-                canvas[mask] += 1
-                canvas[:,:3][mask[:,:3]] *= single_stroke[:,:3][mask[:,:3]]
+
+            if use_alpha:
+                canvas = canvas * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke
             else:
-                if use_alpha:
-                    canvas = canvas * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke
-                else:
-                    canvas = canvas[:,:3] * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke[:,:3]
+                canvas = canvas[:,:3] * (1 - single_stroke[:,3:]*opacity_factor) + single_stroke[:,3:]*opacity_factor * single_stroke[:,:3]
+            
+            return canvas, stroke_alphas
+
+        # Pick strokes_per_batch random indices to compute gradients on
+        # The rest will be forwarded without gradients to save memory
+        num_with_grad = min(self.strokes_per_batch, len(self.brush_strokes))
+        indices_with_grad = torch.randperm(len(self.brush_strokes))[:num_with_grad]
+        use_grad = [False for _ in range(len(self.brush_strokes))]
+        for i in indices_with_grad:
+            use_grad[i] = True
+
+        for i, brush_stroke in enumerate(self.brush_strokes):
+            if use_grad[i]:
+                canvas, stroke_alphas = apply_stroke(brush_stroke, canvas, stroke_alphas, True)
+            else:
+                canvas, stroke_alphas = apply_stroke(brush_stroke, canvas, stroke_alphas, False)
         
         if return_alphas: 
             alphas = torch.cat(stroke_alphas, dim=1)
@@ -114,27 +115,6 @@ class Painting(nn.Module):
         alphas = torch.cat(stroke_alphas, dim=1)
         alphas, _ = torch.max(alphas, dim=1)#alphas.max(dim=1)
         return alphas
-
-    def to_csv(self):
-        ''' To csv string '''
-        csv = ''
-        for bs in self.brush_strokes:
-            # Translation in proportions from top left
-            # x = str((bs.transformation.weights[1].detach().cpu().item()+1)/2)
-            # y = str((bs.transformation.weights[2].detach().cpu().item()+1)/2)
-            # r = str(bs.transformation.weights[0].detach().cpu().item())
-            x = str((bs.transformation.xt[0].detach().cpu().item()+1)/2)
-            y = str((bs.transformation.yt[0].detach().cpu().item()+1)/2)
-            r = str(bs.transformation.a[0].detach().cpu().item())
-            length = str(bs.stroke_length.detach().cpu().item())
-            thickness = str(bs.stroke_z.detach().cpu().item())
-            bend = str(bs.stroke_bend.detach().cpu().item())
-            alpha = str(bs.stroke_alpha.detach().cpu().item())
-            color = bs.color_transform.detach().cpu().numpy()
-            csv += ','.join([x,y,r,length,thickness,bend,alpha,str(color[0]),str(color[1]),str(color[2])])
-            csv += '\n'
-        csv = csv[:-1] # remove training newline
-        return csv
 
     def validate(self):
         ''' Make sure all brush strokes have valid parameters '''
