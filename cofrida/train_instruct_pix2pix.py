@@ -17,11 +17,9 @@
 """Script to fine-tune Stable Diffusion for InstructPix2Pix."""
 
 import argparse
-import copy
 import logging
 import math
 import os
-import random
 import shutil
 from pathlib import Path
 
@@ -38,12 +36,13 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
+from diffusers.loaders import AttnProcsLayers
+from diffusers.models.attention_processor import LoRAAttnProcessor
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInstructPix2PixPipeline, UNet2DConditionModel
@@ -53,6 +52,10 @@ from diffusers.utils import check_min_version, deprecate, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 from copaint_dataset import CoPaintDataset
+import sys 
+sys.path.append('../src/')
+from losses.clip_loss import clip_model, clip_text_loss
+import clip
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -99,6 +102,37 @@ def parse_args():
             " dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,"
             " or to a folder containing files that 🤗 Datasets can understand."
         ),
+    )
+
+    parser.add_argument(
+        "--lora",
+        default=False,
+        action="store_true",
+        help=("Whether to train LoRA or all parameters."),
+    )
+    parser.add_argument(
+        "--lora_rank",
+        type=int,
+        default=256,
+        help=("Rank for LoRA parameters if --lora."),
+    )
+    parser.add_argument(
+        "--use_clip_loss",
+        default=False,
+        action="store_true",
+        help=("Decode latent to compute a CLIP Text loss."),
+    )
+    parser.add_argument(
+        "--clip_loss_multiplier",
+        type=float,
+        default=1.0,
+        help=("Multiply the clip loss by this number."),
+    )
+    parser.add_argument(
+        "--num_diffusion_samples",
+        type=int,
+        default=20,
+        help=("Number of steps with stopgrad to perform."),
     )
     parser.add_argument(
         "--dataset_config_name",
@@ -514,6 +548,27 @@ def main():
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
+    if args.lora:
+        unet.requires_grad_(False)
+
+        # Set correct lora layers
+        lora_attn_procs = {}
+        for name in unet.attn_processors.keys():
+            cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = unet.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = unet.config.block_out_channels[block_id]
+
+            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, 
+                                                    cross_attention_dim=cross_attention_dim,
+                                                    rank=args.lora_rank)
+
+        unet.set_attn_processor(lora_attn_procs)
 
     # Create EMA for the unet.
     if args.use_ema:
@@ -532,39 +587,40 @@ def main():
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
-    # `accelerate` 0.16.0 will have better support for customized saving
-    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
-        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
-        def save_model_hook(models, weights, output_dir):
-            if args.use_ema:
-                ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
+    if not args.lora:
+        # `accelerate` 0.16.0 will have better support for customized saving
+        if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+            # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+            def save_model_hook(models, weights, output_dir):
+                if args.use_ema:
+                    ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
 
-            for i, model in enumerate(models):
-                model.save_pretrained(os.path.join(output_dir, "unet"))
+                for i, model in enumerate(models):
+                    model.save_pretrained(os.path.join(output_dir, "unet"))
 
-                # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                    # make sure to pop weight so that corresponding model is not saved again
+                    weights.pop()
 
-        def load_model_hook(models, input_dir):
-            if args.use_ema:
-                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
-                ema_unet.load_state_dict(load_model.state_dict())
-                ema_unet.to(accelerator.device)
-                del load_model
+            def load_model_hook(models, input_dir):
+                if args.use_ema:
+                    load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
+                    ema_unet.load_state_dict(load_model.state_dict())
+                    ema_unet.to(accelerator.device)
+                    del load_model
 
-            for i in range(len(models)):
-                # pop models so that they are not loaded again
-                model = models.pop()
+                for i in range(len(models)):
+                    # pop models so that they are not loaded again
+                    model = models.pop()
 
-                # load diffusers style into model
-                load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
-                model.register_to_config(**load_model.config)
+                    # load diffusers style into model
+                    load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
+                    model.register_to_config(**load_model.config)
 
-                model.load_state_dict(load_model.state_dict())
-                del load_model
+                    model.load_state_dict(load_model.state_dict())
+                    del load_model
 
-        accelerator.register_save_state_pre_hook(save_model_hook)
-        accelerator.register_load_state_pre_hook(load_model_hook)
+            accelerator.register_save_state_pre_hook(save_model_hook)
+            accelerator.register_load_state_pre_hook(load_model_hook)
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -592,68 +648,24 @@ def main():
     else:
         optimizer_cls = torch.optim.AdamW
 
-    optimizer = optimizer_cls(
-        unet.parameters(),
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-    )
+    if args.lora:
+        lora_layers = AttnProcsLayers(unet.attn_processors)
+        optimizer = optimizer_cls(
+            lora_layers.parameters(),
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
+    else:
+        optimizer = optimizer_cls(
+            unet.parameters(),
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
 
-    # Get the datasets: you can either provide your own training and evaluation files (see below)
-    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
-
-    # # In distributed training, the load_dataset function guarantees that only one local process can concurrently
-    # # download the dataset.
-    # if args.dataset_name is not None:
-    #     # Downloading and loading a dataset from the hub.
-    #     dataset = load_dataset(
-    #         args.dataset_name,
-    #         args.dataset_config_name,
-    #         cache_dir=args.cache_dir,
-    #     )
-    # else:
-    #     data_files = {}
-    #     if args.train_data_dir is not None:
-    #         data_files["train"] = os.path.join(args.train_data_dir, "**")
-    #     dataset = load_dataset(
-    #         "imagefolder",
-    #         data_files=data_files,
-    #         cache_dir=args.cache_dir,
-    #     )
-    #     # See more about loading custom images at
-    #     # https://huggingface.co/docs/datasets/main/en/image_load#imagefolder
-
-    # # Preprocessing the datasets.
-    # # We need to tokenize inputs and targets.
-    # column_names = dataset["train"].column_names
-
-    # # 6. Get the column names for input/target.
-    # dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
-    # if args.original_image_column is None:
-    #     original_image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
-    # else:
-    #     original_image_column = args.original_image_column
-    #     if original_image_column not in column_names:
-    #         raise ValueError(
-    #             f"--original_image_column' value '{args.original_image_column}' needs to be one of: {', '.join(column_names)}"
-    #         )
-    # if args.edit_prompt_column is None:
-    #     edit_prompt_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
-    # else:
-    #     edit_prompt_column = args.edit_prompt_column
-    #     if edit_prompt_column not in column_names:
-    #         raise ValueError(
-    #             f"--edit_prompt_column' value '{args.edit_prompt_column}' needs to be one of: {', '.join(column_names)}"
-    #         )
-    # if args.edited_image_column is None:
-    #     edited_image_column = dataset_columns[2] if dataset_columns is not None else column_names[2]
-    # else:
-    #     edited_image_column = args.edited_image_column
-    #     if edited_image_column not in column_names:
-    #         raise ValueError(
-    #             f"--edited_image_column' value '{args.edited_image_column}' needs to be one of: {', '.join(column_names)}"
-    #         )
 
     dataset = CoPaintDataset(args.data_dict)
 
@@ -740,7 +752,7 @@ def main():
             "original_images":original_images,
             "edited_images":edited_images
         }
-
+    
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -766,9 +778,14 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
-    )
+    if args.lora:
+        lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            lora_layers, optimizer, train_dataloader, lr_scheduler
+        )
+    else:
+        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet, optimizer, train_dataloader, lr_scheduler
+        )
 
     if args.use_ema:
         ema_unet.to(accelerator.device)
@@ -784,6 +801,8 @@ def main():
     # Move text_encode and vae to gpu and cast to weight_dtype
     text_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
+
+    unet.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -929,6 +948,65 @@ def main():
                 model_pred = unet(concatenated_noisy_latents, timesteps, encoder_hidden_states).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
+
+                # Decode image and compute a CLIP Loss potentially
+                if args.use_clip_loss:
+                    # First, generate a denoised images as a generating sample
+                    with torch.no_grad():
+                        # generate images through more samplings
+                        num_samplings = args.num_diffusion_samples
+                        custom_timesteps = []
+                        if timesteps < (num_samplings-1) and timesteps!= 0:
+                            # custom_timesteps.append(timesteps.cpu())
+                            custom_timesteps.append((timesteps.cpu())[0])
+                            custom_timesteps.append(0)
+                        else:
+                            custom_steps = timesteps.cpu()//(num_samplings-1)
+                            for i_sampling in range(num_samplings):
+                                if i_sampling != (num_samplings-1):
+                                    # custom_timesteps.append(timesteps.cpu() - i_sampling*custom_steps)
+                                    custom_timesteps.append((timesteps.cpu() - i_sampling*custom_steps)[0])
+                                else:
+                                    custom_timesteps.append(0)
+                        # Set timesteps
+                        try:
+                            noise_scheduler.set_timesteps(timesteps=custom_timesteps, device=accelerator.device)
+                        except Exception as e:
+                            print('problem setting timesteps', e)
+                            continue
+                    CGF_Scale = 4.5
+                    # Denoise the latents further. Only record gradients of first pass.
+                    for i, t in enumerate(noise_scheduler.timesteps):
+                        if i != 0:      # 0 has been predicted
+                            noisy_latents = noise_scheduler.scale_model_input(noisy_latents, t)
+                            with torch.no_grad():
+                                # Concatenate the `original_image_embeds` with the `noisy_latents`.
+                                concatenated_noisy_latents = torch.cat([noisy_latents, original_image_embeds], dim=1)
+
+                                model_pred = unet(concatenated_noisy_latents, t, encoder_hidden_states).sample
+                            # with torch.no_grad():
+                            #     model_null_pred = unet(noisy_latents[:encoder_null_hidden_states.size(0)], t, encoder_null_hidden_states).sample
+                        # noise_CFG = model_null_pred + CGF_Scale * (model_pred - model_null_pred)
+                        noise_CFG = model_pred
+                        noisy_latents = noise_scheduler.step(noise_CFG, t, noisy_latents)[0]
+
+                    # Decode denoised latents into an image
+                    latent_t0 = noisy_latents.to(accelerator.device, dtype=weight_dtype)
+                    decoded_image = vae.decode(latent_t0 / vae.config.scaling_factor, return_dict=False)[0]
+                    
+                    # Compute the clip text loss
+                    with torch.no_grad():
+                        try:
+                            text_features = clip_model.encode_text(clip.tokenize(batch["text"][0][0]).to(accelerator.device))
+                        except Exception as e:
+                            print('couldnt encode clip text', e)
+                            continue
+                    clip_loss = clip_text_loss(decoded_image, text_features, num_augs=4)
+                    clip_loss *= args.clip_loss_multiplier
+
+                    loss += clip_loss[0]
+
+
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
@@ -936,7 +1014,8 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                    params_to_clip = lora_layers.parameters() if args.lora else unet.parameters()
+                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -1093,28 +1172,29 @@ def main():
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
-                        if args.checkpoints_total_limit is not None:
-                            checkpoints = os.listdir(args.output_dir)
-                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
-                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+                        if not args.lora:
+                            if args.checkpoints_total_limit is not None:
+                                checkpoints = os.listdir(args.output_dir)
+                                checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                                checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
-                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
-                            if len(checkpoints) >= args.checkpoints_total_limit:
-                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
-                                removing_checkpoints = checkpoints[0:num_to_remove]
+                                # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                                if len(checkpoints) >= args.checkpoints_total_limit:
+                                    num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                    removing_checkpoints = checkpoints[0:num_to_remove]
 
-                                logger.info(
-                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
-                                )
-                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+                                    logger.info(
+                                        f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                    )
+                                    logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
-                                for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
-                                    shutil.rmtree(removing_checkpoint)
+                                    for removing_checkpoint in removing_checkpoints:
+                                        removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                        shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+                            save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                            accelerator.save_state(save_path)
+                            logger.info(f"Saved state to {save_path}")
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -1138,7 +1218,12 @@ def main():
             unet=unet,
             revision=args.revision,
         )
-        pipeline.save_pretrained(args.output_dir)
+
+        if args.lora:
+            unet = unet.to(torch.float32)
+            unet.save_attn_procs(args.output_dir)
+        else:
+            pipeline.save_pretrained(args.output_dir)
 
         if args.push_to_hub:
             upload_folder(
@@ -1161,6 +1246,7 @@ def main():
                             image_guidance_scale=1.5,
                             guidance_scale=7,
                             generator=generator,
+                            num_images_per_prompt=1
                         ).images[0]
                     )
 

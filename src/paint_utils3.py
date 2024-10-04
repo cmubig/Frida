@@ -326,14 +326,13 @@ def parse_csv_line_continuous(line):
     return x, y, r, length, thickness, bend, color
 
 def format_img(tensor_img):
-    np_painting = tensor_img.detach().cpu().numpy()[0].transpose(1,2,0)
+    np_painting = tensor_img[:,:3].detach().cpu().numpy()[0].transpose(1,2,0)
     if np_painting.shape[-1] == 1:
         np_painting = cv2.cvtColor(np.float32(np_painting), cv2.COLOR_GRAY2RGB)
     return np.clip(np_painting, a_min=0, a_max=1)
 
 
 def init_brush_strokes(opt, diff, n_strokes, ink):
-    if not IN_COLAB: matplotlib.use('TkAgg')
     brush_strokes = []
     
     if ink:
@@ -379,7 +378,7 @@ def init_brush_strokes(opt, diff, n_strokes, ink):
     return brush_strokes
 
 def initialize_painting(opt, n_strokes, target_img, background_img, ink, device='cuda'):
-    attn = (target_img[0] - background_img[0]).abs().mean(dim=0)
+    attn = (target_img[0,:3] - background_img[0,:3]).abs().mean(dim=0)
     brush_strokes = init_brush_strokes(opt, attn, n_strokes, ink)
     painting = Painting(opt, 0, background_img=background_img, 
         brush_strokes=brush_strokes).to(device)

@@ -1,4 +1,27 @@
-# FRIDA: A Collaborative Robot Painter with a Differentiable, Real2Sim2Real Simulated Planning Environment  <a href="https://twitter.com/FridaRobot" target="_blank"><img src="https://res.cloudinary.com/crunchbase-production/image/upload/c_lpad,h_256,w_256,f_auto,q_auto:eco,dpr_1/v1397180207/d242197edc3ff044620cf2d8ff39d6b3.jpg" height=32/></a> <a href="https://colab.research.google.com/github/pschaldenbrand/Frida/blob/master/Frida.ipynb" target="_blank"><img src="https://pbs.twimg.com/profile_images/1330956917951270912/DyIZtTA8_400x400.png" height=32/></a> <a href="https://arxiv.org/abs/2210.00664" target="_blank"><img src="https://pbs.twimg.com/media/EcglfCHU4AA6-yj.png" height=32/></a><a href="https://www.tiktok.com/@frida_robot?lang=en" target="_blank"><img src="https://sf-tb-sg.ibytedtos.com/obj/eden-sg/uhtyvueh7nulogpoguhm/tiktok-icon2.png" height=32/></a>
+# FRIDA <a href="https://twitter.com/FridaRobot" target="_blank"><img src="https://about.x.com/content/dam/about-twitter/x/brand-toolkit/logo-black.png.twimg.1920.png" height=32/></a>   <a href="https://www.tiktok.com/@frida_robot?lang=en" target="_blank"> <img src="https://sf-tb-sg.ibytedtos.com/obj/eden-sg/uhtyvueh7nulogpoguhm/tiktok-icon2.png" height=32/></a>
+
+FRIDA (A Framework and Robotics Initiative for Developing Arts), is a robotic painting project developed at 
+The Robotics Institute, Carnegie Mellon University.
+This repository contains the code for two ICRA papers described below.
+
+Maintained by Peter Schaldenbrand
+
+
+
+
+# [CoFRIDA: Self-Supervised Fine-Tuning for Human-Robot Co-Painting](https://pschaldenbrand.github.io/cofrida/)
+<b>Best Paper on Human-Robot Interaction, ICRA 2024</b>
+
+[Peter Schaldenbrand](https://pschaldenbrand.github.io/#about.html), [Gaurav Parmar](https://gauravparmar.com/), [Jun-Yan Zhu](https://www.cs.cmu.edu/~junyanz/), [Jim McCann](http://www.cs.cmu.edu/~jmccann/), and [Jean Oh](https://www.cs.cmu.edu/~./jeanoh/)
+
+A collaborative robotic painting assistant. Code for this paper is in the [frida/cofrida directory](https://github.com/cmubig/Frida/tree/master/cofrida).
+
+https://github.com/cmubig/Frida/assets/14282484/693cd7c1-68da-4847-8f68-95364acf14ee
+
+
+# FRIDA: A Collaborative Robot Painter with a Differentiable, Real2Sim2Real Simulated Planning Environment <a href="https://colab.research.google.com/github/pschaldenbrand/Frida/blob/master/Frida.ipynb" target="_blank"><img src="https://pbs.twimg.com/profile_images/1330956917951270912/DyIZtTA8_400x400.png" height=32/></a> <a href="https://arxiv.org/abs/2210.00664" target="_blank"><img src="https://pbs.twimg.com/media/EcglfCHU4AA6-yj.png" height=32/></a>
+
+<b>Finalist for Best Paper in Deployed Systems, ICRA 2023</b>
 
 [Peter Schaldenbrand](https://pschaldenbrand.github.io/#about.html), [Jean Oh](https://www.cs.cmu.edu/~./jeanoh/), [Jim McCann](http://www.cs.cmu.edu/~jmccann/)
 
@@ -13,8 +36,8 @@ painting using real data, adopting the idea of real to simulation to real
 (real2sim2real) in which it can plan and dynamically respond to stochasticity in the
 execution of that plan.
 <a href="https://twitter.com/FridaRobot" target="_blank">
-    <img src="https://res.cloudinary.com/crunchbase-production/image/upload/c_lpad,h_256,w_256,f_auto,q_auto:eco,dpr_1/v1397180207/d242197edc3ff044620cf2d8ff39d6b3.jpg" height=16/>
-    Follow FRIDA's Paintings on Twitter!
+    <img src="https://about.x.com/content/dam/about-twitter/x/brand-toolkit/logo-black.png.twimg.1920.png" height=16/>
+    Follow FRIDA's Paintings on X/Twitter!
 </a>
 <a href="https://colab.research.google.com/github/pschaldenbrand/Frida/blob/master/Frida.ipynb" target="_blank">
     <img src="https://pbs.twimg.com/profile_images/1330956917951270912/DyIZtTA8_400x400.png" height=16/>
@@ -41,8 +64,18 @@ git clone https://github.com/pschaldenbrand/Frida.git
 # Install CUDA
 
 # We use Python 3.8
+
+# Install python packages with PIP
 cd Frida
 pip3 install --r requirements.txt
+
+# (OR) Install python packages with Conda
+cd Frida
+conda env create -n frida --file environment.yml
+# Beware, you may need to re-install torch/torchvision depending on your cuda version.
+# The following lines worked on our CUDA 12.2 system
+pip uninstall torch torchvision
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 # Camera installation
 sudo apt install gphoto2 libgphoto2*
@@ -64,6 +97,15 @@ Below you can see a depiction of FRIDA's materials. The locations of these items
 
 ![Depiction of FRIDA's setup](./sample/materials_json_diagram.jpg)
 
+# Equipment
+
+Here is a list of the equipment that we use and some links to purchase. Each item may be able to be swapped out with small changes to the code.
+
+- [Palettes for paint](https://www.amazon.com/gp/product/B07DKWTXWT/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1)
+- [8x10 inch canvas boards](https://www.amazon.com/gp/product/B07RNK7DJ7/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1)
+- [11x14 inch canvas boards](https://www.amazon.com/gp/product/B087F4F5DK/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1)
+- [Canon EOS Rebel T7i (With 18-55mm Lens and With Web Streaming Kit)](https://www.bhphotovideo.com/c/product/1714575-REG/canon_canon_eos_rebel_t7.html)
+- [Camera Desk Mount Stand](https://www.amazon.com/gp/product/B08LV7GZVB/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&th=1)
 
 # Monitoring Painting Progress
 
@@ -128,6 +170,7 @@ python3 paint.py --simulate --use_cache --cache_dir caches/sharpie_short_strokes
 ## Acknowledgements
 
 Thank you to: 
+- Sunyu Wang for the brilliant, spring-loaded Sharpie holding end-effector
 - [Jia Chen Xu](https://github.com/jxu12345) for writing FRIDA's perception code
 - Heera Sekhr and Jesse Ding for their help in the early stages of designing FRIDA's planning algorithms
 - [Vihaan Misra](https://github.com/convexalpha) for writing a sketch and audio loss functions.

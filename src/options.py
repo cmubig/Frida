@@ -59,7 +59,7 @@ class Options(object):
         # Planning Parameters
         parser.add_argument('--dont_plan', action='store_true', help='Use saved plan from last run')
         parser.add_argument('--num_strokes', type=int, default=400)
-        parser.add_argument('--num_adaptations', type=int, default=4)
+        parser.add_argument('--num_adaptations', type=int, default=1)
         parser.add_argument('--fill_weight', type=float, default=0.0, help="Encourage strokes to fill canvas.")
         parser.add_argument('--strokes_per_batch', type=int, default=None)
 
@@ -93,32 +93,34 @@ class Options(object):
 
         # CoFRIDA Training Parameters
         parser.add_argument("--cofrida_dataset", type=str,
-            default="laion/laion-art", help='A dataset for training CoFRIDA')
+            default="ChristophSchuhmann/MS_COCO_2017_URL_TEXT", help='A dataset for training CoFRIDA')
+        parser.add_argument("--generate_cofrida_training_data", action='store_true',
+            default=False, help='Generate training images for CoFRIDA. Use with dataset nateraw/parti-prompts')
         parser.add_argument("--cofrida_background_image", type=str,
             default='./blank_canvas.jpg', help='path to image to use as background for cofrida drawings/paintings')
         parser.add_argument("--output_parent_dir", type=str,
             help='Where to save the data. Can continue if partially complete.')
-        parser.add_argument("--removal_method", type=str,
-            default='random',
-            help='how to make partial sketchs. [random|salience]')
+        # parser.add_argument("--removal_method", type=str,
+        #     default='random',
+        #     help='how to make partial sketchs. [random|salience]')
         parser.add_argument("--max_images", type=int,
             default=20000, help='A dataset for training controlnet')
-        parser.add_argument("--max_strokes_added", type=int,
-            default=200, help='Final amount of strokes')
-        parser.add_argument("--min_strokes_added", type=int,
-            default=100, help='Amount of strokes in the partial sketch')
         parser.add_argument("--num_images_to_consider_for_simplicity", type=int,
             default=3, help='Load this many images and take the one with fewest edges for simplicity.')
+        parser.add_argument("--max_strokes_added", type=int,
+            default=200, help='Maximum possible strokes in a cofrida training painting')
+        parser.add_argument("--min_strokes_added", type=int,
+            default=100, help='Minimum number of strokes in a cofrida training painting')
         parser.add_argument("--n_iters", type=int,
             default=300, help='Number of optimization iterations.')
         parser.add_argument("--colors", type=str,
             default=None, help='Specify a fixed palette of paint colors.')
-        parser.add_argument("--turn_takes", type=int,
-            default=0, help='How many turns for generating pix2pix training data.')
         parser.add_argument("--codraw_metric_data_dir", type=str,
             default=None, help='Where to store evaluation data.')
         parser.add_argument("--codraw_eval_setting", type=str,
             default=None, help='[same_text_fill_in,same_text_add_detail_different_text,add_background,something_from_nothing]')
+        parser.add_argument("--retrain_cofrida_image_generator", type=int,
+            default=10, help='Retrain cofrida image generator every time this many images are generated.')
         
         
         ### Argument is not used, but is allowed for flask compatability ###
@@ -141,11 +143,11 @@ class Options(object):
         
         self.opt = {**self.opt, **materials}
 
-        thresh = 0.005 if self.ink else 0.002 # 0.2cm tolerance on overshooting the canvas
-        self.Y_CANVAS_MAX = self.CANVAS_POSITION[1] + self.CANVAS_HEIGHT_M + thresh
-        self.Y_CANVAS_MIN = self.CANVAS_POSITION[1] - thresh
-        self.X_CANVAS_MAX = self.CANVAS_POSITION[0] + self.CANVAS_WIDTH_M/2 + thresh
-        self.X_CANVAS_MIN = self.CANVAS_POSITION[0] - self.CANVAS_WIDTH_M/2 - thresh
+        thresh = 0.001 # 0.1cm tolerance on overshooting the canvas
+        self.Y_CANVAS_MAX = self.CANVAS_POSITION[1] + self.CANVAS_HEIGHT_M - thresh
+        self.Y_CANVAS_MIN = self.CANVAS_POSITION[1] + thresh
+        self.X_CANVAS_MAX = self.CANVAS_POSITION[0] + self.CANVAS_WIDTH_M/2 - thresh
+        self.X_CANVAS_MIN = self.CANVAS_POSITION[0] - self.CANVAS_WIDTH_M/2 + thresh
 
         if self.use_cache and os.path.exists(os.path.join(self.cache_dir, 'stroke_library', 'stroke_settings_during_library.json')):
             print("Retrieving settings from stroke library for consistency:")

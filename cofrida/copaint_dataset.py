@@ -21,7 +21,7 @@ def load_img(path, h=None, w=None):
     return im
 
 class CoPaintDataset(Dataset):
-    def __init__(self, data_dict_path):
+    def __init__(self, data_dict_path, clip_score_cutoff=0.6):
         """
         Arguments:
             root_dir (string): Directory with all the images.
@@ -34,21 +34,6 @@ class CoPaintDataset(Dataset):
         self.data_source = self.data_dict
         self.parent_dir = os.path.dirname(data_dict_path)
         
-        # Only from zero prev strokes
-        # filtered_dict = []
-        # for d in self.data_dict:
-        #     if d['num_prev_strokes'] == 0:
-        #         filtered_dict.append(d)
-        # self.data_dict = filtered_dict
-
-        # Only from zero prev strokes
-        # filtered_dict = []
-        # for d in self.data_dict:
-        #     if d['num_prev_strokes'] < 200:
-        #         filtered_dict.append(d)
-        # self.data_dict = filtered_dict
-
-
         # # Only certain methods
         # # valid_methods = ['random', 'salience', 'not_salience', 'object', 'all']
         # valid_methods = ['random', 'object', 'all']
@@ -65,18 +50,11 @@ class CoPaintDataset(Dataset):
                 filtered_dict.append(d)
         self.data_dict = filtered_dict
 
-        # # Only use examples with good clipscores
-        # filtered_dict = []
-        # for d in self.data_dict:
-        #     # if d['clip_score'] > 0.65:
-        #     if d['photo_to_sketch_diff'] > 0.03 and d['clip_score'] > 0.60:
-        #         filtered_dict.append(d)
-        # self.data_dict = filtered_dict
         # Only use examples with good clipscores
         filtered_dict = []
         for d in self.data_dict:
-            # if d['clip_score'] > 0.65:
-            if d['photo_to_sketch_diff'] > 0.03 and d['clip_score'] > 0.50:
+            if d['clip_score'] > clip_score_cutoff:
+            # if d['photo_to_sketch_diff'] > 0.03 and d['clip_score'] > 0.50:
                 filtered_dict.append(d)
         self.data_dict = filtered_dict
 
