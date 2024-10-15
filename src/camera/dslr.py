@@ -22,6 +22,7 @@ from camera.intrinsic_calib import computeIntrinsic
 import glob
 
 from camera.dslr_gphoto import *
+from paint_utils3 import load_img
 
 # https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/opencv_viewer_example.py
 
@@ -221,7 +222,8 @@ class SimulatedWebCam():
         self.opt = opt
         w_h_ratio = float(opt.CANVAS_WIDTH_M) / opt.CANVAS_HEIGHT_M
         h = 1024
-        self.canvas = np.ones((h,int(h * w_h_ratio),3), dtype=np.float32) * 255.
+        # self.canvas = np.ones((h,int(h * w_h_ratio),3), dtype=np.float32) * 255.
+        self.canvas = load_img('../cofrida/blank_canvas.jpg')[0,:3].cpu().numpy().astype(np.float32).transpose(1,2,0)
     def get_canvas(self):
         return self.canvas
     def get_canvas_tensor(self, h=None, w=None):

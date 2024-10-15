@@ -37,6 +37,7 @@ class Options(object):
         parser.add_argument('--no_camera', action='store_true', help="No camera; use if you just want to execute without adaptations.")
         parser.add_argument('--ink', action='store_true')
         parser.add_argument('--paint_from_image', action='store_true')
+        parser.add_argument('--non_linear_darkness', action='store_true')
         parser.add_argument('--vae_path', type=str)
         parser.add_argument('--painting_path', type=str, default=None)
         parser.add_argument('--overwrite_painting', action='store_true')
@@ -74,7 +75,7 @@ class Options(object):
         parser.add_argument('--num_augs', type=int, default=30)
 
         # Painting Parameters
-        parser.add_argument('--how_often_to_get_paint', type=int, default=4)
+        parser.add_argument('--how_often_to_get_paint', type=int, default=5)
         parser.add_argument('--max_length_before_new_paint', type=float, default=0.75,
                             help="Maximum length (in meters) to paint without getting new paint from palette")
 
@@ -82,9 +83,9 @@ class Options(object):
         parser.add_argument("--tensorboard_dir", type=str,
             default='./painting_log', help='Where to write tensorboard log to.')
         parser.add_argument('--plan_gif_dir', type=str, default='../outputs/')
-        parser.add_argument('--log_frequency', type=int, default=5, help="Log to TB after this many optim. iters.")
+        parser.add_argument('--log_frequency', type=int, default=4, help="Log to TB after this many optim. iters.")
         parser.add_argument("--output_dir", type=str, default="../outputs/", help='Where to write output to.')
-        parser.add_argument('--log_photo_frequency', type=int, default=20, help="Log to TB after this many strokes painted.")
+        parser.add_argument('--log_photo_frequency', type=int, default=5, help="Log to TB after this many strokes painted.")
 
 
         # CoFRIDA Run-Time Parameters

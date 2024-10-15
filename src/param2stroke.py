@@ -67,7 +67,7 @@ class MatMulLayer(nn.Module):
         return x
 
 class BezierRenderer(nn.Module):
-    def __init__(self, size_x, size_y, num_pts):
+    def __init__(self, size_x, size_y, num_pts, non_lin=False):
         super(BezierRenderer, self).__init__()
         self.size_x = size_x # grid dimensions (size_x x size_y)
         self.size_y = size_y
@@ -83,6 +83,11 @@ class BezierRenderer(nn.Module):
         # self.thick_mult = nn.Parameter(torch.ones((1))*0.3)
         self.thick_bias = nn.Parameter(torch.zeros((1))+0.1)
         self.dark_exp = nn.Parameter(torch.ones((1)))
+        
+        self.non_lin = non_lin
+        if self.non_lin:
+            self.dark_non_lin_weight = nn.Parameter(torch.ones((1))*0.5)
+
 
         # self.conv_mult = nn.Parameter(torch.zeros((1)))
         # self.conv = nn.Sequential(
@@ -164,6 +169,13 @@ class BezierRenderer(nn.Module):
         darkness = torch.clamp((thickness - distances)/(thickness), min=0.0, max=1.0) # (P-1, size_y, size_x)
         darkness = (darkness+1e-4)**self.dark_exp # (P-1, size_y, size_x)
 
+        if self.non_lin:
+            # Push furth towards 0 or 1
+            dark_non_lin = 1/(1+torch.exp(-1*(darkness*16-8))) 
+            
+            # Weight this value
+            darkness = self.dark_non_lin_weight*dark_non_lin \
+                + (1-self.dark_non_lin_weight)*darkness
 
         import torchgeometry
         import warnings
@@ -224,7 +236,7 @@ class BezierRenderer(nn.Module):
         pass
 
 def get_param2img(opt, device='cuda'):
-    param2img = StrokeParametersToImage()
+    param2img = StrokeParametersToImage(non_lin=opt.non_linear_darkness,)
     saved_model_fn = os.path.join(opt.cache_dir, 'param2img.pt')
     if os.path.exists(saved_model_fn):
         param2img.load_state_dict(torch.load(saved_model_fn))
@@ -255,7 +267,7 @@ def process_img(img):
 
 
 class StrokeParametersToImage(nn.Module):
-    def __init__(self, output_dim_meters=None):
+    def __init__(self, output_dim_meters=None, non_lin=False):
         super(StrokeParametersToImage, self).__init__()
         self.size_x = 200#128#256
         self.size_y = 200#128#256
@@ -277,7 +289,8 @@ class StrokeParametersToImage(nn.Module):
         
         self.renderer = BezierRenderer(size_x=self.size_x, 
                                        size_y=self.size_y,
-                                       num_pts=32)
+                                       num_pts=32,
+                                       non_lin=non_lin)
 
     def get_rotated_trajectory(self, rotation, trajectory):
         '''
@@ -462,7 +475,9 @@ def train_param2stroke(opt, device='cuda', n_log=8, batch_size=32):
     print('{} training strokes. {} validation strokes'.format(len(train_canvases_before), len(val_canvases_before)))
 
 
-    trans = StrokeParametersToImage(output_dim_meters=(opt.STROKE_LIBRARY_CANVAS_HEIGHT_M, opt.STROKE_LIBRARY_CANVAS_WIDTH_M))
+    trans = StrokeParametersToImage(
+        non_lin=opt.non_linear_darkness,
+        output_dim_meters=(opt.STROKE_LIBRARY_CANVAS_HEIGHT_M, opt.STROKE_LIBRARY_CANVAS_WIDTH_M))
     trans = trans.to(device)
     
     # Need to render at the correct ratio

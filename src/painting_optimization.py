@@ -7,6 +7,7 @@
 ##########################################################
 
 
+import time
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -24,7 +25,7 @@ from losses.dino_loss import dino_loss
 from losses.clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip_fc_loss
 import clip
 
-from paint_utils3 import discretize_colors, format_img, load_img, randomize_brush_stroke_order, sort_brush_strokes_by_color
+from paint_utils3 import discretize_colors, format_img, load_img, randomize_brush_stroke_order, sort_brush_strokes_by_color, to_video
 
 # from paint_utils3 import *
 
@@ -164,9 +165,11 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
                 opt.objective_data_loaded[k], p[:,:3], 
                 weight=opt.objective_weight[k],
                 num_augs=opt.num_augs)
-        #loss += (1-alphas).mean() * opt.fill_weight
+
         if opt.fill_weight > 0:
-            loss += torch.abs(1-alphas).mean() * opt.fill_weight
+            alphas_loss = alphas
+            alphas_loss[alphas_loss > 1] = 0
+            loss += (-1*alphas_loss).mean()
         loss.backward()
 
         for o in optims: o.step() if o is not None else None
@@ -180,7 +183,7 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
             # make sure hidden strokes get some attention
             painting = randomize_brush_stroke_order(painting)
 
-        if (it % 10 == 0 and it > (0.5*optim_iter)) or it > max(0.9*optim_iter, optim_iter-100):
+        if (it % 10 == 0 and it > (0.75*optim_iter)) or it > max(0.9*optim_iter, optim_iter-100):
             if opt.use_colors_from is None:
                 # Cluster the colors from the existing painting
                 if not opt.ink and not use_input_palette:
@@ -201,5 +204,7 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
         if shuffle_strokes:
             painting = sort_brush_strokes_by_color(painting, bin_size=opt.bin_size)
     log_progress(painting, opt, force_log=True, log_freq=opt.log_frequency, title=log_title)
+
+    to_video(plans, fn=os.path.join(opt.plan_gif_dir,'sim_canvases{}.mp4'.format(str(time.time()))))
 
     return painting, color_palette

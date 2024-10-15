@@ -492,7 +492,7 @@ class SimulatedRobot(Robot, object):
     def good_night_robot(self):
         pass
 
-    def go_to_cartesian_pose(self, position, orientation):
+    def go_to_cartesian_pose(self, position, orientation, fast=False):
         pass
 
 

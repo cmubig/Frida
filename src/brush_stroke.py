@@ -207,7 +207,7 @@ class BrushStroke(nn.Module):
 
     def make_valid(stroke):
         with torch.no_grad():
-            stroke.latent.data.clamp_(-1.5, 1.5)
+            stroke.latent.data.clamp_(-2, 2)
 
             stroke.xt.data.clamp_(0,1.)
             stroke.yt.data.clamp_(0,1.)

@@ -18,7 +18,7 @@ import pickle
 
 import torch
 from tqdm import tqdm
-from paint_utils3 import canvas_to_global_coordinates, discretize_colors, get_colors, nearest_color, random_init_painting, save_colors, show_img, to_video
+from paint_utils3 import canvas_to_global_coordinates, discretize_colors, get_colors, initialize_painting, nearest_color, random_init_painting, save_colors, show_img, to_video
 
 from painter import Painter
 from painting import Painting
@@ -112,7 +112,7 @@ if __name__ == '__main__':
                 color_ind, _ = nearest_color(stroke.color_transform.detach().cpu().numpy(), 
                                              color_palette.detach().cpu().numpy())
                 new_paint_color = color_ind != curr_color
-                if new_paint_color or consecutive_strokes_no_clean > 12:
+                if new_paint_color or consecutive_strokes_no_clean > 120:
                     if new_paint_color: painter.clean_paint_brush()
                     painter.clean_paint_brush()
                     consecutive_strokes_no_clean = 0
@@ -156,7 +156,7 @@ if __name__ == '__main__':
     if not painter.opt.ink:
         for i in range(3): painter.clean_paint_brush()
 
-    to_video(canvas_photos, fn=os.path.join(opt.plan_gif_dir,'sim_canvases{}.mp4'.format(str(time.time()))))
+    to_video(canvas_photos, fn=os.path.join(opt.plan_gif_dir,'real_canvases{}.mp4'.format(str(time.time()))))
     # with torch.no_grad():
     #     save_image(painting(h*4,w*4, use_alpha=False), os.path.join(opt.plan_gif_dir, 'init_painting_plan{}.png'.format(str(time.time()))))
     # save_image(canvas_photos[-1], os.path.join(opt.plan_gif_dir, 'init_painting_plan{}.png'.format(str(time.time()))))
