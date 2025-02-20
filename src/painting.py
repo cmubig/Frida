@@ -7,7 +7,8 @@ import numpy as np
 from brush_stroke import BrushStroke
 from param2stroke import get_param2img
 
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+# TODO: Propose changing device into the opt variable so it is consi
+device = 'cpu' # torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 
 class Painting(nn.Module):
@@ -28,7 +29,7 @@ class Painting(nn.Module):
         else:
             self.brush_strokes = nn.ModuleList(brush_strokes)
         
-        self.param2img = get_param2img(opt)
+        self.param2img = get_param2img(opt, device=device)
 
     def get_optimizers(self, multiplier=1.0, ink=False):
         xt = []
