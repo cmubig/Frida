@@ -8,7 +8,7 @@ from brush_stroke import BrushStroke
 from param2stroke import get_param2img
 
 # TODO: Propose changing device into the opt variable so it is consi
-device = 'cpu' # torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 
 class Painting(nn.Module):
@@ -170,3 +170,51 @@ class Painting(nn.Module):
     
     def __len__(self):
         return len(self.brush_strokes)
+
+class PaintingBatch(nn.Module):
+    def __init__(self, opt, batch_size=1, background_img=None):
+        # h, w are canvas height and width in pixels
+        super().__init__()
+        self.background_img = background_img
+        
+        if self.background_img.shape[1] == 3: # add alpha channel
+            a =  torch.zeros((batch_size,1,self.background_img.shape[-2],self.background_img.shape[-1])).to(device)
+            self.background_img = torch.cat((self.background_img, a), dim=1)
+        
+        self.param2img = get_param2img(opt, device=device)
+    
+    def forward(self, stroke_batches, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0, efficient=False):
+        if self.background_img is None:
+            canvas = torch.ones((1,4,h,w)).to(device)
+        else:
+            canvas = T.Resize((h,w), bicubic, antialias=True)(self.background_img).detach()
+        canvas[:,3] = 1 # alpha channel
+
+        mostly_opaque = False#True
+        if return_alphas: stroke_alphas = []
+
+        for stroke_batch in stroke_batches:
+            strokes = stroke_batch(h,w, self.param2img)
+
+            if mostly_opaque: strokes[:,3][strokes[:,3] > 0.5] = 1.
+            if return_alphas: stroke_alphas.append(strokes[:,3:])
+            
+            if efficient:
+                mask = strokes[:,3:].detach()>0.5
+                mask = torch.cat([mask,]*4, dim=1)
+                canvas[mask] *= 0
+                canvas[mask] += 1
+                canvas[:,:3][mask[:,:3]] *= strokes[:,:3][mask[:,:3]]
+            else:
+                if use_alpha:
+                    canvas = canvas * (1 - strokes[:,3:]*opacity_factor) + strokes[:,3:]*opacity_factor * strokes
+                else:
+                    canvas = canvas[:,:3] * (1 - strokes[:,3:]*opacity_factor) + strokes[:,3:]*opacity_factor * strokes[:,:3]
+            
+        if return_alphas:
+            alphas = torch.cat(stroke_alphas, dim=1)
+            # alphas, _ = torch.max(alphas, dim=1) ###################################################
+            alphas = torch.sum(alphas, dim=1) ###################################################
+            return canvas, alphas
+            
+        return canvas
