@@ -1,0 +1,46 @@
+# Use an official CUDA base image with Python 3.8
+# FROM nvidia/cuda:12.2.0-devel-ubuntu20.04
+FROM ubuntu:20.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND noninteractive
+ENV PYTHONUNBUFFERED 1
+# Add host IP environment variable
+ENV HOST_IP 0.0.0.0
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.8 \
+    python3-pip \
+    python3.8-venv \
+    gphoto2 \
+    libgphoto2-dev \
+    wget \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install USB dependencies
+RUN apt-get update && apt-get install -y \
+    usbutils \
+    udev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.8 as the default Python version
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1
+
+WORKDIR /usr/src/app/
+
+# RUN git -b spline-frida-z-master --single branch clone git@github.com:cmubig/Frida.git
+
+COPY  ./requirements.txt .
+
+# Install Python packages with PIP
+RUN pip3 install --upgrade pip && pip3 install -r requirements.txt
+
+COPY  . .
+
+EXPOSE 5172
+
+
+# Set the entrypoint to bash for interactive use
+ENTRYPOINT ["tail", "-f", "/dev/null"]
