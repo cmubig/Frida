@@ -540,7 +540,7 @@ class BrushStrokeBatch(nn.Module):
         self.MAX_BEND = opt.MAX_BEND
         
         if init_differentiably:
-            self.transformation = RigidBodyTransformation(a, xt, yt, 
+            self.transformation = RigidBodyTransformationBatch(a, xt, yt, 
                     init_differentiably=init_differentiably)
 
             self.stroke_length = stroke_length

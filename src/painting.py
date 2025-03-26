@@ -172,20 +172,22 @@ class Painting(nn.Module):
         return len(self.brush_strokes)
 
 class PaintingBatch(nn.Module):
-    def __init__(self, opt, batch_size=1, background_img=None):
+    def __init__(self, opt, background_img=None):
         # h, w are canvas height and width in pixels
         super().__init__()
         self.background_img = background_img
+        self.device = background_img.device
+        batch_size = background_img.shape[0]
         
         if self.background_img.shape[1] == 3: # add alpha channel
-            a =  torch.zeros((batch_size,1,self.background_img.shape[-2],self.background_img.shape[-1])).to(device)
+            a =  torch.zeros((batch_size,1,self.background_img.shape[-2],self.background_img.shape[-1])).to(self.device)
             self.background_img = torch.cat((self.background_img, a), dim=1)
         
-        self.param2img = get_param2img(opt, device=device)
+        self.param2img = get_param2img(opt, device=self.device)
     
     def forward(self, stroke_batches, h, w, use_alpha=True, return_alphas=False, opacity_factor=1.0, efficient=False):
         if self.background_img is None:
-            canvas = torch.ones((1,4,h,w)).to(device)
+            canvas = torch.ones((1,4,h,w)).to(self.device)
         else:
             canvas = T.Resize((h,w), bicubic, antialias=True)(self.background_img).detach()
         canvas[:,3] = 1 # alpha channel
