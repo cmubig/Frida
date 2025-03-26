@@ -45,7 +45,7 @@ if __name__ == '__main__':
 
     # Model and optimizer
     model = StrokePredictor(opt, device)
-    model_path = "outputs/run_03_26__14_48_03/stroke_generator_state_dict_03_26__14_48_03_p3.pth"
+    model_path = "outputs/run_03_26__17_35_02/stroke_generator_state_dict_03_26__17_35_02_p3.pth"
     if model_path is not None and os.path.exists(model_path):
         try:
             model.load_state_dict(torch.load(model_path))
