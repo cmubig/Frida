@@ -4,3 +4,6 @@
 *.gif
 src/cache/colors_updated.npt
 src/cache/next_brush_strokes.csv
+
+.DS_Store
+__pycache__/

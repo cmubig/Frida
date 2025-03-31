@@ -594,7 +594,8 @@ dependencies:
       - nvidia-nccl-cu12==2.19.3
       - nvidia-nvjitlink-cu12==12.3.101
       - nvidia-nvtx-cu12==12.1.105
-      - opencv-python==4.9.0.80
+      - opencv-python==4.10.0.84
+      - opencv-python-headless
       - pooch==1.8.0
       - protobuf==3.20.0
       - pyarrow-hotfix==0.6
@@ -622,3 +623,4 @@ dependencies:
       - wcwidth==0.2.13
       - whisper==1.1.10
       - xarm==0.0.4
+      - xarm-python-sdk
