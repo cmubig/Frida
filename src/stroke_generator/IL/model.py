@@ -25,7 +25,14 @@ class StrokePredictor(nn.Module):
         ##################
         ### Main block ###
         ##################
-        self.main = nn.GRU(
+        # self.main = nn.GRU(
+        #     input_size=self.encoding_hidden_size*5,
+        #     hidden_size=self.decoding_hidden_size,
+        #     num_layers=2,
+        #     batch_first=True,
+        #     dropout=0.2
+        # ).to(device)
+        self.main = nn.LSTM(
             input_size=self.encoding_hidden_size*5,
             hidden_size=self.decoding_hidden_size,
             num_layers=2,
@@ -83,7 +90,7 @@ class StrokePredictor(nn.Module):
         elif len(encoded_inputs.shape) == 2:
             encoded_inputs = encoded_inputs.unsqueeze(1) # Add sequence length dim
 
-        out, hidden = self.main(encoded_inputs)
+        out, (hidden, cell) = self.main(encoded_inputs) # Only out, hidden if GRU. Neither is used rightnow though
 
         if reshape:
             x = out.reshape(batch_size*n_strokes, -1)
