@@ -3,62 +3,90 @@ import torch
 from torch import nn
 
 from stroke_generator.utils.model_utils import ConvBlock, LinBlock, ScaledSigmoid, ScaledTanh
+from stroke_generator.encoders.encoders import StrokeEncoder
 
 class StrokeCritic(nn.Module):
-    def __init__(self, opt, device='cpu'):
+    def __init__(self, opt, device, state_latent_size=2560, action_latent_size=1024, hidden_size=1024):
+        super().__init__()
+
+        self.opt = opt
+        self.device = device
+        self.hidden_size = hidden_size
+
+        self.stroke_encoder = StrokeEncoder(opt, device, action_latent_size)
+
+        # Main block
+        self.q2 = QNet(opt, device, state_latent_size, action_latent_size, hidden_size).to(device)
+        self.q1 = QNet(opt, device, state_latent_size, action_latent_size, hidden_size).to(device)
+
+    def forward(self, encoded_states, encoded_actions, hidden_cells=(None, None)):
+        # Expects shape [batch_size, n_strokes, ...]
+        q1, hc_1 = self.q1(encoded_states, encoded_actions, hidden_cells[0])
+        q2, hc_2 = self.q2(encoded_states, encoded_actions, hidden_cells[1])
+        return q1,q2,(hc_1, hc_2)
+
+class QNet(nn.Module):
+    def __init__(self, opt, device, state_latent_dim, act_latent_dim, hidden_size=256):
         super().__init__()
 
         self.opt = opt
         self.device = device
 
-        self.img_size = 224
-        self.max_pallete_size = 12
-        self.encoding_hidden_size = 512
-        self.decoding_hidden_size = 128
-
-
-        ##################
-        ### Main block ###
-        ##################
-        self.q1 = nn.Sequential(
-            nn.GRU(
-                input_size=self.encoding_hidden_size*5,
-                hidden_size=self.decoding_hidden_size,
-                num_layers=2,
-                batch_first=True,
-                dropout=0.2
-            ),
-            LinBlock(self.decoding_hidden_size, 1, is_final_layer=True)
-        ).to(device)
-        self.q2 = nn.Sequential(
-            nn.GRU(
-                input_size=self.encoding_hidden_size*5,
-                hidden_size=self.decoding_hidden_size,
-                num_layers=2,
-                batch_first=True,
-                dropout=0.2
-            ),
-            LinBlock(self.decoding_hidden_size, 1, is_final_layer=True)
-        ).to(device)
-
-    def forward(self, encoded_inputs):
-
-        _, hidden = self.main(torch.cat(encoded_inputs, dim=1))
-        hidden = hidden[-1]  # Get the last layer's hidden state
-
-        # l_dec = self.dec_l(x)
-        # z_dec = self.dec_z(x)
-        # b_dec = self.dec_b(x)
-        # a_dec = self.dec_a(x)
-        # xy_dec = self.dec_xy(x)
-        # rgb_dec = self.dec_rgb(x)
+        self.state_latent_dim = state_latent_dim
+        self.act_latent_dim = act_latent_dim
+        self.hidden_size = hidden_size
         
-        # # Returns [l, z, b, a, x, y, r, g, b]
-        # return torch.cat([l_dec, z_dec, b_dec, a_dec, xy_dec, rgb_dec], dim=1)
+        self.state_net = nn.Sequential(
+            nn.LayerNorm(state_latent_dim),
+            nn.Linear(state_latent_dim, hidden_size),
+        ).to(device)
+        self.act_net = nn.Sequential(
+            nn.LayerNorm(act_latent_dim),
+            nn.Linear(act_latent_dim, hidden_size),
+        ).to(device)
+        self.combine_net = nn.Sequential(
+            nn.Linear(hidden_size*2, hidden_size),
+            nn.ReLU()
+        ).to(device)
 
-        mu = self.dec_mu(hidden)
-        log_std = self.dec_log_std(hidden)
-        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
+        self.LSTM = nn.LSTM(
+            input_size=hidden_size,
+            hidden_size=hidden_size,
+            num_layers=2,
+            batch_first=True,
+            dropout=0.1
+        ).to(device)
+        self.skip_net = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+        ).to(device)
 
-        return mu, log_std
+        self.out = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size//2),
+            nn.ReLU(),
+            nn.Linear(hidden_size//2, 1),
+        ).to(device)
+    
+    def forward(self, latent_state, latent_action, hidden_cell=None):
+        _s = self.state_net(latent_state)
+        _a = self.act_net(latent_action)
+        x = torch.cat((_s, _a), dim=-1)
+        x = self.combine_net(x)
 
+        x_skip = self.skip_net(x)
+
+        reshape = False
+        if len(x.shape) == 2:
+            # If only one stroke, add a time dimension
+            x = x.unsqueeze(1)
+            reshape = True
+        
+        x, hidden_cell = self.LSTM(x, hidden_cell)
+
+        if reshape:
+            # Remove time dimension
+            x = x.squeeze(1)
+        
+        x = self.out(x + x_skip)
+        return x, hidden_cell

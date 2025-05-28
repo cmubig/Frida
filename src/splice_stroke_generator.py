@@ -8,7 +8,7 @@ import datetime
 
 from options import Options
 from my_tensorboard import TensorBoard
-from stroke_generator.IL.model import StrokePredictor
+from stroke_generator.model import StrokePredictor
 
 ###################
 # Hyperparameters #
@@ -40,27 +40,27 @@ if __name__ == '__main__':
     # Model and optimizer
     model = StrokePredictor(opt, device)
     
-    spliced_path = "outputs/model_split_state_dicts_03_28__17_26_44"
+    split_path = "outputs/model_split_state_dicts_03_31__20_36_18"
 
     try:
-        model.state_encoder.load_state_dict(torch.load(os.path.join(spliced_path,"state_encoder_state_dict.pth")))
+        model.state_encoder.load_state_dict(torch.load(os.path.join(split_path,"state_encoder_state_dict.pth")))
         print(f"Loaded state encoder")
     except:
         print(f"Couldn't load state encoder")
     
     try:
-        model.main.load_state_dict(torch.load(os.path.join(spliced_path,"main_state_dict.pth")))
+        model.main.load_state_dict(torch.load(os.path.join(split_path,"main_state_dict.pth")))
         print(f"Loaded main")
     except:
         print(f"Couldn't load main")
     
     try:
-        model.dec_l.load_state_dict(torch.load(os.path.join(spliced_path,"dec_l_state_dict.pth")))
-        model.dec_z.load_state_dict(torch.load(os.path.join(spliced_path,"dec_z_state_dict.pth")))
-        model.dec_b.load_state_dict(torch.load(os.path.join(spliced_path,"dec_b_state_dict.pth")))
-        model.dec_a.load_state_dict(torch.load(os.path.join(spliced_path,"dec_a_state_dict.pth")))
-        model.dec_xy.load_state_dict(torch.load(os.path.join(spliced_path,"dec_xy_state_dict.pth")))
-        model.dec_rgb.load_state_dict(torch.load(os.path.join(spliced_path,"dec_rgb_state_dict.pth")))
+        model.stroke_decoder.dec_mu_l.load_state_dict(torch.load(os.path.join(split_path,"dec_l_state_dict.pth")))
+        model.stroke_decoder.dec_mu_z.load_state_dict(torch.load(os.path.join(split_path,"dec_z_state_dict.pth")))
+        model.stroke_decoder.dec_mu_b.load_state_dict(torch.load(os.path.join(split_path,"dec_b_state_dict.pth")))
+        model.stroke_decoder.dec_mu_a.load_state_dict(torch.load(os.path.join(split_path,"dec_a_state_dict.pth")))
+        model.stroke_decoder.dec_mu_xy.load_state_dict(torch.load(os.path.join(split_path,"dec_xy_state_dict.pth")))
+        model.stroke_decoder.dec_rgb.load_state_dict(torch.load(os.path.join(split_path,"dec_rgb_state_dict.pth")))
         print(f"Loaded decoders")
     except:
         print(f"Couldn't load decoders")

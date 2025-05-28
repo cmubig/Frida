@@ -12,14 +12,16 @@ from options import Options
 from my_tensorboard import TensorBoard
 from brush_stroke import BrushStrokeBatch
 from painting import PaintingBatch
-from stroke_generator.IL.model import StrokePredictor
+from stroke_generator.model import StrokePredictor
+from stroke_generator.SAC.random_expert import RandomExpert
 
 ###################
 # Hyperparameters #
 ###################
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 batch_size = 8 # Make divisible by 4 for plotting
-n_strokes = 1
+n_strokes = 3
+model_path = "outputs/run_04_21__00_22_07/3_Online_IL/stroke_generator_state_dict_04_21__00_22_07.pth"
 
 if __name__ == '__main__':
     opt = Options()
@@ -41,75 +43,72 @@ if __name__ == '__main__':
     h_render = int(opt.render_height)
     w_render = int(opt.render_height*(opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
 
-    # Model and optimizer
+    # Disable gradient tracking
+    torch.no_grad() 
+
+    # Model and expert
+    random_expert = RandomExpert(opt, device)
     model = StrokePredictor(opt, device)
-    model_path = "outputs/run_03_25__15_39_12_best/stroke_generator_state_dict_03_25__15_39_12.pth"
     model.load_state_dict(torch.load(model_path))
     print(f"Loaded model from {model_path}")
 
     # Setup canvases
-    blank_canvas = torch.ones(batch_size,3,h_render,w_render).to(device)
-
-    # Generate a batch of random brush strokes
-    strokes_tensor = torch.zeros(batch_size, n_strokes, 9).to(device)
-    strokes_left_tensor = torch.zeros(batch_size, n_strokes, 1).to(device)
-    brush_stroke_batches = []
-    for i in range(n_strokes):
-        stroke = BrushStrokeBatch(opt, batch_size, ink=None, init_differentiably=False).to(device)
-        brush_stroke_batches.append(stroke)
-        strokes_tensor[:,i] = torch.cat([
-            stroke.stroke_length,
-            stroke.stroke_z,
-            stroke.stroke_bend,
-            stroke.transformation.a,
-            stroke.transformation.xt,
-            stroke.transformation.yt,
-            stroke.color_transform
-        ], dim=1)
-        strokes_left_tensor[:,i] = torch.ones(batch_size,i+1).to(device)
+    starting_canvas = torch.ones(batch_size,3,h_render,w_render).to(device)
+    color_palette = torch.rand(batch_size, 12, 3).to(device)
+    remaining_strokes = n_strokes*torch.ones(batch_size,1).to(device)
+    gt_strokes, gt_canvases = random_expert.rollout_trajectory(remaining_strokes.clone(), starting_canvas.clone(), color_palette.clone())
+    gt_strokes = gt_strokes.detach().clone()
+    target_img = gt_canvases[:,-1].clone()
+    current_canvas = gt_canvases[:,0].clone()
     
-    # Initialize painting and paint brush stroke[s]
-    painting = PaintingBatch(opt, background_img=blank_canvas).to(device)
-    canvas_gt = painting(brush_stroke_batches, h_render, w_render, use_alpha=False, return_alphas=False)
-
-    # Prepare inputs
-    tokenized_text = clip.tokenize(["A painting"]*batch_size).to(device)
-    color_palette = -1*torch.ones(blank_canvas.shape[0], 12, 3).to(device) # -1 is a special value for no color
-
-    # Forward pass
-    strokes_pred = model(
-        current_canvas=blank_canvas,
-        target_img=canvas_gt,
-        target_tokenized_txt=tokenized_text, # Make sure this matches in edge case of leftover batch piece
-        remaining_strokes=strokes_left_tensor[:,0],
-        color_palette=color_palette
-    )
-    strokes_pred = strokes_pred.unsqueeze(-1)
-    pred_brush_stroke_batches = []
+    tokenized_text = clip.tokenize(["A splash of colors on a white background"]*batch_size).detach().to(device)
+    mask = torch.ones(batch_size, 1).to(device)
+    
+    model.eval()
+    model.save_hx = True
     for i in range(n_strokes):
-        # Model outputs [l, z, b, a, x, y, r, g, b]
+        # Generate stroke
+        stroke_tensor = model.sample(
+            current_canvas=current_canvas,
+            target_img=target_img,
+            target_tokenized_txt=tokenized_text,
+            remaining_strokes=remaining_strokes,
+            color_palette=color_palette,
+            mask=mask,
+        )
+
+        # Paint stroke
+        stroke_tensor = stroke_tensor.unsqueeze(-1)
         generated_stroke = BrushStrokeBatch(opt,
-                                    stroke_length=strokes_pred[:,0],
-                                    stroke_z=strokes_pred[:,1],
-                                    stroke_bend=strokes_pred[:,2],
+                                    stroke_length=stroke_tensor[:,0],
+                                    stroke_z=stroke_tensor[:,1],
+                                    stroke_bend=stroke_tensor[:,2],
                                     stroke_alpha=torch.zeros(batch_size,1).to(device),
-                                    color=strokes_pred[:,6:].squeeze(-1),
-                                    a=strokes_pred[:,3],
-                                    xt=strokes_pred[:,4],
-                                    yt=strokes_pred[:,5],
+                                    color=stroke_tensor[:,6:].squeeze(-1),
+                                    a=stroke_tensor[:,3],
+                                    xt=stroke_tensor[:,4],
+                                    yt=stroke_tensor[:,5],
                                     init_differentiably=True,
                                     ink=None)
-        pred_brush_stroke_batches.append(generated_stroke)
+        generated_painting = PaintingBatch(opt, background_img=current_canvas).to(device)
+        generated_canvas = generated_painting([generated_stroke], h_render, w_render, use_alpha=False, return_alphas=False)
 
-    generated_painting = PaintingBatch(opt, background_img=blank_canvas).to(device)
-    generated_canvas = generated_painting(pred_brush_stroke_batches, h_render, w_render, use_alpha=False, return_alphas=False)
+        # Update canvas
+        current_canvas = generated_canvas
+        remaining_strokes -= 1
+        mask = torch.where(remaining_strokes <= 0, torch.zeros_like(mask), torch.ones_like(mask)).to(torch.float)
     
-    joint_canvas = torch.cat([canvas_gt, torch.zeros((batch_size,3,canvas_gt.shape[-2],3)).to(device), generated_canvas], dim=-1)
-
+    # Add target canvas to generated canvas and save
+    output_canvas = torch.cat(
+         [target_img,
+          torch.zeros((batch_size,3,target_img.shape[-2],3)).to(device), 
+          generated_canvas], dim=-1)
+    
     # Plot and save canvases
     for i in range(batch_size):
-        plt.imshow(joint_canvas[i].detach().cpu().permute(1,2,0).numpy())
-        plt.savefig(os.path.join(save_folder,f"test_{run_name}_{i}.png"))
+        name = f"test_canvas_{run_name}_{i}.png"
+        plt.imshow(output_canvas[i].detach().cpu().permute(1,2,0).numpy())
+        plt.savefig(os.path.join(save_folder,name))
         plt.close()
+        print(f"Saved {name}")
     
-    print(f"Saved test_canvas_{run_name}.png")

@@ -1,79 +1,50 @@
-import clip
 import torch
 from torch import nn
-import torchvision.transforms as transforms
 
-from stroke_generator.utils.model_utils import ConvBlock, LinBlock, ScaledSigmoid, ScaledTanh
-
+from stroke_generator.model import StrokePredictor
 
 class StrokeActor(nn.Module):
-    def __init__(self, opt, device='cpu'):
+    def __init__(self, opt, model: StrokePredictor, device):
         super().__init__()
 
         self.opt = opt
         self.device = device
 
-        self.img_size = 224
-        self.max_pallete_size = 12
-        self.encoding_hidden_size = 512
-        self.decoding_hidden_size = 128
-
-
-        ##################
-        ### Main block ###
-        ##################
-        self.main = nn.GRU(
-            input_size=self.encoding_hidden_size*5,
-            hidden_size=self.decoding_hidden_size,
-            num_layers=2,
-            batch_first=True,
-            dropout=0.2
-        ).to(device)
-        # self.main = nn.Sequential(
-        #     LinBlock(self.encoding_hidden_size*5, 1028, use_dropout=False),
-        #     LinBlock(1028, 512, use_dropout=False),
-        #     LinBlock(512, 256, use_dropout=False),
-        #     LinBlock(256, self.decoding_hidden_size),
-        # ).to(device)
-
-        ################
-        ### Decoders ###
-        ################
-        # l_min, l_max = self.opt.MIN_STROKE_LENGTH, self.opt.MAX_STROKE_LENGTH
-        # z_min, z_max = self.opt.MIN_STROKE_Z, 0.95
-        # b_scale = self.opt.MAX_BEND
-
-        # self.dec_l = LinBlock(self.decoding_hidden_size, 1, act=ScaledSigmoid(l_min, l_max), is_final_layer=True).to(device)
-        # self.dec_z = LinBlock(self.decoding_hidden_size, 1, act=ScaledSigmoid(z_min, z_max), is_final_layer=True).to(device)
-        # self.dec_b = LinBlock(self.decoding_hidden_size, 1, act=ScaledTanh(b_scale), is_final_layer=True).to(device)
-        # self.dec_a = LinBlock(self.decoding_hidden_size, 1, act=ScaledTanh(torch.pi), is_final_layer=True).to(device)
-        # self.dec_xy = LinBlock(self.decoding_hidden_size, 2, act=nn.Tanh(), is_final_layer=True).to(device)
-        # self.dec_rgb = LinBlock(self.decoding_hidden_size, 3, act=nn.Sigmoid(), is_final_layer=True).to(device)
-        
-        # Mean and log_std decoders
-        self.dec_mu = LinBlock(self.decoding_hidden_size, 9)  # Predicts (l, z, b, a, xy(2), rgb(3))
-        self.dec_log_std = LinBlock(self.decoding_hidden_size, 9)  # Log standard deviation
-        self.log_std_min = -20  # Clamping for numerical stability
-        self.log_std_max = 2
-
-    def forward(self, encoded_inputs):
-
-        _, hidden = self.main(torch.cat(encoded_inputs, dim=1))
-        hidden = hidden[-1]  # Get the last layer's hidden state
-
-        # l_dec = self.dec_l(x)
-        # z_dec = self.dec_z(x)
-        # b_dec = self.dec_b(x)
-        # a_dec = self.dec_a(x)
-        # xy_dec = self.dec_xy(x)
-        # rgb_dec = self.dec_rgb(x)
-        
-        # # Returns [l, z, b, a, x, y, r, g, b]
-        # return torch.cat([l_dec, z_dec, b_dec, a_dec, xy_dec, rgb_dec], dim=1)
-
-        mu = self.dec_mu(hidden)
-        log_std = self.dec_log_std(hidden)
-        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
-
-        return mu, log_std
+        self.model = model
     
+    def forward(self, encoded_inputs, hx=None):
+        # Actor operates in the latent space
+        # Expects shape [batch_size, n_strokes, ...]
+        # hx is (hidden, cell) state for LSTM
+        reshape = False
+        if len(encoded_inputs.shape) == 2:
+            # If only one stroke, add a time dimension
+            encoded_inputs = encoded_inputs.unsqueeze(1)
+            reshape = True
+        
+        out, hx = self.model.main(encoded_inputs, hx)
+
+        if reshape:
+            # Remove time dimension
+            out = out.squeeze(1)
+
+        return out, hx
+
+    def decode_action(self, x):
+        return self.model.stroke_decoder(x)
+    
+    def decode_and_sample_action(self, latent_action, color_palette):
+        lzbaxy_mean, lzbaxy_log_std, rgb_logits = self.decode_action(latent_action)
+        lzbaxy_sample = torch.distributions.Normal(lzbaxy_mean, lzbaxy_log_std.exp()).rsample()
+        # Translate from [-1,1] to real params
+        lzbaxy_sample = lzbaxy_sample * self.model.scale / 2.0 + self.model.bias 
+
+        # Get angle from a_x and a_y
+        a_x, a_y = lzbaxy_sample[:,3], lzbaxy_sample[:,4]
+        a = torch.atan2(a_x, a_y).unsqueeze(-1)
+        lzbaxy = torch.cat([lzbaxy_sample[:, :3],a,lzbaxy_sample[:,-2:]],dim=-1)
+
+        rgb_idx = torch.distributions.Categorical(logits=rgb_logits).sample()
+
+        stroke_tensor = torch.cat([lzbaxy, color_palette[torch.arange(lzbaxy.shape[0]),rgb_idx]],dim=-1)
+        return stroke_tensor

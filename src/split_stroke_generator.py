@@ -8,7 +8,7 @@ import datetime
 
 from options import Options
 from my_tensorboard import TensorBoard
-from stroke_generator.IL.model import StrokePredictor
+from src.stroke_generator.model import StrokePredictor
 
 ###################
 # Hyperparameters #
@@ -33,22 +33,24 @@ if __name__ == '__main__':
     save_folder = f"outputs/model_split_state_dicts_{run_name}"
     os.mkdir(save_folder)
 
-    # Setup dims
-    h_render = int(opt.render_height)
-    w_render = int(opt.render_height*(opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
-
     # Model and optimizer
     model = StrokePredictor(opt, device)
-    model_path = "outputs/run_03_27__19_34_20/stroke_generator_state_dict_03_27__19_34_20_p1.pth"
+    model_path = "outputs/run_03_31__20_09_28/10stroke/stroke_generator_state_dict_03_31__20_09_28.pth"
     model.load_state_dict(torch.load(model_path))
     print(f"Loaded model from {model_path}")
 
-
     torch.save(model.state_encoder.state_dict(), os.path.join(save_folder,f"state_encoder_state_dict.pth"))
+
+
     torch.save(model.main.state_dict(), os.path.join(save_folder,f"main_state_dict.pth"))
-    torch.save(model.dec_l.state_dict(), os.path.join(save_folder,f"dec_l_state_dict.pth"))
-    torch.save(model.dec_z.state_dict(), os.path.join(save_folder,f"dec_z_state_dict.pth"))
-    torch.save(model.dec_b.state_dict(), os.path.join(save_folder,f"dec_b_state_dict.pth"))
-    torch.save(model.dec_a.state_dict(), os.path.join(save_folder,f"dec_a_state_dict.pth"))
-    torch.save(model.dec_xy.state_dict(), os.path.join(save_folder,f"dec_xy_state_dict.pth"))
-    torch.save(model.dec_rgb.state_dict(), os.path.join(save_folder,f"dec_rgb_state_dict.pth"))
+
+
+    torch.save(model.stroke_decoder.dec_mu_l.state_dict(), os.path.join(save_folder,f"dec_l_state_dict.pth"))
+    torch.save(model.stroke_decoder.dec_mu_z.state_dict(), os.path.join(save_folder,f"dec_z_state_dict.pth"))
+    torch.save(model.stroke_decoder.dec_mu_b.state_dict(), os.path.join(save_folder,f"dec_b_state_dict.pth"))
+    torch.save(model.stroke_decoder.dec_mu_a.state_dict(), os.path.join(save_folder,f"dec_a_state_dict.pth"))
+    torch.save(model.stroke_decoder.dec_mu_xy.state_dict(), os.path.join(save_folder,f"dec_xy_state_dict.pth"))
+
+    torch.save(model.stroke_decoder.dec_log_std.state_dict(), os.path.join(save_folder,f"dec_l_state_dict.pth"))
+
+    torch.save(model.stroke_decoder.dec_rgb.state_dict(), os.path.join(save_folder,f"dec_rgb_state_dict.pth"))

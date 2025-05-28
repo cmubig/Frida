@@ -20,19 +20,27 @@ class LinBlock(nn.Module):
         return self.main(x)
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_, out_, act=None, downsample=True):
-        super().__init__()
-        if act is None:
-            act = nn.LeakyReLU(0.2, inplace=True)
-
-        layers = [nn.Conv2d(in_, out_, 3, 1, 1), nn.BatchNorm2d(out_), act]
-        if downsample:
-            layers.append(nn.MaxPool2d(2, 2))  # Downsampling
-
-        self.main = nn.Sequential(*layers)
-
+    def __init__(self, in_channels, out_channels, kernel=3, stride=1, dropout=0.2, act=None):
+        super(ConvBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=kernel, stride=stride, padding=1)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.act1 = act
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=kernel, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.act2 = act
+        self.dropout1 = nn.Dropout(p=dropout)
+    
     def forward(self, x):
-        return self.main(x)
+        x = self.conv1(x)
+        x = self.bn1(x)
+        if self.act1 is not None:
+            x = self.act1(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+        if self.act2 is not None:
+            x = self.act2(x)
+        x = self.dropout1(x)
+        return x
 
 class ScaledTanh(nn.Module):
     def __init__(self, scale=1.0):

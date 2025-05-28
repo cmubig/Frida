@@ -30,8 +30,8 @@ def get_param2img(opt, device='cuda'):
         MAX_BEND = settings['MAX_BEND']
     
     # print(w_p2i_m - xtra_room_horz_m, 0.5*w_canvas_m)
-    if (w_p2i_m- xtra_room_horz_m) > (0.5 * w_canvas_m):
-        raise Exception("The canvas width is less than two times the max_stroke_length. This makes it really too hard to render. Must use larger canvas.")
+    # if (w_p2i_m- xtra_room_horz_m) > (0.5 * w_canvas_m):
+    #     raise Exception("The canvas width is less than two times the max_stroke_length. This makes it really too hard to render. Must use larger canvas.")
     
     param2img = StrokeParametersToImage()
     param2img.load_state_dict(torch.load(
