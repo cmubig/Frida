@@ -12,10 +12,14 @@ from matplotlib import pyplot as plt
 from options import Options
 from my_tensorboard import TensorBoard
 
-from stroke_generator.model import StrokePredictor
+from stroke_generator.model import StrokePredictor, DeterministicStrokePredictor
 from stroke_generator.utils.canvas_dataset import SequentialCanvasDataset
 from stroke_generator.trainers.online_IL import OnlineMultiStrokeGeneratorTrainer
 from stroke_generator.trainers.trainer_SAC import SACTrainer
+
+from stroke_generator.trainers.trainer_DDPG import DDPGTrainer
+from stroke_generator.SAC.random_expert import RandomExpert, GridExpert
+from stroke_generator.env import StrokeEnv
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -27,6 +31,12 @@ def save_canvas_as_img(canvas, path='outputs', suffix=''):
         except:
             raise Exception(f"Path provided for saving canvas does not exist and couldn't be created.\n\t{path}")
     plt.savefig(os.path.join(path,f"canvas{suffix}.png"))
+
+def train(trainer, run_name="run_data", epochs=100):
+    print(f"Beginning training for {run_name} for {epochs} epochs")
+    subfolder = os.path.join(save_folder, run_name)
+    os.mkdir(subfolder)
+    return trainer.train(epochs)
 
 if __name__ == '__main__':
     opt = Options()
@@ -45,8 +55,8 @@ if __name__ == '__main__':
     os.mkdir(save_folder)
 
     # Model and optimizer
-    model = StrokePredictor(opt, device)
-    model_path = "outputs/run_05_05__14_03_41/3_Online_IL_3/stroke_generator_state_dict.pth"
+    model = DeterministicStrokePredictor(opt, device)
+    model_path = None
     if model_path is not None and os.path.exists(model_path):
         try:
             model.load_state_dict(torch.load(model_path))
@@ -54,6 +64,111 @@ if __name__ == '__main__':
         except:
             print(f"Couldn't load model from {model_path}")
 
+    # Make trainer
+    sub_save_folder = os.path.join(save_folder, "DDPG_pretrain")
+    if not os.path.exists(sub_save_folder):
+        os.mkdir(sub_save_folder)
+    trainer = DDPGTrainer(
+        opt,
+        model,
+        device=device,
+        batch_size=256,
+        buffer_size=5_000,
+        save_folder=sub_save_folder
+    )
+    checkpoint_path = None # "outputs/run_06_16__15_46_39/DDPG_25_stroke/checkpoint.pth"
+    if checkpoint_path is not None and os.path.exists(checkpoint_path):
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        trainer.actor.load_state_dict(checkpoint['actor_state_dict'])
+        trainer.critic.load_state_dict(checkpoint['critic_state_dict'])
+        trainer.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
+        trainer.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
+        if hasattr(trainer, 'replay_buffer') and 'replay_buffer' in checkpoint:
+            trainer.replay_buffer = checkpoint['replay_buffer']
+        print(f"Loaded checkpoint from {checkpoint_path}")
+    
+    # print("############################")
+    # print(" Phase 1: One Stroke Training")
+    # print("############################")
+    # expert = GridExpert(opt, device, grid_size=1, noise_level=0.001)
+    # env = StrokeEnv(opt, device, num_envs=256, target_expert=expert, max_strokes=1)
+    # trainer.train(env, 
+    #               num_episodes=500, 
+    #               noise_start=0.3, 
+    #               min_noise=0.01, 
+    #               noise_decay=0.99,
+    #               checkpoint_interval=50)
+
+    # Make the problem a little harder by increasing the grid size
+    # sub_save_folder = os.path.join(save_folder, "DDPG_1_stroke")
+    # if not os.path.exists(sub_save_folder):
+    #     os.mkdir(sub_save_folder)
+    # trainer.save_folder = sub_save_folder
+    # expert = GridExpert(opt, device, grid_size=2, noise_level=0.005)
+    # env = StrokeEnv(opt, device, num_envs=256, target_expert=expert, max_strokes=1)
+    # trainer.train(env, num_episodes=100, noise_start=0.2, min_noise=0.01, noise_decay=0.99)
+
+    # # Add a 3rd stroke
+    # print("############################")
+    # print(" Phase 3: Three Stroke Training")
+    # print("############################")
+    # sub_save_folder = os.path.join(save_folder, "DDPG_3_stroke")
+    # if not os.path.exists(sub_save_folder):
+    #     os.mkdir(sub_save_folder)
+    # trainer.save_folder = sub_save_folder
+    # expert = GridExpert(opt, device, grid_size=4, noise_level=0.01)
+    # env = StrokeEnv(opt, device, num_envs=256, target_expert=expert, max_strokes=3)
+    # trainer.train(env, num_episodes=2000, noise_start=0.2, min_noise=0.01, noise_decay=0.99)
+
+    # Add a 5th stroke
+    print("############################")
+    print(" Phase 4: Five Stroke Training")
+    print("############################")
+    sub_save_folder = os.path.join(save_folder, "DDPG_5_stroke")
+    if not os.path.exists(sub_save_folder):
+        os.mkdir(sub_save_folder)
+    trainer.save_folder = sub_save_folder
+    expert = GridExpert(opt, device, grid_size=5, noise_level=0.01)
+    env = StrokeEnv(opt, device, num_envs=128, target_expert=expert, max_strokes=5)
+    trainer.train(env, 
+                  num_episodes=20000, 
+                  noise_start=0.1, 
+                  min_noise=0.01, 
+                  noise_decay=0.99,
+                  checkpoint_interval=20)
+
+    # # Add up to 10 strokes
+    # print("############################")
+    # print(" Phase 5: Ten Stroke Training")
+    # print("############################")
+    # sub_save_folder = os.path.join(save_folder, "DDPG_10_stroke")
+    # if not os.path.exists(sub_save_folder):
+    #     os.mkdir(sub_save_folder)
+    # trainer.save_folder = sub_save_folder
+    # expert = GridExpert(opt, device, grid_size=10, noise_level=0.1)
+    # env = StrokeEnv(opt, device, num_envs=256, target_expert=expert, max_strokes=10)
+    # trainer.train(env, 
+    #               num_episodes=5000, 
+    #               noise_start=0.3, 
+    #               min_noise=0.01, 
+    #               noise_decay=0.99,
+    #               checkpoint_interval=100)
+    
+    print("############################")
+    print(" Phase 7: 25 Stroke Training")
+    print("############################")
+    sub_save_folder = os.path.join(save_folder, "DDPG_25_stroke")
+    if not os.path.exists(sub_save_folder):
+        os.mkdir(sub_save_folder)
+    trainer.save_folder = sub_save_folder
+    expert = GridExpert(opt, device, grid_size=10, noise_level=0.1)
+    env = StrokeEnv(opt, device, num_envs=64, target_expert=expert, max_strokes=25)
+    trainer.train(env, 
+                  num_episodes=1_000_000, 
+                  noise_start=0.2, 
+                  min_noise=0.01, 
+                  noise_decay=0.995,
+                  checkpoint_interval=10)
     """
     print("############################")
     print(" Phase 1: Low Stroke Count")
@@ -61,8 +176,6 @@ if __name__ == '__main__':
     print()
 
     dataset = SequentialCanvasDataset(opt, f"stroke_generator/datasets/rand_50stroke_6.pth")
-    subfolder = os.path.join(save_folder, f"50_stroke")
-    os.mkdir(subfolder)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=6, shuffle=False)
     offline_trainer = OfflineMultiStrokeGeneratorTrainer(
         opt,
@@ -72,14 +185,13 @@ if __name__ == '__main__':
         save_folder=subfolder,
         run_name=run_name
     )
-    print(f"Beginning 50 stroke over fitting")
-    model = offline_trainer.train(epochs=5000)
+    model = train(offline_trainer, run_name="pretraining", epochs=5000)
 
     stroke_count = [1,3,5,7]
     epoch_count = [10, 20, 50, 100]
     dataset = SequentialCanvasDataset(opt, f"stroke_generator/datasets/rand_{stroke_count[0]}stroke_500.pth")
     for i,s in enumerate(stroke_count):
-        subfolder = os.path.join(save_folder, f"{s}stroke")
+        subfolder = os.path.join(save_folder, f"")
         os.mkdir(subfolder)
         if s != stroke_count[0]:
             print(f"Adding {s} stroke data to datset")
@@ -93,8 +205,7 @@ if __name__ == '__main__':
             save_folder=subfolder,
             run_name=run_name
         )
-        print(f"Beginning {s} stroke Training")
-        model = offline_trainer.train(epochs=epoch_count[i])
+        model = train(offline_trainer, "{s}stroke", epochs=epoch_count[i])
 
     del offline_trainer
     del dataset
@@ -130,11 +241,11 @@ if __name__ == '__main__':
     del dataset
     del dataloader
 
-    """
+    
 
-    print("############################")
-    print(" Phase 3: Online IL")
-    print("############################")
+    # print("############################")
+    # print(" Phase 3: Online IL")
+    # print("############################")
     # subfolder = os.path.join(save_folder, f"3_Online_IL_1")
     # os.mkdir(subfolder)
     # trainer = OnlineMultiStrokeGeneratorTrainer(
@@ -148,31 +259,31 @@ if __name__ == '__main__':
     # )
     # model = trainer.train(epochs=5000)
 
-    subfolder = os.path.join(save_folder, f"3_Online_IL_2")
-    os.mkdir(subfolder)
-    trainer = OnlineMultiStrokeGeneratorTrainer(
-        opt,
-        model,
-        device,
-        batch_size=256,
-        max_strokes=2,
-        save_folder=subfolder,
-        run_name=run_name
-    )
-    model = trainer.train(epochs=5000)
+    # subfolder = os.path.join(save_folder, f"3_Online_IL_2")
+    # os.mkdir(subfolder)
+    # trainer = OnlineMultiStrokeGeneratorTrainer(
+    #     opt,
+    #     model,
+    #     device,
+    #     batch_size=256,
+    #     max_strokes=2,
+    #     save_folder=subfolder,
+    #     run_name=run_name
+    # )
+    # model = trainer.train(epochs=5000)
 
-    subfolder = os.path.join(save_folder, f"3_Online_IL_3")
-    os.mkdir(subfolder)
-    trainer = OnlineMultiStrokeGeneratorTrainer(
-        opt,
-        model,
-        device,
-        batch_size=256,
-        max_strokes=3,
-        save_folder=subfolder,
-        run_name=run_name
-    )
-    model = trainer.train(epochs=5000)
+    # subfolder = os.path.join(save_folder, f"3_Online_IL_3")
+    # os.mkdir(subfolder)
+    # trainer = OnlineMultiStrokeGeneratorTrainer(
+    #     opt,
+    #     model,
+    #     device,
+    #     batch_size=256,
+    #     max_strokes=3,
+    #     save_folder=subfolder,
+    #     run_name=run_name
+    # )
+    # model = trainer.train(epochs=5000)
 
     # subfolder = os.path.join(save_folder, f"3_Online_IL_5")
     # os.mkdir(subfolder)
@@ -214,14 +325,23 @@ if __name__ == '__main__':
     # model = trainer.train(epochs=8000)
     
     # print("############################")
-    # print(" Phase 4: SAC on Random Strokes")
-    # print("############################")
-
+    # print(" Phase 4: SAC on Random Strokes") os.path.join(save_folder, f"3_Online_IL_3")
+    # os.mkdir(subfolder)
+    # trainer = OnlineMultiStrokeGeneratorTrainer(
+    #     opt,
+    #     model,
+    #     device,
+    #     batch_size=256,
+    #     max_strokes=3,
+    #     save_folder=subfolder,
+    #     run_name=run_name
+    # )
+    # model = trainer.train(epochs=5000)
     # print()
     # print("Switching to single stroke Soft Actor Critic")
     # subfolder = os.path.join(save_folder, f"SAC_1")
     # os.mkdir(subfolder)
-    # sac_trainer = SACTrainer(opt, model, device, num_envs=32, buffer_size=5000, save_folder=subfolder)
+    # sac_trainer = SACTrainer(opt, model, device, num_envs=256, buffer_size=5000, save_folder=subfolder)
     # sac_trainer.max_strokes = 1
     # sac_trainer.seed_rollouts = 100
     # sac_trainer.update_freq = 50
@@ -235,7 +355,7 @@ if __name__ == '__main__':
     # print("Switching to 2 strokes")
     # subfolder = os.path.join(save_folder, f"SAC_2")
     # os.mkdir(subfolder)
-    # sac_trainer = SACTrainer(opt, model, device, num_envs=32, buffer_size=5000, save_folder=subfolder)
+    # sac_trainer = SACTrainer(opt, model, device, num_envs=256, buffer_size=5000, save_folder=subfolder)
     # sac_trainer.max_strokes = 2
     # sac_trainer.seed_rollouts = 150
     # sac_trainer.update_freq = 15
@@ -247,3 +367,4 @@ if __name__ == '__main__':
     
     print("Finished training")
     
+    """

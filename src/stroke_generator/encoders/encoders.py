@@ -5,13 +5,13 @@ import torchvision.transforms as transforms
 import torchvision.models as models
 
 from stroke_generator.utils.model_utils import ConvBlock, LinBlock
-from stroke_generator.encoders.resnet50Encoder import ResNet50Encoder
+from stroke_generator.encoders.resnet50_encoder import ResNet50Encoder
 
 from brush_stroke import BrushStrokeBatch
 from painting import PaintingBatch
 
 class CanvasEncoder(nn.Module):
-    def __init__(self, opt, device='cpu', latent_dim=2048, pallete_size=12):
+    def __init__(self, opt, device='cpu', latent_dim=2048, palette_size=12):
         super().__init__()
 
         self.opt = opt
@@ -30,7 +30,7 @@ class CanvasEncoder(nn.Module):
         if error > 0:
             self.latent_sizes['remaining_strokes'] += error
         
-        self.pallete_size = pallete_size
+        self.palette_size = palette_size
         self.img_size = 224
 
         ################
@@ -50,7 +50,7 @@ class CanvasEncoder(nn.Module):
             LinBlock(1, self.latent_sizes['remaining_strokes']),
         ).to(device)
         self.color_palette_encoder = nn.Sequential(
-            LinBlock(self.pallete_size*3, self.latent_sizes['color_palette']),
+            LinBlock(self.palette_size*3, self.latent_sizes['color_palette']),
         ).to(device)
 
     def forward(self, current_canvas, target_img, target_tokenized_txt, remaining_strokes, color_palette, mask=None):
@@ -89,15 +89,16 @@ class ImageEncoder(nn.Module):
             transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
         ])
         self.layer_1 = nn.Sequential(
-            ConvBlock(3, 32, act=nn.LeakyReLU(), downsample=True),
-            ConvBlock(32, 64, act=nn.LeakyReLU(), downsample=False),
+            # (self, in_channels, out_channels, kernel=3, stride=1, dropout=0.2, act=None):
+            ConvBlock(3, 32, stride=2, act=nn.LeakyReLU()),
+            ConvBlock(32, 64, act=nn.LeakyReLU()),
         ).to(device)
         self.shortcut = nn.Sequential(
-            ConvBlock(3, 64, act=None, downsample=True),
+            ConvBlock(3, 64, act=None),
         ).to(device)
         self.layer_2 = nn.Sequential(
-            ConvBlock(64, 64, act=nn.LeakyReLU(), downsample=False),
-            ConvBlock(64, 64, downsample=False),
+            ConvBlock(64, 64, act=nn.LeakyReLU()),
+            ConvBlock(64, 64),
         ).to(device)
 
         self.out = nn.Sequential(
@@ -144,7 +145,7 @@ class StrokeEncoder(nn.Module):
         self.canv_h = int(opt.render_height)
         self.canv_w = int(opt.render_height*(opt.CANVAS_WIDTH_M/opt.CANVAS_HEIGHT_M))
 
-        self.image_encoder = ImageEncoder(opt, self.img_size, self.canvas_latent_size, device)
+        self.image_encoder = ResNet50Encoder(self.canvas_latent_size).to(device)
         self.stroke_encoder = nn.Sequential(
             LinBlock(self.stroke_size, 64),
             LinBlock(64, 128),

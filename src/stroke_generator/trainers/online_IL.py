@@ -247,13 +247,13 @@ class OnlineMultiStrokeGeneratorTrainer():
             # Greedy match: pick minimum loss for each batch 
             softmin_weights = torch.softmax(-masked_loss, dim=1)  # [B, H_expert]
             softmin_loss = (softmin_weights * loss_matrix).sum(dim=1)  # [B]
-            _, min_idx = loss_matrix.min(dim=1)
             softmin_loss_masked = softmin_loss * mask[:,t,0]
             total_loss += softmin_loss_masked.sum()
             count += (mask[:,t,0]).sum()
 
             # Mark chosen strokes in the mask as invalid for future iterations
             # Clone so that loss gradients don't mix
+            _, min_idx = loss_matrix.min(dim=1)
             used_mask[torch.arange(B),min_idx] = 0.0
             used_mask = used_mask.clone()
         return total_loss / count

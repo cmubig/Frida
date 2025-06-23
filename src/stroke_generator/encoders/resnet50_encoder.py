@@ -8,17 +8,14 @@ class ResNet50Encoder(nn.Module):
         
         # Load the pretrained ResNet50 model
         resnet = models.resnet50(pretrained=pretrained)
-        for param in resnet.layer1.parameters():
-            param.requires_grad = False
-        for param in resnet.layer2.parameters():
-            param.requires_grad = False
-        for param in resnet.layer3.parameters():
-            param.requires_grad = False
-        for param in resnet.layer4.parameters():
-            param.requires_grad = True
 
-        # Remove the final fully connected layer
-        self.feature_extractor = nn.Sequential(*list(resnet.children())[:-1])  # output shape: [B, 2048, 1, 1]
+        # Freeze layers up to layer3
+        # Get layer4 and AdaptiveAvgPool2d for trainable layers
+        self.resnet_frozen = nn.Sequential(*list(resnet.children())[:-3])
+        self.resnet_trainable = nn.Sequential(
+            resnet.layer4,
+            resnet.avgpool
+        )
 
         # Flatten and project to desired output_dim
         self.projection = nn.Sequential(
@@ -29,6 +26,7 @@ class ResNet50Encoder(nn.Module):
 
     def forward(self, x):
         with torch.no_grad():
-            x = self.feature_extractor(x)
+            x = self.resnet_frozen(x)
+        x = self.resnet_trainable(x)
         x = self.projection(x)
         return x

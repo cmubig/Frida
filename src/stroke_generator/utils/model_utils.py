@@ -60,3 +60,11 @@ class ScaledSigmoid(nn.Module):
     
     def forward(self, x):
         return (self.max - self.min) * self.act(x) + self.min
+    
+def print_memory_update(tag):
+        if torch.cuda.is_available():
+            memory = torch.cuda.memory_allocated() / 1e6
+            reserve_memory = torch.cuda.memory_reserved() / 1e6
+            print(f"[{tag}] Allocated: {memory:.2f} MB | Reserved: {reserve_memory:.2f} MB")
+        else:
+            print(f"[{tag}] CUDA is not available.")

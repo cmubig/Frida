@@ -10,13 +10,13 @@ class ReplayBuffer:
         return len(self.buffer)
     
     def push(self, state, hc_s, hc_c, action, reward, next_state, done):
-        state = {k: v.cpu() for k, v in state.items()}
-        hc_s = tuple(t.cpu() for t in hc_s)
-        hc_c = tuple(tuple(t.cpu() for t in hc) for hc in hc_c)
-        action = action.cpu()
-        reward = reward.cpu()
-        next_state = {k: v.cpu() for k, v in next_state.items()}
-        done = done.cpu()
+        state = {k: v.detach().cpu().clone() for k, v in state.items()}
+        hc_s = tuple(t.detach().cpu().clone() for t in hc_s)
+        hc_c = tuple(tuple(t.detach().cpu().clone() for t in hc) for hc in hc_c)
+        action = action.detach().cpu().clone()
+        reward = reward.detach().cpu().clone()
+        next_state = {k: v.detach().cpu().clone() for k, v in next_state.items()}
+        done = done.detach().cpu().clone()
 
         self.buffer.append((state, hc_s, hc_c, action, reward, next_state, done))
     

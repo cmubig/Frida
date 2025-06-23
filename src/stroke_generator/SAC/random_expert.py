@@ -66,6 +66,11 @@ class Expert():
         
         return strokes, canvases
     
+    def clear_memory(self):
+        # Clears the current canvas and color palette
+        self.current_canvas = None
+        self.color_palette = None
+        self.strokes_remaining = None
     
 
 class RandomExpert(Expert):
@@ -115,7 +120,7 @@ class GridExpert(Expert):
         # range from -1 to 1
         self.grid_size = grid_size
         self.noise_level = noise_level
-        linspace = torch.linspace(-0.9, 0.9, self.grid_size).to(self.device)
+        linspace = torch.linspace(-0.9, 0.9, self.grid_size+2).to(self.device)[1:-1]
         self.grid = torch.stack(torch.meshgrid(linspace, linspace), dim=-1).reshape(-1, 2)
     
     def step(self):

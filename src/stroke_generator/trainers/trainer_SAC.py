@@ -35,7 +35,7 @@ class SACTrainer():
             "target_img": torch.ones(self.num_envs, 3, self.canv_h, self.canv_w).to(self.device),
             "target_tokenized_txt": clip.tokenize(["Sample text"]*num_envs).detach().to(self.device),
             "remaining_strokes": torch.ones(self.num_envs, 1).to(self.device),
-            "color_palette": torch.zeros(self.num_envs, self.agent.actor.model.pallete_size, 3).to(self.device),
+            "color_palette": torch.zeros(self.num_envs, self.agent.actor.model.palette_size, 3).to(self.device),
             "mask": torch.ones(self.num_envs,).to(self.device),
         }
         self.prev_initial_state = {k:v.clone() for k,v in self.state.items()}

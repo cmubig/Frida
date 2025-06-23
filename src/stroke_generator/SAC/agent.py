@@ -9,9 +9,6 @@ from stroke_generator.utils.replay_buffer import ReplayBuffer
 from losses.clip_loss import CLIPConvLoss, Dict2Class
 from torchvision import transforms
 
-from brush_stroke import BrushStrokeBatch
-from painting import PaintingBatch
-
 import torch.nn.functional as F
 
 
@@ -338,14 +335,6 @@ class StrokeAgent(nn.Module):
         normal = torch.distributions.Normal(lzbaxy_mu, lzbaxy_std)
         z = normal.rsample()  
         lzbaxy_sample = torch.tanh(z) # Reparameterized sample
-        
-        # # Split up the lzbaxy_mu into individual components
-        # lzb_mu, lzb_std = lzbaxy_mu[:,0:3], lzbaxy_std[:,0:3]
-        # lzb_sample = lzbaxy_sample[:,0:3]
-        # a_mu, a_std = lzbaxy_mu[:,3:5], lzbaxy_std[:,3:5]
-        # a_sample = lzbaxy_sample[:,3]
-        # xy_mu, xy_std = lzbaxy_mu[:,5:], lzbaxy_std[:,5:]
-        # xy_sample = lzbaxy_sample[:,4:6]
 
         # Log prob with tanh correction
         log_prob = normal.log_prob(z).sum(dim=-1)
@@ -367,22 +356,26 @@ class StrokeAgent(nn.Module):
         
         return action, total_log_prob
 
-        # # Length, Z, Bend loss
-        # lzb_dist = torch.distributions.Normal(lzb_mu, lzb_std)
-        # lzb_log_prob = lzb_dist.log_prob(lzb_sample).mean(dim=-1)
+class DeterministicStrokeAgent(StrokeAgent):
+    def __init__(self, opt, model: StrokePredictor, device, batch_size=16):
+        super().__init__(opt, model, device, batch_size)
+        self.actor_frozen = True  # Freeze actor for deterministic actions
 
-        # # Breaks down angle into X and Y components to avoid discontinuities
-        # a_xy_gt = torch.cat([torch.sin(a_gt).unsqueeze(-1), torch.cos(a_gt).unsqueeze(-1)],dim=-1)
-        # a_dist = torch.distributions.Normal(a_mu, a_std)
-        # a_log_prob = a_dist.log_prob(a_xy_gt).mean(dim=-1)
+    def sample_and_log_prob(self, encoded_state, color_palette):
+        # Get latent action distribution params
+        latent_action, _ = self.actor(encoded_state)
+        lzbaxy_mu, _, rgb_logits = self.actor.decode_action(latent_action)
 
-        # # X and Y loss
-        # xy_dist = torch.distributions.Normal(xy_mu, xy_std)
-        # xy_log_prob = xy_dist.log_prob(xy_gt).mean(dim=-1)
+        # Sample RGB from categorical
+        rgb_dist = torch.distributions.Categorical(logits=rgb_logits)
+        rgb_idx = rgb_dist.sample()
+        rgb_log_prob = rgb_dist.log_prob(rgb_idx)
 
-        # # RGB loss (Categorical b/c of palette)
-        # rgb_dist = torch.distributions.Categorical(logits=rgb_logits)  # Categorical distribution
-        # rgb_onehot = (action[:,-3:].unsqueeze(-2).repeat(1,12,1)==state['color_palette']).all(dim=-1).to(torch.float)
-        # rgb_log_prob = rgb_dist.log_prob(rgb_onehot.argmax(dim=-1))
-
-        # return lzb_log_prob + a_log_prob + xy_log_prob + rgb_log_prob
+        # Get action
+        rgb = color_palette[torch.arange(rgb_idx.shape[0]), rgb_idx]
+        action = torch.cat([lzbaxy_mu[:,0:3],
+                            torch.atan2(lzbaxy_mu[:,3], lzbaxy_mu[:,4]).unsqueeze(-1),
+                            lzbaxy_mu[:,5:],
+                            rgb], dim=-1)
+        
+        return action, rgb_log_prob.unsqueeze(-1)  # No log prob for deterministic actions

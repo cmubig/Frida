@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from stroke_generator.model import StrokePredictor
+from stroke_generator.model import StrokePredictor, DeterministicStrokePredictor
 
 class StrokeActor(nn.Module):
     def __init__(self, opt, model: StrokePredictor, device):
@@ -48,3 +48,30 @@ class StrokeActor(nn.Module):
 
         stroke_tensor = torch.cat([lzbaxy, color_palette[torch.arange(lzbaxy.shape[0]),rgb_idx]],dim=-1)
         return stroke_tensor
+
+
+class DeterministicStrokeActor(nn.Module):
+    def __init__(self, opt, model: DeterministicStrokePredictor, device):
+        super().__init__()
+
+        self.opt = opt
+        self.device = device
+
+        self.model = model
+
+        self.rollouts = 4
+    
+    def forward(self, 
+                current_canvas, 
+                target_img, 
+                target_tokenized_txt, 
+                remaining_strokes,
+                color_palette,
+                mask=None):
+        
+        return self.model(current_canvas, 
+                target_img, 
+                target_tokenized_txt, 
+                remaining_strokes,
+                color_palette,
+                mask)

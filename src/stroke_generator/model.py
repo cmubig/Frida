@@ -3,9 +3,8 @@ import torch
 from torch import nn
 import torchvision.transforms as transforms
 
-from stroke_generator.utils.model_utils import ConvBlock, LinBlock, ScaledSigmoid, ScaledTanh
 from stroke_generator.encoders.encoders import CanvasEncoder
-from stroke_generator.encoders.decoder import StrokeDecoder
+from stroke_generator.encoders.decoder import StrokeDecoder, DeterministicStrokeDecoder
 
 
 class StrokePredictor(nn.Module):
@@ -16,7 +15,7 @@ class StrokePredictor(nn.Module):
         self.device = device
 
         self.img_size = 224
-        self.pallete_size = 12
+        self.palette_size = 12
         self.state_latent_dim = 1024
         self.action_latent_dim = 128
 
@@ -25,7 +24,7 @@ class StrokePredictor(nn.Module):
             opt, 
             device,
             latent_dim=self.state_latent_dim,
-            pallete_size=self.pallete_size
+            palette_size=self.palette_size
         )
 
         # Main block
@@ -36,18 +35,18 @@ class StrokePredictor(nn.Module):
             batch_first=True,
             dropout=0.2
         ).to(device)
-        self.skip = nn.Sequential(
-            nn.Linear(self.state_latent_dim, self.state_latent_dim),
-            nn.ReLU(),
-            nn.Linear(self.state_latent_dim, self.action_latent_dim),
-        ).to(device)
+        # self.skip = nn.Sequential(
+        #     nn.Linear(self.state_latent_dim, self.state_latent_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(self.state_latent_dim, self.action_latent_dim),
+        # ).to(device)
 
         # Decoder
         self.stroke_decoder = StrokeDecoder(
             opt,
             device,
             latent_dim=self.action_latent_dim,
-            pallete_size=self.pallete_size
+            palette_size=self.palette_size
         )
 
         # Translates from [-1,1] to real params
@@ -68,7 +67,6 @@ class StrokePredictor(nn.Module):
         self.scale = (max-min).to(device)
         self.bias = ((max+min)/2).to(device)
 
-        self.save_hx = False
         self.hx = None
 
     def sample(self, 
@@ -138,7 +136,7 @@ class StrokePredictor(nn.Module):
                                             mask)
         
         # Skip connection
-        skip_x = self.skip(encoded_inputs)
+        # skip_x = self.skip(encoded_inputs)
         
         # Reshape back to [batch_size, n_strokes, ...] for LSTM
         # or add sequence length dim of 1 for LSTM if no n_strokes dimensino given
@@ -150,8 +148,6 @@ class StrokePredictor(nn.Module):
 
         # LSTM
         out, (hidden, cell) = self.main(encoded_inputs, self.hx)
-        if self.save_hx:
-            self.hx = (hidden, cell)  # Save hidden state for next timestep
 
         # If given with shape [batch_size, n_strokes, ...], reshape to [batch_size*n_strokes, ...] for decoder
         if reshape:
@@ -160,7 +156,7 @@ class StrokePredictor(nn.Module):
             x = out[:, -1, :]  # Take last timestep's output
 
         # Add skip connection
-        x = x + skip_x
+        # x = x + skip_x
 
         # Decode
         lzbaxy_mu, lzbaxy_log_std, rgb_logits = self.stroke_decoder(x)
@@ -178,4 +174,66 @@ class StrokePredictor(nn.Module):
             lzbaxy_log_std = lzbaxy_log_std.reshape(batch_size, n_strokes, -1)
             rgb_logits = rgb_logits.reshape(batch_size, n_strokes, -1)
         
-        return lzbaxy_mu, lzbaxy_log_std, rgb_logits
+        return lzbaxy_mu, lzbaxy_log_std, rgb_logits, (hidden, cell)
+    
+    def set_hidden_cell(self, hidden_cell, detach=True):
+        """
+        Set the hidden and cell states for the LSTM.
+        If detach is True, detach the hidden and cell states from the computation graph.
+        """
+        if hidden_cell is None:
+            self.hx = None
+        elif detach:
+            self.hx = (hidden_cell[0].detach().to(self.device),
+                        hidden_cell[1].detach().to(self.device))
+        else:
+            self.hx = hidden_cell
+
+class DeterministicStrokePredictor(StrokePredictor):
+    def __init__(self, opt, device='cpu'):
+        super().__init__(opt, device)
+        self.stroke_decoder = DeterministicStrokeDecoder(
+            opt, 
+            device, 
+            latent_dim=self.action_latent_dim, 
+            palette_size=self.palette_size
+        )
+
+        min = torch.tensor([
+            self.opt.MIN_STROKE_LENGTH, # L
+            self.opt.MIN_STROKE_Z,      # Z
+            -self.opt.MAX_BEND,         # B
+            -torch.pi, -1, -1,           # A, X, Y
+        ])
+        max = torch.tensor([
+            self.opt.MAX_STROKE_LENGTH, # L
+            0.95,                       # Z
+            self.opt.MAX_BEND,          # B 
+            torch.pi, 1, 1,             # A, X, Y
+        ])
+        self.scale = (max-min).to(device)
+        self.bias = ((max+min)/2).to(device)
+    
+    def forward(self, 
+                current_canvas, 
+                target_img, 
+                target_tokenized_txt, 
+                remaining_strokes,
+                color_palette,
+                mask=None):
+        
+        # Use mu as deterministic output
+        lzbaxy_mu, _, rgb_logits, hidden_cell = super().forward(
+            current_canvas, 
+            target_img, 
+            target_tokenized_txt, 
+            remaining_strokes,
+            color_palette,
+            mask
+        )
+
+        stroke_tensor = lzbaxy_mu * self.scale / 2.0 + self.bias  # Translate from [-1,1] to real params
+
+        rgb = color_palette[torch.arange(color_palette.shape[0]).to(self.device),torch.argmax(rgb_logits, dim=-1)]
+        stroke_tensor = torch.cat([stroke_tensor, rgb], dim=-1)
+        return stroke_tensor, hidden_cell

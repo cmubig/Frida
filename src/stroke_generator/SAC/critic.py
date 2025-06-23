@@ -19,11 +19,26 @@ class StrokeCritic(nn.Module):
         self.q2 = QNet(opt, device, state_latent_size, action_latent_size, hidden_size).to(device)
         self.q1 = QNet(opt, device, state_latent_size, action_latent_size, hidden_size).to(device)
 
-    def forward(self, encoded_states, encoded_actions, hidden_cells=(None, None)):
+        self.hx = (None, None)
+
+    def forward(self, encoded_states, encoded_actions):
         # Expects shape [batch_size, n_strokes, ...]
-        q1, hc_1 = self.q1(encoded_states, encoded_actions, hidden_cells[0])
-        q2, hc_2 = self.q2(encoded_states, encoded_actions, hidden_cells[1])
-        return q1,q2,(hc_1, hc_2)
+        q1, hx_0 = self.q1(encoded_states, encoded_actions, self.hx[0])
+        q2, hx_1 = self.q2(encoded_states, encoded_actions, self.hx[1])
+        return q1,q2,(hx_0, hx_1)
+    
+    def set_hidden_cell(self, hidden_cells, detach=True):
+        if hidden_cells is None or hidden_cells[0] is None:
+            self.hx = (None, None)
+        elif detach:
+            self.hx = (
+                (hidden_cells[0][0].detach().to(self.device), 
+                 hidden_cells[0][1].detach().to(self.device)),
+                (hidden_cells[1][0].detach().to(self.device), 
+                 hidden_cells[1][1].detach().to(self.device))
+            )
+        else:
+            self.hx = hidden_cells
 
 class QNet(nn.Module):
     def __init__(self, opt, device, state_latent_dim, act_latent_dim, hidden_size=256):
