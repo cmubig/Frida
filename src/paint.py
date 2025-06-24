@@ -6,10 +6,13 @@
 ################ All rights reserved. ####################
 ##########################################################
 
+import os
+import pickle
 import sys
 import cv2
 import datetime
 import numpy as np
+from PIL import Image
 
 import torch
 from paint_utils3 import canvas_to_global_coordinates, get_colors, nearest_color, random_init_painting, save_colors, show_img
@@ -63,12 +66,41 @@ if __name__ == '__main__':
 
     load_objectives_data(opt)
 
+    if opt.save_diffusion_data:
+        os.makedirs(opt.diffusion_data_dir, exist_ok=True)
+
+        subdir_name = run_name
+        diffusion_data_subdir = os.path.join(opt.diffusion_data_dir, subdir_name)
+        os.makedirs(diffusion_data_subdir, exist_ok=True)
+
+        # Save parameters
+        with open(os.path.join(diffusion_data_subdir, 'opt.json'),'wb') as f:
+            pickle.dump(opt.opt, f)
+
+        # Save target image and current canvas
+        target_pil = Image.fromarray((opt.objective_data_loaded[0].detach().cpu().numpy()[0,:3].transpose(1,2,0)*255.).astype(np.uint8))
+        target_pil.save(os.path.join(diffusion_data_subdir, 'target.png'))
+        # Save current canvas (rn it's always the same)
+        background_pil = Image.fromarray((current_canvas.detach().cpu().numpy()[0,:3].transpose(1,2,0)*255.).astype(np.uint8))
+        background_pil.save(os.path.join(diffusion_data_subdir, 'background_img.png'))
+
+        # Subdir for saving intermediate paintings
+        opt.paintings_subdir = os.path.join(diffusion_data_subdir, 'intermediate_paintings')
+        os.makedirs(opt.paintings_subdir, exist_ok=True)
+
+
     painting = random_init_painting(opt, current_canvas, opt.num_strokes, ink=opt.ink)
     painting.to(device)
 
     # Do the initial optimization
     painting, color_palette = optimize_painting(opt, painting, 
                 optim_iter=opt.init_optim_iter, color_palette=color_palette)
+    
+    if opt.save_diffusion_data:
+        # Save the current painting progress
+        with open(os.path.join(diffusion_data_subdir, 'final_painting.pt'),'wb') as f:
+            pickle.dump(painting, f)
+        1/0 # Just die
     
 
     if not painter.opt.simulate:

@@ -37,6 +37,9 @@ class Options(object):
         parser.add_argument('--ink', action='store_true')
         parser.add_argument('--paint_from_image', action='store_true')
 
+        parser.add_argument('--save_diffusion_data', action='store_true')
+        parser.add_argument('--diffusion_data_dir', type=str, default='./diffusion_data/', )
+
         # Color parameters
         parser.add_argument('--calib_colors', action='store_true', help='Use this to calibrate colors using MacBeth color checker')
         parser.add_argument('--n_colors', default=12, type=int, help='Number of colors of paint to use')

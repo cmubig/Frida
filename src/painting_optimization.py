@@ -7,6 +7,7 @@
 ##########################################################
 
 
+import pickle
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -149,6 +150,10 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
 
     for it in tqdm(range(optim_iter), desc='Optimizing {} Strokes'.format(str(len(painting.brush_strokes)))):
         for o in optims: o.zero_grad() if o is not None else None
+
+        if opt.save_diffusion_data:
+            # Save the current painting progress
+            torch.save(painting, os.path.join(opt.paintings_subdir, '{}.pt'.format(it)))
 
         lr_factor = (1 - 2*np.abs(it/optim_iter - 0.5)) + 0.005
         for i_o in range(len(optims)):
