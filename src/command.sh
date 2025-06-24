@@ -1,0 +1,1 @@
+python3 paint.py --use_cache --cache_dir caches/small_brush/ --objective clip_conv_loss --objective_data frida.jpg --objective_weight 1.0 --num_strokes 81 --materials_json ../materials_xarm_paint.json --robot xarm --simulate --dont_retrain_stroke_model --save_diffusion_data --lr_multiplier 2 --init_optim_iter 1000 --n_colors 4 --use_colors_from ./4grey.png

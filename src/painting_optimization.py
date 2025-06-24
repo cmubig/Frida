@@ -7,6 +7,7 @@
 ##########################################################
 
 
+import copy
 import pickle
 import numpy as np
 import torch
@@ -153,7 +154,9 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
 
         if opt.save_diffusion_data:
             # Save the current painting progress
-            torch.save(painting, os.path.join(opt.paintings_subdir, '{}.pt'.format(it)))
+            painting_for_logging = copy.deepcopy(painting).cpu()
+            painting_for_logging.param2img = None
+            torch.save(painting_for_logging, os.path.join(opt.paintings_subdir, '{}.pt'.format(it)))
 
         lr_factor = (1 - 2*np.abs(it/optim_iter - 0.5)) + 0.005
         for i_o in range(len(optims)):

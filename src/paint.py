@@ -6,6 +6,7 @@
 ################ All rights reserved. ####################
 ##########################################################
 
+import copy
 import os
 import pickle
 import sys
@@ -97,9 +98,10 @@ if __name__ == '__main__':
                 optim_iter=opt.init_optim_iter, color_palette=color_palette)
     
     if opt.save_diffusion_data:
-        # Save the current painting progress
-        with open(os.path.join(diffusion_data_subdir, 'final_painting.pt'),'wb') as f:
-            pickle.dump(painting, f)
+        # Save the Final painting progress
+        painting_for_logging = copy.deepcopy(painting).cpu()
+        painting_for_logging.param2img = None
+        torch.save(painting_for_logging, os.path.join(diffusion_data_subdir, 'final_painting.pt'))
         1/0 # Just die
     
 
