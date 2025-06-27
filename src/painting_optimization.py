@@ -155,8 +155,12 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
         if opt.save_diffusion_data:
             # Save the current painting progress
             painting_for_logging = copy.deepcopy(painting).cpu()
+            # Detach and remove all unescessary data
+            painting_for_logging = painting_for_logging.cpu()
             painting_for_logging.param2img = None
-            torch.save(painting_for_logging, os.path.join(opt.paintings_subdir, '{}.pt'.format(it)))
+            painting_for_logging.background_img = None
+
+            torch.save(painting_for_logging.state_dict(), os.path.join(opt.paintings_subdir, f'{it}_state_dict.pt'))
 
         lr_factor = (1 - 2*np.abs(it/optim_iter - 0.5)) + 0.005
         for i_o in range(len(optims)):

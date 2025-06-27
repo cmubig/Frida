@@ -98,10 +98,20 @@ if __name__ == '__main__':
                 optim_iter=opt.init_optim_iter, color_palette=color_palette)
     
     if opt.save_diffusion_data:
-        # Save the Final painting progress
-        painting_for_logging = copy.deepcopy(painting).cpu()
+        painting_for_logging = copy.deepcopy(painting)
+        
+        # Save final image
+        painted_canvas = painting_for_logging(h_render, w_render, use_alpha=False)
+        painted_canvas_pil = Image.fromarray((painted_canvas.detach().cpu().numpy()[0,:3].transpose(1,2,0)*255.).astype(np.uint8))
+        painted_canvas_pil.save(os.path.join(diffusion_data_subdir, 'final_canvas.png'))
+        
+        # Detach and remove all unescessary data
+        painting_for_logging = painting_for_logging.cpu()
         painting_for_logging.param2img = None
-        torch.save(painting_for_logging, os.path.join(diffusion_data_subdir, 'final_painting.pt'))
+        painting_for_logging.background_img = None
+
+        # Save the Final painting progress
+        torch.save(painting_for_logging.state_dict(), os.path.join(diffusion_data_subdir, 'final_painting_state_dict.pt'))
         1/0 # Just die
     
 
