@@ -607,6 +607,7 @@ dependencies:
       - segment-anything==1.0
       - soundfile==0.12.1
       - soxr==0.3.7
+      - tensorflow==2.16.2
       - tensorboard==2.16.2
       - tensorboard-data-server==0.7.2
       - tensorboardx==2.1
@@ -623,4 +624,4 @@ dependencies:
       - wcwidth==0.2.13
       - whisper==1.1.10
       - xarm==0.0.4
-      - xarm-python-sdk
+      - xarm-python-sdk==1.14.8
