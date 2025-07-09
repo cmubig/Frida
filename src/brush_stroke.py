@@ -4,7 +4,7 @@ import torch
 from torch import nn
 import torchgeometry
 import torchvision.transforms as T
-from torchvision.transforms import InterpolationMode 
+from torchvision.transforms import InterpolationMode
 from kornia.geometry.transform import rotate
 bicubic = InterpolationMode.BICUBIC
 import warnings
@@ -108,10 +108,10 @@ def get_rotation_transform(a, anchor_x, anchor_y):
     a = -1.*a
     A[0,0,0] = cos(a)
     A[0,0,1] = -sin(a)
-    A[0,0,2] = anchor_x - anchor_x * cos(a) + anchor_y * sin(a) 
+    A[0,0,2] = anchor_x - anchor_x * cos(a) + anchor_y * sin(a)
     A[0,1,0] = sin(a)
     A[0,1,1] = cos(a)
-    A[0,1,2] = anchor_y - anchor_x * sin(a) - anchor_y * cos(a) 
+    A[0,1,2] = anchor_y - anchor_x * sin(a) - anchor_y * cos(a)
     A[0,2,0] = 0
     A[0,2,1] = 0
     A[0,2,2] = 1
@@ -132,14 +132,16 @@ def get_translation_transform(xt, yt):
 
 class BrushStroke(nn.Module):
     vaes = {}
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # if device == 'cpu' and torch.backends.mps.is_available():
+    #     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-    def __init__(self, 
+    def __init__(self,
                  opt,
                 latent=None,
-                color=None, 
+                color=None,
                 ink=False,
-                a=None, xt=None, yt=None, 
+                a=None, xt=None, yt=None,
                 z=None,
                 device='cuda',
                 is_dot=False):
@@ -151,7 +153,7 @@ class BrushStroke(nn.Module):
         self.MIN_STROKE_Z = opt.MIN_STROKE_Z
         self.max_length_before_new_paint = opt.max_length_before_new_paint
         self.ink = ink
-
+        self.device = device
         if color is None: color=(torch.rand(3).to(device)*.4)+0.3
         if a is None: a=(torch.rand(1)*2-1)*3.14
         if xt is None: xt=torch.rand(1)
@@ -164,12 +166,12 @@ class BrushStroke(nn.Module):
         self.z = nn.Parameter(torch.ones(4)*z) # Range [0,1]
 
         self.vae_name = opt.vae_path
-        
-        if latent is None: 
+
+        if latent is None:
             latent = torch.randn(1, 64)
 
-        self.latent = latent 
-        self.latent.requires_grad = True 
+        self.latent = latent
+        self.latent.requires_grad = True
         self.latent = nn.Parameter(self.latent)
 
 
@@ -197,7 +199,7 @@ class BrushStroke(nn.Module):
         # x = special_sigmoid(x)
         # import kornia as K
         # x = K.filters.median_blur(x, (3,3))
-        
+
         # show_img(x)
         x = torch.cat([x,x,x,x], dim=1)
 
@@ -247,7 +249,7 @@ class BrushStroke(nn.Module):
         # Clone the path so that the operation is not in-place (PyTorch quirk; allows gradients to flow through)
         path_clone = path.clone()
         path_clone[:,2] = path[:,2].clamp(self.MIN_STROKE_Z, 0.95)
-        
+
         return path_clone
 
     def execute(self, painter, x_start, y_start, rotation):
@@ -277,7 +279,7 @@ class BrushStroke(nn.Module):
 
         for step in range(len(path)):
             x, y, z = path[step,0], path[step,1], path[step,2]
-            x_next = x_start + x 
+            x_next = x_start + x
             y_next = y_start + y
             z = painter.Z_CANVAS - z * z_range
             q = None
@@ -288,7 +290,7 @@ class BrushStroke(nn.Module):
                 z += 0.005
 
             # Don't over shoot the canvas
-            x_next = min(max(painter.opt.X_CANVAS_MIN, x_next), painter.opt.X_CANVAS_MAX) 
+            x_next = min(max(painter.opt.X_CANVAS_MIN, x_next), painter.opt.X_CANVAS_MAX)
             y_next = min(max(painter.opt.Y_CANVAS_MIN, y_next), painter.opt.Y_CANVAS_MAX)
 
             if step == 0: # First point: lower pen down
@@ -310,13 +312,13 @@ class BrushStroke(nn.Module):
         # Don't over shoot the canvas
         x_next = x_start+path[-1,0]
         y_next = y_start+path[-1,1]
-        x_next = min(max(painter.opt.X_CANVAS_MIN, x_next), painter.opt.X_CANVAS_MAX) 
+        x_next = min(max(painter.opt.X_CANVAS_MIN, x_next), painter.opt.X_CANVAS_MAX)
         y_next = min(max(painter.opt.Y_CANVAS_MIN, y_next), painter.opt.Y_CANVAS_MAX)
         # painter.move_to(x_next, y_next, painter.Z_CANVAS + 0.04, speed=0.3)
         # painter.hover_above(x_start+path[-1,0], y_start+path[-1,1], painter.Z_CANVAS)
 
         return stroke_complete
-    
+
     def get_length(self):
         """ Return the approximate length of the stroke in distance (meters) """
         path = self.get_path()
@@ -324,7 +326,7 @@ class BrushStroke(nn.Module):
         ys = path[:,1]
         approx_len = (((xs[1:] - xs[:-1])**2 + (ys[1:] - ys[:-1])**2)**0.5).sum()
         return approx_len
-    
+
     def get_rotated_trajectory(rotation, trajectory):
         # Rotation in radians
         ret = trajectory.detach().clone()
@@ -335,9 +337,10 @@ class BrushStroke(nn.Module):
                      + math.cos(rotation) * trajectory[i][1]
         ret = ret.cpu().detach().numpy()
         return ret
-    
+
     def dot_stroke(self, opt):
         return BrushStroke(
             opt,
-            is_dot=True
+            is_dot=True,
+            device=self.device
         )

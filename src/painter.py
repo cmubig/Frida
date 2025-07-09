@@ -52,6 +52,8 @@ class Painter():
         kwargs:
         '''
         self.opt = opt # Options object
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("mps") if torch.backends.mps.is_available() else self.opt.device
         use_cache = opt.use_cache
 
         self.robot = None
@@ -71,7 +73,7 @@ class Painter():
         self.robot.good_morning_robot()
 
         # Setup Camera
-        while True: 
+        while True:
             try:
                 if not self.opt.simulate and not opt.no_camera:
                     self.camera = WebCam(opt)
@@ -122,7 +124,7 @@ class Painter():
         self.opt.PALLETTE_POSITION.append(self.Z_CANVAS- 0.2*self.Z_RANGE)
         # self.opt.PAINT_DIFFERENCE = 0.03976
 
-        # while True: 
+        # while True:
         #     self.locate_items()
 
         # self.locate_canvas()
@@ -166,8 +168,8 @@ class Painter():
                     pass
                 # self.paint_fill_in_library()
                 self.paint_extended_stroke_library()
-        
-        # We must use the same settings as when the stroke library was created. 
+
+        # We must use the same settings as when the stroke library was created.
         # e.g., we cannot make strokes longer than the ones that we trained on
         with open(os.path.join(self.opt.cache_dir, 'stroke_library', 'stroke_settings_during_library.json'), 'r') as f:
             settings = json.load(f)
@@ -192,7 +194,7 @@ class Painter():
         # Initial spot
         if not self.opt.simulate:
             # self.robot.fa.reset_joints()
-            y = 0.4 
+            y = 0.4
             if self.opt.robot == 'franka':
                 y = 0.4
             elif self.opt.robot == 'xarm':
@@ -205,7 +207,7 @@ class Painter():
                 orientations[i] = PERPENDICULAR_QUATERNION
         return self.robot.go_to_cartesian_pose(positions, orientations, fast=True)
 
-    def _move(self, x, y, z, q=None, timeout=20, method='direct', 
+    def _move(self, x, y, z, q=None, timeout=20, method='direct',
             step_size=.1, speed=0.1, duration=5):
         if self.opt.simulate: return
         '''
@@ -276,7 +278,7 @@ class Painter():
         positions.append([self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
         self.move_to_trajectories(positions, orientations)
-    
+
     def touch_rag(self):
         self.move_to(self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR, speed=0.3)
         positions = []
@@ -299,8 +301,8 @@ class Painter():
 
         x = self.opt.PALLETTE_POSITION[0] + x_offset
         y = self.opt.PALLETTE_POSITION[1] + y_offset
-        z = self.opt.PALLETTE_POSITION[2] 
-        
+        z = self.opt.PALLETTE_POSITION[2]
+
         self.move_to(x,y,z+self.opt.HOVER_FACTOR)
 
         positions, orientations = [], []
@@ -319,16 +321,16 @@ class Painter():
 
     def set_height(self, x, y, z, move_amount=0.0015):
         '''
-        Let the user use keyboard keys to lower the paint brush to find 
+        Let the user use keyboard keys to lower the paint brush to find
         how tall something is (z).
         User preses escape to end, then this returns the x, y, z of the end effector
         '''
-        
+
         import getch
 
         curr_z = z
         curr_x = x
-        curr_y = y 
+        curr_y = y
 
         self.hover_above(curr_x, curr_y, curr_z)
         self.move_to(curr_x, curr_y, curr_z, method='direct')
@@ -339,7 +341,7 @@ class Painter():
 
         while True:
             c = getch.getch()
-            
+
             if c:
                 # print(c)
                 #catch Esc or ctrl-c
@@ -360,7 +362,7 @@ class Painter():
                         curr_y -= move_amount
                     else:
                         print('Use arrow keys up and down. Esc when done.')
-                    
+
                     self._move(curr_x, curr_y,curr_z)
 
     def calibrate_robot_tilt(self):
@@ -446,7 +448,7 @@ class Painter():
             for j in np.linspace(0.1, 0.9, 4):
                 homography_points.append([i,j])
 
-        
+
         i = 0
         for canvas_coord in homography_points:
             if not self.opt.ink:
@@ -457,7 +459,7 @@ class Painter():
             x_glob,y_glob,_ = canvas_to_global_coordinates(x_prop,y_prop,None, self.opt) # Coord in meters from robot
 
             # Paint the point
-            dot_stroke = BrushStroke(self.opt).dot_stroke(self.opt)
+            dot_stroke = BrushStroke(self.opt, device=self.device).dot_stroke(self.opt)
             dot_stroke.execute(self, x_glob, y_glob, 0)
 
         # Picture of the new strokes
@@ -468,10 +470,10 @@ class Painter():
         real_coords = []
         sim_coords_global = []
         real_coords_global = []
-        
+
         for canvas_coord in homography_points:
             try:
-                x_prop, y_prop = canvas_coord 
+                x_prop, y_prop = canvas_coord
                 x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix)
 
                 # Look in the region of the stroke and find the center of the stroke
@@ -507,18 +509,18 @@ class Painter():
                 sim_coords.append(np.array([x_pix, y_pix]))
 
                 # Coord in meters from robot
-                x_sim_glob,y_sim_glob,_ = canvas_to_global_coordinates(x_prop,y_prop,None, self.opt) 
+                x_sim_glob,y_sim_glob,_ = canvas_to_global_coordinates(x_prop,y_prop,None, self.opt)
                 sim_coords_global.append(np.array([x_sim_glob, y_sim_glob]))
                 x_real_glob,y_real_glob,_ = canvas_to_global_coordinates(1.*x_pix_real/canvas_width_pix,\
-                        1-(1.*y_pix_real/canvas_height_pix),None, self.opt) 
+                        1-(1.*y_pix_real/canvas_height_pix),None, self.opt)
                 real_coords_global.append(np.array([x_real_glob, y_real_glob]))
             except Exception as e:
                 print(e)
         real_coords, sim_coords = np.array(real_coords), np.array(sim_coords)
         real_coords_global, sim_coords_global = np.array(real_coords_global), np.array(sim_coords_global)
-        
-        # H, _ = cv2.findHomography(real_coords, sim_coords)      
-        H, _ = cv2.findHomography(real_coords_global, sim_coords_global)  
+
+        # H, _ = cv2.findHomography(real_coords, sim_coords)
+        H, _ = cv2.findHomography(real_coords_global, sim_coords_global)
         # canvas_warp = cv2.warpPerspective(canvas.copy(), H, (canvas.shape[1], canvas.shape[0]))
 
         # if debug:
@@ -558,7 +560,7 @@ class Painter():
 
         self.to_neutral()
         canvas_without_stroke = self.camera.get_canvas(max_height=image_save_height)
-        strokes_without_getting_new_paint = 999 
+        strokes_without_getting_new_paint = 999
         strokes_without_cleaning = 9999
         distance_since_getting_paint = 0
 
@@ -577,7 +579,7 @@ class Painter():
             for y_offset_pix_og in np.linspace((.03/self.opt.CANVAS_HEIGHT_M), 0.99-(.02/self.opt.CANVAS_HEIGHT_M), n_strokes_y)*h:
                 # for x_offset_pix in np.linspace(0.02, 0.99-(self.opt.MAX_STROKE_LENGTH/self.opt.CANVAS_WIDTH), n_strokes_x)*w:
 
-                x_offset_pix = 0.02 * w 
+                x_offset_pix = 0.02 * w
                 while(True): # x loop
                     if not self.opt.ink:
                         if strokes_without_cleaning >= 20:
@@ -593,13 +595,13 @@ class Painter():
                         strokes_without_getting_new_paint += 1
                         strokes_without_cleaning += 1
 
-                    random_stroke = BrushStroke(self.opt)
-                    
+                    random_stroke = BrushStroke(self.opt, device=self.device).random_stroke(self.opt)
+
                     stroke_length_m = random_stroke.get_path()[:,0].max().item()
                     stroke_length_pix = stroke_length_m * (w / self.opt.CANVAS_WIDTH_M)
                     if stroke_length_pix + x_offset_pix > 0.98*w:
                         break # No room left on the page width
-                    
+
                     y_offset_pix = y_offset_pix_og
 
                     with torch.no_grad(): # Save other variables with brush stroke for training
@@ -608,11 +610,11 @@ class Painter():
                         random_stroke.yt *= 0
                         random_stroke.yt += (y_offset_pix / h)
                         random_stroke.a *= 0
-                        
+
                     x, y = x_offset_pix / w, 1 - (y_offset_pix / h)
                     x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
                     x,y,_ = canvas_to_global_coordinates(x,y,None,self.opt)
-                    
+
                     random_stroke.execute(self, x, y, 0)
 
                     distance_since_getting_paint += random_stroke.get_length().item()
@@ -630,7 +632,7 @@ class Painter():
 
                         ax.imshow(canvas_with_stroke)
 
-                        ax.scatter((x_offset_pix / w)*canvas_with_stroke.shape[1], 
+                        ax.scatter((x_offset_pix / w)*canvas_with_stroke.shape[1],
                                    (y_offset_pix / h)*canvas_with_stroke.shape[0],
                                    facecolors='none', edgecolors='r')
                         ax.set_xticks([]), ax.set_yticks([])
@@ -651,7 +653,7 @@ class Painter():
                         bs_fn = os.path.join(lib_dir, 'stroke_parameters{:05d}.npy'.format(n_strokes))
                         with open(bs_fn,'wb') as f:
                             pickle.dump(brush_strokes, f)
-                            
+
                         canvases_before_fn = os.path.join(lib_dir, 'canvases_before_{:05d}.npy'.format(n_strokes))
                         with gzip.GzipFile(canvases_before_fn, 'w') as f:
                             canvases_before = np.stack(np.stack(canvases_before, axis=0), axis=0)
@@ -662,7 +664,7 @@ class Painter():
                             canvases_after = np.stack(np.stack(canvases_after, axis=0), axis=0)
                             canvases_after = (canvases_after * 255).astype(np.uint8)
                             np.save(f, canvases_after)
-                            
+
                         with open(os.path.join(self.opt.cache_dir, 'stroke_library', 'stroke_settings_during_library.json'), 'w') as f:
                             settings = {}
                             settings['MAX_BEND'] = self.opt.MAX_BEND
@@ -673,12 +675,12 @@ class Painter():
                             settings['CANVAS_WIDTH_M'] = self.opt.CANVAS_WIDTH_M
                             settings['CANVAS_HEIGHT_M'] = self.opt.CANVAS_HEIGHT_M
                             json.dump(settings, f, indent=4)
-                    
+
                         # Go back to empty because memory gets too large
                         brush_strokes = []
                         canvases_before = []
-                        canvases_after = [] 
-                    
+                        canvases_after = []
+
                     gap = 0.03*w if self.opt.ink else 0.05*w
                     x_offset_pix += stroke_length_pix + gap
 

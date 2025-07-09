@@ -29,6 +29,11 @@ from my_tensorboard import TensorBoard
 from painting_optimization import load_objectives_data, optimize_painting
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+if device == 'cpu' and torch.backends.mps.is_available():
+    device = 'mps'
+
+
+
 
 if __name__ == '__main__':
     opt = Options()
@@ -60,7 +65,7 @@ if __name__ == '__main__':
 
     color_palette = None
     if opt.use_colors_from is not None:
-        color_palette = get_colors(cv2.resize(cv2.imread(opt.use_colors_from)[:,:,::-1], (256, 256)), 
+        color_palette = get_colors(cv2.resize(cv2.imread(opt.use_colors_from)[:,:,::-1], (256, 256)),
                 n_colors=opt.n_colors).to(device)
         opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(color_palette), 0)
 
@@ -74,7 +79,7 @@ if __name__ == '__main__':
 
         if color_palette is not None:
             discretize_colors(painting, color_palette)
-        
+
         painting, color_palette = optimize_painting(opt, painting, optim_iter=opt.init_optim_iter, color_palette=color_palette)
 
         # Save painting to file
@@ -92,7 +97,7 @@ if __name__ == '__main__':
 
 
     if not opt.simulate and not opt.ink:
-        show_img(save_colors(color_palette), 
+        show_img(save_colors(color_palette),
                  title="Initial plan complete. Ready to start painting. Ensure mixed paint is provided and then exit this to start painting.")
 
 
@@ -105,11 +110,11 @@ if __name__ == '__main__':
         ### Execute some of the plan ###
         ################################
         for stroke_ind in tqdm(range(min(len(painting),strokes_per_adaptation))):
-            stroke = painting.pop()            
-            
+            stroke = painting.pop()
+
             # Clean paint brush and/or get more paint
             if not painter.opt.ink:
-                color_ind, _ = nearest_color(stroke.color_transform.detach().cpu().numpy(), 
+                color_ind, _ = nearest_color(stroke.color_transform.detach().cpu().numpy(),
                                              color_palette.detach().cpu().numpy())
                 new_paint_color = color_ind != curr_color
                 if new_paint_color or consecutive_strokes_no_clean > 120:
@@ -146,7 +151,7 @@ if __name__ == '__main__':
         painter.to_neutral()
         current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device) / 255.
         painting.background_img = current_canvas
-        painting, _ = optimize_painting(opt, painting, 
+        painting, _ = optimize_painting(opt, painting,
                     optim_iter=opt.optim_iter, color_palette=color_palette)
 
     painter.to_neutral()
@@ -162,5 +167,3 @@ if __name__ == '__main__':
     # save_image(canvas_photos[-1], os.path.join(opt.plan_gif_dir, 'init_painting_plan{}.png'.format(str(time.time()))))
 
     painter.robot.good_night_robot()
-
-
