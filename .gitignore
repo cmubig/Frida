@@ -7,3 +7,6 @@ src/cache/next_brush_strokes.csv
 
 .DS_Store
 __pycache__/
+
+src/images/*
+!src/images/frida.jpg
