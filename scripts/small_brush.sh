@@ -1,0 +1,2 @@
+#! /bin/bash
+python3 src/paint.py --simulate --objective clip_conv_loss --objective_data src/images/arya110.jpg --objective_weight 1.0 --num_strokes 50 --lr_multiplier 2.5 --init_optim_iter 2000 --num_adaptations 1 --use_cache --cache_dir src/caches/small_brush --robot xarm --use_colors_from brush_colors/4grey.png --n_colors 4  --xarm_ip 192.168.1.168 --vae_path mocap/saved_models/general.pt --materials_json materials_xarm_paint.json --dont_retrain_stroke_model
