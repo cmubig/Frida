@@ -53,7 +53,7 @@ class Painter():
         '''
         self.opt = opt # Options object
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = torch.device("mps") if torch.backends.mps.is_available() else self.opt.device
+        # self.device = torch.device("mps") if torch.backends.mps.is_available() else self.opt.device
         use_cache = opt.use_cache
 
         self.robot = None
