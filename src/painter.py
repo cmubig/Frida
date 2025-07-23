@@ -595,7 +595,9 @@ class Painter():
                         strokes_without_getting_new_paint += 1
                         strokes_without_cleaning += 1
 
-                    random_stroke = BrushStroke(self.opt, device=self.device).random_stroke(self.opt)
+                    # random_stroke = BrushStroke(self.opt, device=self.device).random_stroke(self.opt)
+                    random_stroke = BrushStroke(self.opt, device=self.device)
+
 
                     stroke_length_m = random_stroke.get_path()[:,0].max().item()
                     stroke_length_pix = stroke_length_m * (w / self.opt.CANVAS_WIDTH_M)
