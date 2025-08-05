@@ -27,18 +27,20 @@ from camera.dslr import WebCam, SimulatedWebCam
 
 PERPENDICULAR_QUATERNION = np.array([1.77622069e-04,   9.23865441e-01,  -3.82717408e-01,  -1.73978366e-05])
 
+
 def shift_image(X, dx, dy):
     X = np.roll(X, dy, axis=0)
     X = np.roll(X, dx, axis=1)
-    if dy>0:
+    if dy > 0:
         X[:dy, :] = 255
-    elif dy<0:
+    elif dy < 0:
         X[dy:, :] = 255
-    if dx>0:
+    if dx > 0:
         X[:, :dx] = 255
-    elif dx<0:
+    elif dx < 0:
         X[:, dx:] = 255
     return X
+
 
 class Painter():
     '''
@@ -51,7 +53,7 @@ class Painter():
             opt (Options) : from options.py; class with info about painting environment and globals
         kwargs:
         '''
-        self.opt = opt # Options object
+        self.opt = opt  # Options object
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # self.device = torch.device("mps") if torch.backends.mps.is_available() else self.opt.device
         use_cache = opt.use_cache
@@ -68,7 +70,7 @@ class Painter():
         if opt.simulate:
             self.robot = SimulatedRobot(debug=True)
 
-        self.writer = opt.writer # TODO simplify
+        self.writer = opt.writer  # TODO simplify
 
         self.robot.good_morning_robot()
 
@@ -89,13 +91,13 @@ class Painter():
                 except SyntaxError:
                     pass
 
-        self.H_coord = None # Translate coordinates based on faulty camera location
+        self.H_coord = None  # Translate coordinates based on faulty camera location
 
         self.to_neutral()
 
         # Set how high the table is wrt the brush
         if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, "brush_tip_to_table_calib.json")):
-            params = json.load(open(os.path.join(self.opt.cache_dir, "brush_tip_to_table_calib.json"),'rb'))
+            params = json.load(open(os.path.join(self.opt.cache_dir, "brush_tip_to_table_calib.json"), 'rb'))
             self.Z_CANVAS = params['Z_CANVAS']
             self.Z_MAX_CANVAS = params['Z_MAX_CANVAS']
         else:
@@ -109,10 +111,10 @@ class Painter():
             self.Z_MAX_CANVAS = self.set_height(p[0], p[1], self.Z_CANVAS)[2]
             self.hover_above(p[0], p[1], self.Z_CANVAS, method='direct')
 
-            params = {'Z_CANVAS':self.Z_CANVAS, 'Z_MAX_CANVAS':self.Z_MAX_CANVAS}
+            params = {'Z_CANVAS': self.Z_CANVAS, 'Z_MAX_CANVAS': self.Z_MAX_CANVAS}
             if not os.path.exists(self.opt.cache_dir):
                 os.mkdir(self.opt.cache_dir)
-            with open(os.path.join(self.opt.cache_dir, 'brush_tip_to_table_calib.json'),'w') as f:
+            with open(os.path.join(self.opt.cache_dir, 'brush_tip_to_table_calib.json'), 'w') as f:
                 json.dump(params, f, indent=4)
             self.to_neutral()
 
@@ -121,7 +123,7 @@ class Painter():
         self.opt.WATER_POSITION.append(self.Z_CANVAS)
         self.opt.RAG_POSTITION.append(self.Z_CANVAS)
 
-        self.opt.PALLETTE_POSITION.append(self.Z_CANVAS- 0.2*self.Z_RANGE)
+        self.opt.PALLETTE_POSITION.append(self.Z_CANVAS - 0.2*self.Z_RANGE)
         # self.opt.PAINT_DIFFERENCE = 0.03976
 
         # while True:
@@ -188,8 +190,6 @@ class Painter():
             from param2stroke import train_param2stroke
             train_param2stroke(self.opt)
 
-
-
     def to_neutral(self, speed=0.4):
         # Initial spot
         if not self.opt.simulate:
@@ -199,7 +199,7 @@ class Painter():
                 y = 0.4
             elif self.opt.robot == 'xarm':
                 y = 0.1
-            self.move_to_trajectories([[0,y,self.opt.INIT_TABLE_Z]], [None])
+            self.move_to_trajectories([[0, y, self.opt.INIT_TABLE_Z]], [None])
 
     def move_to_trajectories(self, positions, orientations):
         for i in range(len(orientations)):
@@ -208,8 +208,9 @@ class Painter():
         return self.robot.go_to_cartesian_pose(positions, orientations, fast=True)
 
     def _move(self, x, y, z, q=None, timeout=20, method='direct',
-            step_size=.1, speed=0.1, duration=5):
-        if self.opt.simulate: return
+              step_size=.1, speed=0.1, duration=5):
+        if self.opt.simulate:
+            return
         '''
         Move to given x, y, z in global coordinates
         kargs:
@@ -219,14 +220,14 @@ class Painter():
         if q is None:
             q = PERPENDICULAR_QUATERNION
 
-        self.robot.go_to_cartesian_pose([x,y,z], q)
+        self.robot.go_to_cartesian_pose([x, y, z], q)
         return None
 
-    def hover_above(self, x,y,z, method='direct'):
-        self._move(x,y,z+self.opt.HOVER_FACTOR, method=method, speed=0.4)
+    def hover_above(self, x, y, z, method='direct'):
+        self._move(x, y, z+self.opt.HOVER_FACTOR, method=method, speed=0.4)
 
-    def move_to(self, x,y,z, q=None, method='direct', speed=0.05):
-        self._move(x,y,z, q=q, method=method, speed=speed)
+    def move_to(self, x, y, z, q=None, method='direct', speed=0.05):
+        self._move(x, y, z, q=q, method=method, speed=speed)
 
     def locate_items(self):
         self.dip_brush_in_water()
@@ -256,68 +257,81 @@ class Painter():
 
     def dip_brush_in_water(self):
         # self.move_to(self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR)
-        self.move_to(self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR)
+        self.move_to(self.opt.WATER_POSITION[0], self.opt.WATER_POSITION[1],
+                     self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR)
         positions = []
-        positions.append([self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
-        positions.append([self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]])
+        positions.append([self.opt.WATER_POSITION[0], self.opt.WATER_POSITION[1],
+                         self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
+        positions.append([self.opt.WATER_POSITION[0], self.opt.WATER_POSITION[1], self.opt.WATER_POSITION[2]])
         for i in range(5):
             noise = np.clip(np.random.randn(2)*0.01, a_min=-.02, a_max=0.02)
-            positions.append([self.opt.WATER_POSITION[0]+noise[0],self.opt.WATER_POSITION[1]+noise[1],self.opt.WATER_POSITION[2]])
-        positions.append([self.opt.WATER_POSITION[0],self.opt.WATER_POSITION[1],self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
+            positions.append([self.opt.WATER_POSITION[0]+noise[0],
+                             self.opt.WATER_POSITION[1]+noise[1], self.opt.WATER_POSITION[2]])
+        positions.append([self.opt.WATER_POSITION[0], self.opt.WATER_POSITION[1],
+                         self.opt.WATER_POSITION[2]+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
         self.move_to_trajectories(positions, orientations)
 
     def rub_brush_on_rag(self):
-        self.move_to(self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR, speed=0.3)
+        self.move_to(self.opt.RAG_POSTITION[0], self.opt.RAG_POSTITION[1],
+                     self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR, speed=0.3)
         positions = []
-        positions.append([self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
-        positions.append([self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]])
+        positions.append([self.opt.RAG_POSTITION[0], self.opt.RAG_POSTITION[1],
+                         self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
+        positions.append([self.opt.RAG_POSTITION[0], self.opt.RAG_POSTITION[1], self.opt.RAG_POSTITION[2]])
         for i in range(5):
             noise = np.clip(np.random.randn(2)*0.06, a_min=-.06, a_max=0.06)
-            positions.append([self.opt.RAG_POSTITION[0]+noise[0],self.opt.RAG_POSTITION[1]+noise[1],self.opt.RAG_POSTITION[2]])
-        positions.append([self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
+            positions.append([self.opt.RAG_POSTITION[0]+noise[0],
+                             self.opt.RAG_POSTITION[1]+noise[1], self.opt.RAG_POSTITION[2]])
+        positions.append([self.opt.RAG_POSTITION[0], self.opt.RAG_POSTITION[1],
+                         self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
         self.move_to_trajectories(positions, orientations)
 
     def touch_rag(self):
-        self.move_to(self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR, speed=0.3)
+        self.move_to(self.opt.RAG_POSTITION[0], self.opt.RAG_POSTITION[1],
+                     self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR, speed=0.3)
         positions = []
         noise = np.clip(np.random.randn(2)*0.04, a_min=-.04, a_max=0.04)
-        positions.append([self.opt.RAG_POSTITION[0]+noise[0],self.opt.RAG_POSTITION[1]+noise[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
-        positions.append([self.opt.RAG_POSTITION[0]+noise[0],self.opt.RAG_POSTITION[1]+noise[1],self.opt.RAG_POSTITION[2]+0.005])
-        positions.append([self.opt.RAG_POSTITION[0],self.opt.RAG_POSTITION[1],self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
+        positions.append([self.opt.RAG_POSTITION[0]+noise[0], self.opt.RAG_POSTITION[1] +
+                         noise[1], self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
+        positions.append([self.opt.RAG_POSTITION[0]+noise[0], self.opt.RAG_POSTITION[1] +
+                         noise[1], self.opt.RAG_POSTITION[2]+0.005])
+        positions.append([self.opt.RAG_POSTITION[0], self.opt.RAG_POSTITION[1],
+                         self.opt.RAG_POSTITION[2]+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
         self.move_to_trajectories(positions, orientations)
 
     def clean_paint_brush(self):
-        if self.opt.simulate: return
+        if self.opt.simulate:
+            return
         self.dip_brush_in_water()
         self.rub_brush_on_rag()
 
     def get_paint(self, paint_index):
-        if self.opt.simulate: return
+        if self.opt.simulate:
+            return
         x_offset = self.opt.PAINT_DIFFERENCE * np.floor(paint_index/6)
-        y_offset = self.opt.PAINT_DIFFERENCE * (paint_index%6)
+        y_offset = self.opt.PAINT_DIFFERENCE * (paint_index % 6)
 
         x = self.opt.PALLETTE_POSITION[0] + x_offset
         y = self.opt.PALLETTE_POSITION[1] + y_offset
         z = self.opt.PALLETTE_POSITION[2]
 
-        self.move_to(x,y,z+self.opt.HOVER_FACTOR)
+        self.move_to(x, y, z+self.opt.HOVER_FACTOR)
 
         positions, orientations = [], []
-        positions.append([x,y,z+self.opt.HOVER_FACTOR])
-        positions.append([x,y,z+0.04])
+        positions.append([x, y, z+self.opt.HOVER_FACTOR])
+        positions.append([x, y, z+0.04])
         for i in range(3):
             noise = np.clip(np.random.randn(2)*0.004, a_min=-.009, a_max=0.009)
-            positions.append([x+noise[0],y+noise[1],z])
-        positions.append([x,y,z + 0.02])
-        positions.append([x,y,z+self.opt.HOVER_FACTOR])
+            positions.append([x+noise[0], y+noise[1], z])
+        positions.append([x, y, z + 0.02])
+        positions.append([x, y, z+self.opt.HOVER_FACTOR])
         orientations = [None]*len(positions)
         self.move_to_trajectories(positions, orientations)
         # self.touch_rag()
         # self.to_neutral()
-
 
     def set_height(self, x, y, z, move_amount=0.0015):
         '''
@@ -344,73 +358,73 @@ class Painter():
 
             if c:
                 # print(c)
-                #catch Esc or ctrl-c
+                # catch Esc or ctrl-c
                 if c in ['\x1b', '\x03']:
                     return curr_x, curr_y, curr_z
                 else:
-                    if c=='w':
+                    if c == 'w':
                         curr_z += move_amount
-                    elif c=='s':
+                    elif c == 's':
                         curr_z -= move_amount
-                    elif c=='d':
+                    elif c == 'd':
                         curr_x += move_amount
-                    elif c=='a':
+                    elif c == 'a':
                         curr_x -= move_amount
-                    elif c=='r':
+                    elif c == 'r':
                         curr_y += move_amount
-                    elif c=='f':
+                    elif c == 'f':
                         curr_y -= move_amount
                     else:
                         print('Use arrow keys up and down. Esc when done.')
 
-                    self._move(curr_x, curr_y,curr_z)
+                    self._move(curr_x, curr_y, curr_z)
 
     def calibrate_robot_tilt(self):
 
-        while(True):
-            self._move(-.5,.53,self.Z_CANVAS+.09,  speed=0.2)
-            self._move(-.5,.53,self.Z_CANVAS,  speed=0.2)
+        while (True):
+            self._move(-.5, .53, self.Z_CANVAS+.09,  speed=0.2)
+            self._move(-.5, .53, self.Z_CANVAS,  speed=0.2)
             try:
                 input('press enter to move to next position')
             except SyntaxError:
                 pass
-            self._move(-.6,.53,self.Z_CANVAS+.09,  speed=0.2)
-            self._move(.5,.5,self.Z_CANVAS+.09,  speed=0.2)
-            self._move(.5,.5,self.Z_CANVAS,  speed=0.2)
+            self._move(-.6, .53, self.Z_CANVAS+.09,  speed=0.2)
+            self._move(.5, .5, self.Z_CANVAS+.09,  speed=0.2)
+            self._move(.5, .5, self.Z_CANVAS,  speed=0.2)
             try:
                 input('press enter to move to next position')
             except SyntaxError:
                 pass
 
-            self._move(.5,.5,self.Z_CANVAS+.09,  speed=0.2)
+            self._move(.5, .5, self.Z_CANVAS+.09,  speed=0.2)
             # self.to_neutral(speed=0.2)
-            self._move(0,.4,self.Z_CANVAS+.09,  speed=0.2)
-            self._move(0,.4,self.Z_CANVAS,  speed=0.2)
+            self._move(0, .4, self.Z_CANVAS+.09,  speed=0.2)
+            self._move(0, .4, self.Z_CANVAS,  speed=0.2)
             try:
                 input('press enter to move to next position')
             except SyntaxError:
                 pass
-            self._move(0,.35,self.Z_CANVAS+.09,  speed=0.2)
+            self._move(0, .35, self.Z_CANVAS+.09,  speed=0.2)
             # self.to_neutral(speed=0.2)
-            self._move(0,.8,self.Z_CANVAS+.09,  speed=0.2)
-            self._move(0,.8,self.Z_CANVAS,  speed=0.2)
+            self._move(0, .8, self.Z_CANVAS+.09,  speed=0.2)
+            self._move(0, .8, self.Z_CANVAS,  speed=0.2)
             try:
                 input('press enter to move to next position')
             except SyntaxError:
                 pass
-            self._move(0,.8,self.Z_CANVAS+.09,  speed=0.2)
+            self._move(0, .8, self.Z_CANVAS+.09,  speed=0.2)
 
     def locate_canvas(self):
 
-        while(True):
+        while (True):
 
             for x in [0.0, 1.0]:
                 for y in [0.0, 1.0]:
-                    x_glob,y_glob,_ = canvas_to_global_coordinates(x,y,None, self.opt) # Coord in meters from robot
-                    self._move(x_glob,y_glob,self.Z_CANVAS+.02,  speed=0.1)
-                    self._move(x_glob,y_glob,self.Z_CANVAS+.005,  speed=0.05)
-                    self._move(x_glob,y_glob,self.Z_CANVAS+.02,  speed=0.1)
-
+                    x_glob, y_glob, _ = canvas_to_global_coordinates(
+                        x, y, None, self.opt)  # Coord in meters from robot
+                    self._move(x_glob, y_glob, self.Z_CANVAS+.02,  speed=0.1)
+                    self._move(x_glob, y_glob, self.Z_CANVAS+.005,  speed=0.05)
+                    self._move(x_glob, y_glob, self.Z_CANVAS+.02,  speed=0.1)
 
     def coordinate_calibration(self, debug=True, use_cache=False):
         # If you run painter.paint on a given x,y it will be slightly off (both in real and simulation)
@@ -418,7 +432,8 @@ class Painter():
         # to perfectly hit that given x,y using a homograph transformation
 
         if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, "cached_H_coord.pkl")):
-            self.H_coord = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_H_coord.pkl"),'rb'), encoding='latin1')
+            self.H_coord = pickle.load(
+                open(os.path.join(self.opt.cache_dir, "cached_H_coord.pkl"), 'rb'), encoding='latin1')
             return self.H_coord
 
         import matplotlib
@@ -434,29 +449,30 @@ class Painter():
         # Paint 4 points and compare the x,y's in real vs. sim
         # Compute Homography to compare these
 
-        stroke_ind = 0 # This stroke is pretty much a dot
+        stroke_ind = 0  # This stroke is pretty much a dot
 
         canvas = self.camera.get_canvas()
         canvas_og = canvas.copy()
         canvas_width_pix, canvas_height_pix = canvas.shape[1], canvas.shape[0]
 
         # Points for computing the homography
-        t = 0.1 # How far away from corners to paint
+        t = 0.1  # How far away from corners to paint
         # homography_points = [[t,t],[1-t,t],[t,1-t],[1-t,1-t]]
         homography_points = []
         for i in np.linspace(0.1, 0.9, 4):
             for j in np.linspace(0.1, 0.9, 4):
-                homography_points.append([i,j])
-
+                homography_points.append([i, j])
 
         i = 0
         for canvas_coord in homography_points:
             if not self.opt.ink:
-                if i % 5 == 0: self.get_paint(0)
+                if i % 5 == 0:
+                    self.get_paint(0)
             i += 1
-            x_prop, y_prop = canvas_coord # Coord in canvas proportions
+            x_prop, y_prop = canvas_coord  # Coord in canvas proportions
             # x_pix, y_pix = int(x_prop * canvas_width_pix), int((1-y_prop) * canvas_height_pix) #  Coord in canvas pixels
-            x_glob,y_glob,_ = canvas_to_global_coordinates(x_prop,y_prop,None, self.opt) # Coord in meters from robot
+            x_glob, y_glob, _ = canvas_to_global_coordinates(
+                x_prop, y_prop, None, self.opt)  # Coord in meters from robot
 
             # Paint the point
             dot_stroke = BrushStroke(self.opt, device=self.device).dot_stroke(self.opt)
@@ -478,7 +494,8 @@ class Painter():
 
                 # Look in the region of the stroke and find the center of the stroke
                 w = int(.1 * canvas_height_pix)
-                window = canvas[max(0,y_pix-w):min(canvas_height_pix,y_pix+w), max(0,x_pix-w):min(x_pix+w, canvas_width_pix),:]
+                window = canvas[max(0, y_pix-w):min(canvas_height_pix, y_pix+w),
+                                max(0, x_pix-w):min(x_pix+w, canvas_width_pix), :]
                 window = window.mean(axis=2)
                 window /= 255.
                 window = 1 - window
@@ -488,9 +505,9 @@ class Painter():
                 window = window > 0.5
                 window[:int(0.05*window.shape[0])] = 0
                 window[int(0.95*window.shape[0]):] = 0
-                window[:,:int(0.05*window.shape[1])] = 0
-                window[:,int(0.95*window.shape[1]):] = 0
-                window = median_filter(window, size=(9,9))
+                window[:, :int(0.05*window.shape[1])] = 0
+                window[:, int(0.95*window.shape[1]):] = 0
+                window = median_filter(window, size=(9, 9))
                 dark_y, dark_x = window.nonzero()
                 # plt.matshow(window)
                 # plt.scatter(int(np.median(dark_x)), int(np.median(dark_y)))
@@ -509,10 +526,10 @@ class Painter():
                 sim_coords.append(np.array([x_pix, y_pix]))
 
                 # Coord in meters from robot
-                x_sim_glob,y_sim_glob,_ = canvas_to_global_coordinates(x_prop,y_prop,None, self.opt)
+                x_sim_glob, y_sim_glob, _ = canvas_to_global_coordinates(x_prop, y_prop, None, self.opt)
                 sim_coords_global.append(np.array([x_sim_glob, y_sim_glob]))
-                x_real_glob,y_real_glob,_ = canvas_to_global_coordinates(1.*x_pix_real/canvas_width_pix,\
-                        1-(1.*y_pix_real/canvas_height_pix),None, self.opt)
+                x_real_glob, y_real_glob, _ = canvas_to_global_coordinates(1.*x_pix_real/canvas_width_pix,
+                                                                           1-(1.*y_pix_real/canvas_height_pix), None, self.opt)
                 real_coords_global.append(np.array([x_real_glob, y_real_glob]))
             except Exception as e:
                 print(e)
@@ -548,11 +565,9 @@ class Painter():
 
         self.H_coord = H
         # Cache it
-        with open(os.path.join(self.opt.cache_dir, 'cached_H_coord.pkl'),'wb') as f:
+        with open(os.path.join(self.opt.cache_dir, 'cached_H_coord.pkl'), 'wb') as f:
             pickle.dump(self.H_coord, f)
         return H
-
-
 
     def paint_extended_stroke_library(self, save_batch_size=10, image_save_height=768):
         w = self.opt.CANVAS_WIDTH_PIX
@@ -565,14 +580,15 @@ class Painter():
         distance_since_getting_paint = 0
 
         lib_dir = os.path.join(self.opt.cache_dir, 'stroke_library')
-        if not os.path.exists(lib_dir): os.mkdir(lib_dir)
+        if not os.path.exists(lib_dir):
+            os.mkdir(lib_dir)
 
         # Figure out how many strokes can be made on the given canvas size
         n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT_M/(0.5*self.opt.MAX_STROKE_LENGTH)))
 
-        brush_strokes = [] # list of BrushStroke
-        canvases_before = [] # Photos of canvases without stroke
-        canvases_after = [] # photos of canvases with stroke
+        brush_strokes = []  # list of BrushStroke
+        canvases_before = []  # Photos of canvases without stroke
+        canvases_after = []  # photos of canvases with stroke
 
         n_strokes = 0
         for paper_it in range(self.opt.num_papers):
@@ -580,7 +596,7 @@ class Painter():
                 # for x_offset_pix in np.linspace(0.02, 0.99-(self.opt.MAX_STROKE_LENGTH/self.opt.CANVAS_WIDTH), n_strokes_x)*w:
 
                 x_offset_pix = 0.02 * w
-                while(True): # x loop
+                while (True):  # x loop
                     if not self.opt.ink:
                         if strokes_without_cleaning >= 20:
                             self.clean_paint_brush()
@@ -588,7 +604,7 @@ class Painter():
                             strokes_without_cleaning, strokes_without_getting_new_paint = 0, 0
                             distance_since_getting_paint = 0
                         if strokes_without_getting_new_paint >= 5:
-                        # if distance_since_getting_paint >= self.opt.max_length_before_new_paint:
+                            # if distance_since_getting_paint >= self.opt.max_length_before_new_paint:
                             self.get_paint(0)
                             strokes_without_getting_new_paint = 0
                             distance_since_getting_paint = 0
@@ -598,15 +614,14 @@ class Painter():
                     # random_stroke = BrushStroke(self.opt, device=self.device).random_stroke(self.opt)
                     random_stroke = BrushStroke(self.opt, device=self.device)
 
-
-                    stroke_length_m = random_stroke.get_path()[:,0].max().item()
+                    stroke_length_m = random_stroke.get_path()[:, 0].max().item()
                     stroke_length_pix = stroke_length_m * (w / self.opt.CANVAS_WIDTH_M)
                     if stroke_length_pix + x_offset_pix > 0.98*w:
-                        break # No room left on the page width
+                        break  # No room left on the page width
 
                     y_offset_pix = y_offset_pix_og
 
-                    with torch.no_grad(): # Save other variables with brush stroke for training
+                    with torch.no_grad():  # Save other variables with brush stroke for training
                         random_stroke.xt *= 0
                         random_stroke.xt += (x_offset_pix / w)
                         random_stroke.yt *= 0
@@ -614,8 +629,8 @@ class Painter():
                         random_stroke.a *= 0
 
                     x, y = x_offset_pix / w, 1 - (y_offset_pix / h)
-                    x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
-                    x,y,_ = canvas_to_global_coordinates(x,y,None,self.opt)
+                    x, y = min(max(x, 0.), 1.), min(max(y, 0.), 1.)  # safety
+                    x, y, _ = canvas_to_global_coordinates(x, y, None, self.opt)
 
                     random_stroke.execute(self, x, y, 0)
 
@@ -653,7 +668,7 @@ class Painter():
                     if n_strokes % save_batch_size == 0:
                         # Save data
                         bs_fn = os.path.join(lib_dir, 'stroke_parameters{:05d}.npy'.format(n_strokes))
-                        with open(bs_fn,'wb') as f:
+                        with open(bs_fn, 'wb') as f:
                             pickle.dump(brush_strokes, f)
 
                         canvases_before_fn = os.path.join(lib_dir, 'canvases_before_{:05d}.npy'.format(n_strokes))

@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 
-import torch 
+import torch
 from torchvision.transforms import Resize
 
 # import camera.color_calib
@@ -25,6 +25,7 @@ from camera.dslr_gphoto import *
 from paint_utils3 import load_img
 
 # https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/opencv_viewer_example.py
+
 
 class WebCam():
     def __init__(self, opt, debug=False):
@@ -46,7 +47,7 @@ class WebCam():
         #     plt.show()
 
         return capture_image(self.camera, channels)
-        
+
         # Dirty fix for image delay
         # for i in range(4):
         #     targ, img = capture_image(self.camera, channels)
@@ -65,18 +66,21 @@ class WebCam():
                     try:
                         self.init_color_calib()
                         retake = input("Retake? y/[n]")
-                        if not(retake[:1] == 'y' or retake[:1] == 'Y'):
+                        if not (retake[:1] == 'y' or retake[:1] == 'Y'):
                             completed_color_calib = True
                     except Exception as e:
                         print(e)
-                        try: input('could not calibrate. Move color checker and try again (press enter when ready)')
-                        except SyntaxError: pass 
-                try:    
+                        try:
+                            input('could not calibrate. Move color checker and try again (press enter when ready)')
+                        except SyntaxError:
+                            pass
+                try:
                     input("Remove color checker from frame, then press enter.")
                 except SyntaxError:
                     pass
             else:
-                params = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_color_calibration.pkl"),'rb'), encoding='latin1')
+                params = pickle.load(
+                    open(os.path.join(self.opt.cache_dir, "cached_color_calibration.pkl"), 'rb'), encoding='latin1')
                 self.color_tmat, self.greyval = params["color_tmat"], params["greyval"]
                 self.has_color_info = True
 
@@ -91,7 +95,7 @@ class WebCam():
     def get_canvas(self, use_cache=False, max_height=None):
         if self.H_canvas is None:
             self.calibrate_canvas(use_cache)
-        
+
         # use corrected image if possible
         if (self.has_color_info and self.opt.calib_colors):
             img = self.get_color_correct_image(use_cache)
@@ -105,14 +109,14 @@ class WebCam():
             fact = 1.0 * img.shape[0] / max_height
             canvas = cv2.resize(canvas, (int(canvas.shape[1]/fact), int(canvas.shape[0]/fact)))
         return canvas
-    
+
     def get_canvas_tensor(self, h=None, w=None):
         canvas = self.get_canvas()
-        canvas = torch.from_numpy(canvas).permute(2,0,1).unsqueeze(0)
+        canvas = torch.from_numpy(canvas).permute(2, 0, 1).unsqueeze(0)
         if h is not None and w is not None:
-            canvas = Resize((h,w), antialias=True)(canvas)
+            canvas = Resize((h, w), antialias=True)(canvas)
 
-        canvas = torch.cat([canvas, torch.ones(1,1,canvas.shape[2],canvas.shape[3])], dim=1)
+        canvas = torch.cat([canvas, torch.ones(1, 1, canvas.shape[2], canvas.shape[3])], dim=1)
 
         return canvas
 
@@ -122,16 +126,16 @@ class WebCam():
         # original image shape is too wide of an aspect ratio compared to paper
         # w = int(h * LETTER_WH_RATIO)
         w = int(h * (self.opt.CANVAS_WIDTH_M/self.opt.CANVAS_HEIGHT_M))
-        assert(w <= img.shape[1])
+        assert (w <= img.shape[1])
 
         if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, 'cached_H_canvas.pkl')):
-            self.H_canvas = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_H_canvas.pkl"),'rb'), encoding='latin1')
+            self.H_canvas = pickle.load(
+                open(os.path.join(self.opt.cache_dir, "cached_H_canvas.pkl"), 'rb'), encoding='latin1')
             img1_warp = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
             # plt.imshow(img1_warp[:, :w])
             # plt.title('Hopefully this looks like just the canvas')
             # plt.show()
             return
-
 
         self.canvas_points = find_corners(img, show_search=self.debug)
 
@@ -149,10 +153,10 @@ class WebCam():
         plt.title("Here are the found corners")
         plt.show()
 
-        true_points = np.array([[0,0],[w,0], [w,h],[0,h]])
+        true_points = np.array([[0, 0], [w, 0], [w, h], [0, h]])
         self.H_canvas, _ = cv2.findHomography(self.canvas_points, true_points)
         img1_warp = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
-        
+
         # print(img1_warp[:, :w].shape)
         # print(img1_warp.shape)
         plt.imshow(img1_warp[:, :w])
@@ -161,17 +165,17 @@ class WebCam():
         # plt.imshow(img1_warp)
         # plt.title('Hopefully this looks like just the canvas')
         # plt.show()
-        
-        with open(os.path.join(self.opt.cache_dir, 'cached_H_canvas.pkl'),'wb') as f:
+
+        with open(os.path.join(self.opt.cache_dir, 'cached_H_canvas.pkl'), 'wb') as f:
             pickle.dump(self.H_canvas, f)
 
     def init_color_calib(self):
         path, img = self.get_rgb_image()
         self.color_tmat, self.greyval = find_calib_params(path, self.debug)
         self.has_color_info = True
-        
-        with open(os.path.join(self.opt.cache_dir, 'cached_color_calibration.pkl'),'wb') as f:
-            params = {"color_tmat":self.color_tmat, "greyval":self.greyval}
+
+        with open(os.path.join(self.opt.cache_dir, 'cached_color_calibration.pkl'), 'wb') as f:
+            params = {"color_tmat": self.color_tmat, "greyval": self.greyval}
             pickle.dump(params, f)
 
     # intrinsic calibration of the camera
@@ -202,7 +206,7 @@ class WebCam():
 
         images = glob.glob(calib_path + "*.jpg")
         self.intrinsics = computeIntrinsic(images, (6, 8), (8, 8))
-    
+
     # undistort and crop using OpenCV
     # From OpenCV tutorials
     def undistort(self, img):
@@ -217,21 +221,26 @@ class WebCam():
         dst = dst[y:y+h, x:x+w]
         return dst
 
+
 class SimulatedWebCam():
     def __init__(self, opt):
         self.opt = opt
         w_h_ratio = float(opt.CANVAS_WIDTH_M) / opt.CANVAS_HEIGHT_M
         h = 1024
         # self.canvas = np.ones((h,int(h * w_h_ratio),3), dtype=np.float32) * 255.
-        self.canvas = load_img('../cofrida/blank_canvas.jpg')[0,:3].cpu().numpy().astype(np.float32).transpose(1,2,0)
+        self.canvas = load_img('../cofrida/blank_canvas.jpg')[0,
+                                                              :3].cpu().numpy().astype(np.float32).transpose(1, 2, 0)
+
     def get_canvas(self):
         return self.canvas
+
     def get_canvas_tensor(self, h=None, w=None):
         canvas = self.get_canvas()
-        canvas = torch.from_numpy(canvas).permute(2,0,1).unsqueeze(0)
+        canvas = torch.from_numpy(canvas).permute(2, 0, 1).unsqueeze(0)
         if h is not None and w is not None:
-            canvas = Resize((h,w), antialias=True)(canvas)
-        canvas = torch.cat([canvas, torch.ones(1,1,h,w)], dim=1)
+            canvas = Resize((h, w), antialias=True)(canvas)
+        canvas = torch.cat([canvas, torch.ones(1, 1, h, w)], dim=1)
         return canvas
+
     def calibrate_canvas(self, use_cache=False):
         pass
