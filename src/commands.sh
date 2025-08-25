@@ -15,24 +15,50 @@
 
 #!/bin/bash
 
-#  files=(
-#     "IMG_1477 - Janice Min.png"
-#     "subject_1.png"
-#     "1740717769835-1 - Wons HEE.png"
-#     "IMG_3022 - ­이현준 _ 학생 _ 협동과정 인공지능전공.png"
-#     "IMG_9679 - 이다연.png"
-#     "이은학_증명사진 - 이은학.png"
-#  )
+png_files=(
+    abucker.png
+    acanovil.png
+    bstoler.png
+    chan.png
+    chengyaz.png
+    eliotx.png
+    feiyuz.png
+    haokunz.png
+    hpark3.png
+    hyaejino.png
+    ingridn.png
+    jaeyoons.png
+    jmf1.png
+    jon_arriza.png
+    Jua.png
+    portegak.png
+    pschalde.png
+    sunyuw.png
+    ushin.png
+    uyoo.png
+    vihaan.png
+    zhixuan2.png
+    minkih.png
+    sieunc.png
+    junseoki.png
+)
 
-#  # Loop through image files and generate matching .pkl names
-#  subdir="week_4"
-#  for img in "${files[@]}"; do
-#    img_name="${img%.*}"
-#    pkl_file="$img_name.pkl"
-#    echo "Processing $img with corresponding $pkl_file"
-#    python3 paint.py --simulate --objective clip_conv_loss --objective_data "images/$subdir/$img" --objective_weight 1.0 --num_strokes 80 --lr_multiplier 2.5 --init_optim_iter 2000 --num_adaptations 1 --use_cache --cache_dir caches/small_brush_holder --robot xarm --use_colors_from brush_colors/random.png --n_colors 4  --xarm_ip 192.168.1.168 --vae_path mocap/saved_models/general.pt --materials_json ../materials_xarm_holder.json --dont_retrain_stroke_model --painting_path "images/$subdir/$pkl_file"
-#  done
+color_dir=(
+    colors_2
+    colors_3
+)
+ # Loop through image files and generate matching .pkl names
+ subdir="labs_portraits"
+ for sub_dir in "${color_dir[@]}"; do
+   for img in "${png_files[@]}"; do
+     img_name="${img%.*}"
+     pkl_file="$img_name.pkl"
+     echo "Processing $img with corresponding $pkl_file"
+     python3 paint.py --simulate --objective clip_conv_loss --objective_data "images/$subdir/$img" --objective_weight 1.0 --num_strokes 80 --lr_multiplier 2.5 --init_optim_iter 2000 --num_adaptations 1 --use_cache --cache_dir caches/small_brush_holder --robot xarm --use_colors_from brush_colors/$sub_dir.png --n_colors 4  --xarm_ip 192.168.1.168 --vae_path mocap/saved_models/general.pt --materials_json ../materials_xarm_holder.json --dont_retrain_stroke_model --painting_path "images/$sub_dir/$pkl_file"
+   done
+ done
 
-img_name="acanovil"
-subdir="labs_portraits"
-python3 paint.py --simulate --objective clip_conv_loss --objective_data "images/$subdir/$img_name.png" --objective_weight 1.0 --num_strokes 80 --lr_multiplier 2.5 --init_optim_iter 2000 --num_adaptations 1 --use_cache --cache_dir caches/small_brush_holder --robot xarm --use_colors_from brush_colors/random.png --n_colors 4  --xarm_ip 192.168.1.168 --vae_path mocap/saved_models/general.pt --materials_json ../materials_xarm_holder.json --dont_retrain_stroke_model --painting_path "images/$subdir/$img_name.pkl"
+# img_name="portegak"
+# subdir="labs_portraits"
+# sub_dir="colors_2"
+# python3 paint.py --objective clip_conv_loss --objective_data "images/$subdir/$img_name.png" --objective_weight 1.0 --num_strokes 80 --lr_multiplier 2.5 --init_optim_iter 2000 --num_adaptations 1 --use_cache --cache_dir caches/small_brush_holder --robot xarm --use_colors_from brush_colors/$sub_dir.png --n_colors 4  --xarm_ip 192.168.1.168 --vae_path mocap/saved_models/general.pt --materials_json ../materials_xarm_holder.json --dont_retrain_stroke_model --painting_path "images/$sub_dir/$img_name.pkl"

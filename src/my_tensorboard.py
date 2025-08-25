@@ -38,3 +38,18 @@ class TensorBoard(object):
 
     def add_figure(self, tag, fig, step):
         self.summary_writer.add_figure(tag, fig, step)
+
+
+def extract_summary_from_tensorboardX(summary_path):
+    """Extracts a summary from a tensorboardX Summary object."""
+    if isinstance(summary, Summary):
+        return summary.value
+    elif isinstance(summary, list):
+        return [extract_summary_from_tensorboardX(s) for s in summary]
+    else:
+        raise ValueError("Unsupported summary type: {}".format(type(summary)))
+
+
+if __name__ == "__main__":
+    # Example usage
+    print(extract_summary_from_tensorboardX())
