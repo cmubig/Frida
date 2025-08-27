@@ -12,3 +12,5 @@ src/images/*
 !src/images/frida.jpg
 
 outputs/*
+
+src/cache
