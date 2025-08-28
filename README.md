@@ -1,6 +1,6 @@
 # FRIDA <a href="https://twitter.com/FridaRobot" target="_blank"><img src="https://about.x.com/content/dam/about-twitter/x/brand-toolkit/logo-black.png.twimg.1920.png" height=32/></a>   <a href="https://www.tiktok.com/@frida_robot?lang=en" target="_blank"> <img src="https://sf-tb-sg.ibytedtos.com/obj/eden-sg/uhtyvueh7nulogpoguhm/tiktok-icon2.png" height=32/></a>
 
-FRIDA (A Framework and Robotics Initiative for Developing Arts), is a robotic painting project developed at 
+FRIDA (A Framework and Robotics Initiative for Developing Arts), is a robotic painting project developed at
 The Robotics Institute, Carnegie Mellon University.
 This repository contains the code for two ICRA papers described below.
 
@@ -72,6 +72,15 @@ pip3 install --r requirements.txt
 # (OR) Install python packages with Conda
 cd Frida
 conda env create -n frida --file environment.yml
+conda activate frida
+
+# (OR) Install environment via [UV](https://docs.astral.sh/uv/getting-started/installation/) here `python3.11`is being used
+cd Frida
+uv venv
+uv sync
+source .venv/bin/activate
+
+
 # Beware, you may need to re-install torch/torchvision depending on your cuda version.
 # The following lines worked on our CUDA 12.2 system
 pip uninstall torch torchvision
@@ -121,7 +130,7 @@ tensorboard --logdir Frida/src/painting_log
 # Arguments
 
 ```
-python3 paint.py 
+python3 paint.py
     [--simulate] Run in only simulation
     [--robot] Which robot to use [franka|xarm]
     [--xarm_ip] If using xarm, specify its IP address
@@ -142,7 +151,14 @@ python3 paint.py
     [--num_adaptations int] Number of times to pause robot execution to take a photo and replan
     [--init_optim_iter int] Optimization iterations for initial plan
     [--optim_iter int] Optimization iterations for each time FRIDA replans
+    [--dont_retrain_stroke_model] If set, the stroke model will not be retrained during optimization and it will be taken from the cache_dir path
 ```
+
+If running with UV run
+```
+uv run paint.py [args]
+```
+
 
 # Objectives
 
@@ -169,7 +185,7 @@ python3 paint.py --simulate --use_cache --cache_dir caches/sharpie_short_strokes
 
 ## Acknowledgements
 
-Thank you to: 
+Thank you to:
 - Sunyu Wang for the brilliant, spring-loaded Sharpie holding end-effector
 - [Jia Chen Xu](https://github.com/jxu12345) for writing FRIDA's perception code
 - Heera Sekhr and Jesse Ding for their help in the early stages of designing FRIDA's planning algorithms
