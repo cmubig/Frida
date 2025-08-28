@@ -1191,6 +1191,7 @@ dependencies = [
     { name = "timm" },
     { name = "torchgeometry" },
     { name = "torchvision" },
+    { name = "xarm-python-sdk" },
 ]
 
 [package.metadata]
@@ -1357,6 +1358,7 @@ requires-dist = [
     { name = "timm", specifier = ">=1.0.19" },
     { name = "torchgeometry", specifier = ">=0.1.2" },
     { name = "torchvision", specifier = "==0.18.1" },
+    { name = "xarm-python-sdk", specifier = ">=1.17.0" },
 ]
 
 [[package]]
@@ -4179,6 +4181,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/83/88/16b7231ba49861b6f75fc309b11012ede4d6b0a9c90969d9e0db8d991aeb/wrapt-1.17.3-cp311-cp311-win_amd64.whl", hash = "sha256:0b1831115c97f0663cb77aa27d381237e73ad4f721391a9bfb2fe8bc25fa6e77", size = 38745, upload-time = "2025-08-12T05:53:02.885Z" },
     { url = "https://files.pythonhosted.org/packages/9a/1e/c4d4f3398ec073012c51d1c8d87f715f56765444e1a4b11e5180577b7e6e/wrapt-1.17.3-cp311-cp311-win_arm64.whl", hash = "sha256:5a7b3c1ee8265eb4c8f1b7d29943f195c00673f5ab60c192eba2d4a7eae5f46a", size = 36806, upload-time = "2025-08-12T05:52:53.368Z" },
     { url = "https://files.pythonhosted.org/packages/1f/f6/a933bd70f98e9cf3e08167fc5cd7aaaca49147e48411c0bd5ae701bb2194/wrapt-1.17.3-py3-none-any.whl", hash = "sha256:7171ae35d2c33d326ac19dd8facb1e82e5fd04ef8c6c0e394d7af55a55051c22", size = 23591, upload-time = "2025-08-12T05:53:20.674Z" },
+]
+
+[[package]]
+name = "xarm-python-sdk"
+version = "1.17.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/23/e1/2d3f8960c44950e802c20d4749a16744290e4e5e8d421159df26c0e46e30/xarm_python_sdk-1.17.0.tar.gz", hash = "sha256:840f81982631cf73a452e61938ce73230cee10572d681cc656c56fb2cf4ed6b8", size = 208672, upload-time = "2025-07-24T10:03:00.647Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1c/e9/e9400f24cd96c1b783b97f3d4de78091e0c9d44fc5eefe8ff98f8669f5cd/xarm_python_sdk-1.17.0-py3-none-any.whl", hash = "sha256:a3d45af4711e7f3d9372d691418da486ca29909ae685d63305764123e20aad7e", size = 180748, upload-time = "2025-07-24T10:02:59.577Z" },
 ]
 
 [[package]]

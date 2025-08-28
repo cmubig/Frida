@@ -167,4 +167,5 @@ dependencies = [
     "timm>=1.0.19",
     "torchgeometry>=0.1.2",
     "torchvision==0.18.1",
+    "xarm-python-sdk>=1.17.0",
 ]
