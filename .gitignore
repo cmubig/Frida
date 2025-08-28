@@ -4,3 +4,21 @@
 *.gif
 src/cache/colors_updated.npt
 src/cache/next_brush_strokes.csv
+src/images
+src/caches
+outputs
+
+
+# UV package manager
+.venv/
+
+
+
+# Mac ignore files
+.DS_Store
+
+# Python
+__pycache__/
+
+# VS Code
+.vscode/
