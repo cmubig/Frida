@@ -4,3 +4,13 @@
 *.gif
 src/cache/colors_updated.npt
 src/cache/next_brush_strokes.csv
+
+
+# Mac ignore files
+.DS_Store
+
+# Python
+__pycache__/
+
+# VS Code
+.vscode/
