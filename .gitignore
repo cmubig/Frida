@@ -9,6 +9,9 @@ src/caches
 outputs
 
 
+# UV package manager
+.venv/
+
 
 
 # Mac ignore files
