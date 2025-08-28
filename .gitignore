@@ -4,6 +4,11 @@
 *.gif
 src/cache/colors_updated.npt
 src/cache/next_brush_strokes.csv
+src/images
+src/caches
+outputs
+
+
 
 
 # Mac ignore files
