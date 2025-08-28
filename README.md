@@ -324,7 +324,48 @@ Follow the instructions in the terminal
 
 The first step is to calibrate the sharpie’s tip. Here with the keys “w” and “s” the arm will increase or decrease the gap between the sharpie and the canvas. The objective is to place the sharpies tip barely touching the canvas. Set the canvas so the tip of the sharpie should be in the center of it and fix it with tape at the sides. It will ask for two different heights but for the sharpie only one is needed.
 
+![Brush Calibration](./assets/brush_tip.png)
 
+![Brush Calibration 2](./assets/brush_tip_2.png)
+
+3. Canvas Homography
+
+It will ask for the corners of the canvas. They must be selected clockwise starting with the top left corner
+
+The output should look something like this
+
+![Homography](./assets/homography_1.png)
+
+![Homography 2](./assets/homography_2.png)
+
+X Y Calibration
+
+Set a new piece of canvas on top and tape it. Then continue, it will draw points evenly distributed. Optionally activate Tensorboard to verify each step, we can make sure that the points are being set where the arm thinks that they are being set. It should show yellow dots with an additional dot in the center.
+
+![X Y Calibration](./assets/xy_calibrate.png)
+
+4. Stroke Library
+
+A stroke library needs to be created. Place a new piece of paper, press Enter and the arm will start to draw lines. Once finished it can create more strokes by placing a new canvas or we can stop by pressing ctrl+c. And re-run the same command.
+
+The strokes can also be verified in Tensorflow, there, the start placement of the sharpie will be visible with a red circle. This just ensures that the homography is still valid. Also, the stroke library optimization can be visible in the `IMAGES` tab.
+
+![Stroke Library](./assets/stroke_library.png)
+
+![Stroke Library 2](./assets/stroke_library_2.png)
+
+5. Stroke Optimization
+
+Once the stroke simulation is finished the optimization for the target image with the stroke model will begin. As it optimizes we can see the process in Tensorflow. Once finished the arm will start to draw.
+
+![Stroke Optimization](./assets/stroke_optimization.png)
+
+### Common Errors
+
+- If the camera is accidentally bumped, the homography might no longer be valid and should be recalibrated.
+- Ensure the camera remains powered on during the training and setup process. If it powers off, turn it back on.
+- If a memory error occurs during stroke optimization due to insufficient GPU memory, reduce the number of strokes.
+- Sometimes Camera is stuck with a terminal message as `Identifier 3` press the shuter button and FRIDA will continue process.
 
 
 ## Acknowledgements
