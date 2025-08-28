@@ -152,7 +152,7 @@ python3 paint.py
     [--init_optim_iter int] Optimization iterations for initial plan
     [--optim_iter int] Optimization iterations for each time FRIDA replans
     [--dont_retrain_stroke_model] If set, the stroke model will not be retrained during optimization and it will be taken from the cache_dir path
-    [--painting_path path.pkl] Path to the painting file to use for initialization, it must be a .pkl file
+    [--painting_path path] Path to the painting file to use for initialization, it must be a .pkl file
 ```
 
 If running with UV run
