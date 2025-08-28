@@ -156,6 +156,7 @@ python3 paint.py
 ```
 
 If running with UV run
+
 ```
 uv run paint.py [args]
 ```
@@ -180,6 +181,148 @@ python3 paint.py --simulate --use_cache --cache_dir caches/sharpie_short_strokes
    --objective_data path/to/style_img.jpg  "a frog ballerina"
    --objective_weight 0.2  1.0
 ```
+
+## Setup for XArm5 (Ink Mode)
+
+### XArm
+
+1. Clamp the XArm securely to a stable surface.
+
+    ![XArm Clamp Setup](./assets/xarm_clamp.png)
+
+2. Connect the XArm to a power source.
+    Ensure the voltage regulator matches your region's voltage output (e.g., 110V or 220V).
+
+3. Connect the Ethernet cable from the XArm to your computer.
+
+    ![XArm Ethernet Connection](./assets/xarm_ethernet.png)
+
+4. Note the IP Address of the XArm.
+
+    ![XArm IP Address](./assets/xarm_ip.png)
+
+    In this example, the XArm's IP address is `192.168.1.168`.
+
+5. Configure the network settings on your Linux computer:
+    - Go to the network settings.
+    - Set the IPv4 Method to `Manual`.
+    - Use the following configuration:
+      - **Netmask**: `255.255.255.0`
+      - **Address**: `192.168.1.X` (where `X` is a number different from the robot's IP).
+      - **Gateway**: `192.168.1.168`.
+
+    ![XArm Network Settings](./assets/network_settings.png)
+
+6. Turn off and on network
+
+    ![XArm Network](./assets/network.png)
+
+    This will ensure that the connection is reset.
+7. Test the XArm connection by opening a browser and going to `http://192.168.1.168:18333`.
+    By default, the Xarm uses port 18333 and the IP address must be the same as the Xarm’s address.
+
+    ![XArm Test Connection](./assets/xarm_gui.png)
+
+8. Mount Sharpie with corresponding mount
+
+    ![XArm Sharpie Mount](./assets/frida_sharpie.png)
+
+    We use a spring-loaded mount to hold the Sharpie.
+
+
+### Camera
+
+For the camera we are using a Canon DSLR.
+
+1. Turn the camera on.
+2. Change the camera setting to auto-focus.
+3. Take pictures to focus.
+4. Switch back to manual mode.
+5. Connect the power cord.
+6. Connect the data cord to the computer.
+
+
+### Running Spline FRIDA
+
+1. Clone FRIDA repository from GitHub
+
+```bash
+git clone -b spline-frida-z-master-resolved git@github.com:cmubig/Frida.git
+```
+
+Install environment as mentioned in Installation heading.
+
+### Material Setup
+In this step, the materials' coordinates are placed in the file `materials_xarm_paint.json`. Additionally, if we were using FRIDA with a brush, in this file we would set the pallets, water, and rag position. For more information check out Physical Setup heading.
+
+
+For this case we will be using the following command:
+
+```bash
+python3 paint.py \
+    --objective clip_conv_loss \
+    --objective_data src/frida.jpg \
+    --objective_weight 1.0 \
+    --num_strokes 81 \
+    --lr_multiplier 2.5 \
+    --init_optim_iter 2000 \
+    --num_adaptations 1 \
+    --use_cache \
+    --cache_dir caches/ink \
+    --robot xarm \
+    --ink \
+    --xarm_ip 192.168.1.168 \
+    --vae_path mocap/saved_models/general.pt \
+    --materials_json ../materials_xarm_paint.json \
+    --painting_path output/frida.pkl
+```
+
+- **`--objective`**: Specifies the objective for the painting. In this case, it uses `clip_conv_loss` to recreate the image.
+- **`--objective_data`**: The target image that the painting will attempt to recreate.
+- **`--objective_weight`**: Determines the weight of the objective. Since only one objective is set, it is set to `1.0`.
+- **`--num_strokes`**: The number of strokes to be used in the painting.
+- **`--lr_multiplier`**: The learning rate for parameters like stroke width and length. Typically set between `1` and `2.5`.
+- **`--init_optim_iter`**: The number of optimization iterations. Higher values improve quality but increase runtime.
+- **`--use_cache`**: Enables caching of calibration files to avoid redundant processing.
+- **`--cache_dir`**: Specifies the directory (`caches/ink`) where calibration files are saved. Files can be manually erased to reset specific steps.
+- **`--robot`**: Specifies the type of robotic arm being used.
+- **`--ink`**: Indicates the use of a Sharpie, skipping paint-related steps.
+- **`--xarm_ip`**: The IP address of the XArm robot.
+- **`--vae_path`**: Defines the path to the autoencoder for trajectory generation.
+- **`--materials_json`**: Specifies the file containing the coordinates of the materials.
+- **`--painting_path`**: The path where the painting file will be saved.
+
+Additional
+- **`--dont_retrain_stroke_model`**: If a stroke model was already trained it would skip over this step
+
+
+
+Alternatively we can run
+
+```bash
+uv run paint.py \
+    --objective clip_conv_loss \
+    --objective_data src/frida.jpg \
+    --objective_weight 1.0 \
+    --num_strokes 81 \
+    --lr_multiplier 2.5 \
+    --init_optim_iter 2000 \
+    --num_adaptations 1 \
+    --use_cache \
+    --cache_dir caches/ink \
+    --robot xarm \
+    --ink \
+    --xarm_ip 192.168.1.168 \
+    --vae_path mocap/saved_models/general.pt \
+    --materials_json ../materials_xarm_paint.json \
+    --painting_path output/frida.pkl
+```
+
+Follow the instructions in the terminal
+
+2. Brush Calibration
+
+The first step is to calibrate the sharpie’s tip. Here with the keys “w” and “s” the arm will increase or decrease the gap between the sharpie and the canvas. The objective is to place the sharpies tip barely touching the canvas. Set the canvas so the tip of the sharpie should be in the center of it and fix it with tape at the sides. It will ask for two different heights but for the sharpie only one is needed.
 
 
 
