@@ -18,6 +18,7 @@ from torchvision.transforms import Resize
 # import camera.color_calib
 from camera.color_calib import color_calib, find_calib_params
 from camera.harris import find_corners
+from camera.aruco import find_arucos
 from camera.intrinsic_calib import computeIntrinsic
 import glob
 
@@ -137,7 +138,17 @@ class WebCam():
             # plt.show()
             return
 
-        self.canvas_points = find_corners(img, show_search=self.debug)
+        try:
+            self.canvas_points = find_arucos(img, show=self.debug)
+            if self.canvas_points is None:
+                raise Exception("Could not find Aruco markers.")
+            elif self.canvas_points.shape != (4, 2):
+                raise Exception("Invalid Aruco marker shape.")
+        except Exception as e:
+            print(e)
+            print("Falling back to Harris corner detection.")
+            self.canvas_points = find_corners(img, show_search=self.debug)
+
 
         img_corners = img.copy()
         for corner_num in range(4):
@@ -148,10 +159,10 @@ class WebCam():
                 for v in range(-10, 10):
                     img_corners[y+u, x+v, :] = np.array((255, 255, 255)) - img_corners[y+u, x+v, :]
 
-        plt.clf()
-        plt.imshow(img_corners)
-        plt.title("Here are the found corners")
-        plt.show()
+        # plt.clf()
+        # plt.imshow(img_corners)
+        # plt.title("Here are the found corners")
+        # plt.show()
 
         true_points = np.array([[0, 0], [w, 0], [w, h], [0, h]])
         self.H_canvas, _ = cv2.findHomography(self.canvas_points, true_points)

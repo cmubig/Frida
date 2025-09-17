@@ -3,7 +3,7 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 
 
-def find_arucos(img: np.ndarray, show: bool) -> np.ndarray:
+def find_arucos(img: np.ndarray, show: bool = False) -> np.ndarray:
     # the final corners will be in the order of
     # [top-left, top-right, bottom-right, bottom-left]
     final_corners = [
@@ -12,15 +12,15 @@ def find_arucos(img: np.ndarray, show: bool) -> np.ndarray:
         'bottom-right',
         'bottom-left',
     ]
-    # aruco_ids = {0: 'bottom-left',
-    #              1: 'bottom-right',
-    #              2: 'top-right',
-    #              3: 'top-left'}
-
     aruco_ids = {0: 'bottom-left',
+                 1: 'bottom-right',
                  2: 'top-right',
-                 3: 'top-left',
-                 4: 'bottom-right'}
+                 3: 'top-left'}
+
+    # aruco_ids = {0: 'bottom-left',
+    #              2: 'top-right',
+    #              3: 'top-left',
+    #              4: 'bottom-right'}
 
     # Map marker id to its corresponding corner label
     id_to_label = {v: k for k, v in aruco_ids.items()}
@@ -36,9 +36,10 @@ def find_arucos(img: np.ndarray, show: bool) -> np.ndarray:
     detector = cv.aruco.ArucoDetector(aruco_dict, parameters)
     corners, ids, rejectedImgPoints = detector.detectMarkers(gray)
     if ids is None or len(ids) != 4:
-        print("Error: Could not find 4 ArUco markers.")
+        print("Error: Could not find 4 Aruco markers.")
         return None, None
     img_markers = img.copy()
+
 
     sorted_idx = [np.where(ids.flatten() == i)[0][0] for i in label_order]
     corners = [corners[i][0] for i in sorted_idx]
@@ -56,23 +57,25 @@ def find_arucos(img: np.ndarray, show: bool) -> np.ndarray:
         furthest_idx = np.argmax(dists)
         ordered_corners[idx] = marker_corners[furthest_idx]
 
-    if not show:
-        return ordered_corners
+    if show:
+        # Draw detected markers and their IDs
 
-    for idx, pt in enumerate(ordered_corners):
-        pt_int = tuple(np.round(pt).astype(int))
-        cv.circle(img_markers, pt_int, radius=10, color=(0, 0, 255), thickness=-1)
-        cv.putText(img_markers, f"{aruco_ids[ids[idx]]}", pt_int,
-                   cv.FONT_HERSHEY_SIMPLEX, 5, (255, 0, 0), 2)
+        for idx, pt in enumerate(ordered_corners):
+            pt_int = tuple(np.round(pt).astype(int))
+            cv.circle(img_markers, pt_int, radius=10, color=(0, 0, 255), thickness=-1)
+            cv.putText(img_markers, f"{aruco_ids[ids[idx]]}", pt_int,
+                    cv.FONT_HERSHEY_SIMPLEX, 5, (255, 0, 0), 2)
 
-    plt.imshow(cv.cvtColor(img_markers, cv.COLOR_BGR2RGB))
-    plt.title("ArUco marker points")
-    plt.show()
-    plt.close()
+        plt.imshow(cv.cvtColor(img_markers, cv.COLOR_BGR2RGB))
+        plt.title("Aruco marker points")
+        plt.show()
+        plt.close()
+
+    ordered_corners = np.array(ordered_corners, dtype=np.int64)
 
     return ordered_corners
 
 
 if __name__ == "__main__":
-    img = cv.imread('../IMG_3423.jpeg')
-    corners, ids = find_arucos(img)
+    img = cv.imread('images/test.png')
+    corners = find_arucos(img, True)
