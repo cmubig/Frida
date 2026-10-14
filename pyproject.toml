@@ -141,7 +141,7 @@ dependencies = [
     "kiwisolver==1.4.4",
     "kornia==0.7.1",
     "lazy-loader==0.3",
-    "lazy-object-proxy==1.6.0",
+    "lazy-object-proxy>=1.10.0",
     "librosa==0.10.1",
     "linkify-it-py==2.0.0",
     "llvmlite==0.40.0",
@@ -165,7 +165,22 @@ dependencies = [
     "setuptools==68",
     "tensorboardx>=2.6.4",
     "timm>=1.0.19",
+    "torch>=2.7.0",
     "torchgeometry>=0.1.2",
-    "torchvision==0.18.1",
+    "torchvision>=0.22.0",
     "xarm-python-sdk>=1.17.0",
 ]
+
+[tool.uv.extra-build-dependencies]
+lazy-object-proxy = ["setuptools"]
+
+# RTX 5090 (sm_120) needs CUDA 12.8+ PyTorch builds
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+

@@ -94,7 +94,10 @@ if __name__ == '__main__':
 
     date_and_time = datetime.datetime.now()
     run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
-    opt.writer = TensorBoard('{}/{}'.format(opt.tensorboard_dir, run_name))
+    opt.writer = TensorBoard(
+        '{}/{}'.format(opt.tensorboard_dir, run_name),
+        image_dir='{}/{}'.format(opt.image_log_dir, run_name),
+    )
     opt.writer.add_text('args', str(sys.argv), 0)
 
     painter = Painter(opt)

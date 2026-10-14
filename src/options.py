@@ -81,6 +81,8 @@ class Options(object):
         # Logging Parameters
         parser.add_argument("--tensorboard_dir", type=str,
             default='./painting_log', help='Where to write tensorboard log to.')
+        parser.add_argument("--image_log_dir", type=str,
+            default='./logs', help='Where to write logged images as PNGs.')
         parser.add_argument('--plan_gif_dir', type=str, default='../outputs/')
         parser.add_argument('--log_frequency', type=int, default=5, help="Log to TB after this many optim. iters.")
         parser.add_argument("--output_dir", type=str, default="../outputs/", help='Where to write output to.')

@@ -95,6 +95,8 @@ class Options(object):
             default='./caches/cache_6_6_cvpr', help='Where to store cached files.')
         parser.add_argument("--tensorboard_dir", type=str,
             default='./painting', help='Where to write tensorboard log to.')
+        parser.add_argument("--image_log_dir", type=str,
+            default='./logs', help='Where to write logged images as PNGs.')
         parser.add_argument("--global_it", type=int,
             default=0, help='Picking up where it left off.')
 

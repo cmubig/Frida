@@ -288,7 +288,7 @@ def random_init_painting(opt, background_img, n_strokes, ink=False, device='cuda
     return painting
 
 
-def create_tensorboard(log_dir='painting_log'):
+def create_tensorboard(log_dir='painting_log', image_log_dir='./logs'):
     def new_tb_entry():
         import datetime
         date_and_time = datetime.datetime.now()
@@ -306,7 +306,11 @@ def create_tensorboard(log_dir='painting_log'):
     except:
         tensorboard_dir = new_tb_entry()
     tensorboard_dir = new_tb_entry()
-    return TensorBoard(tensorboard_dir)
+    run_folder = os.path.basename(tensorboard_dir)
+    return TensorBoard(
+        tensorboard_dir,
+        image_dir=os.path.join(image_log_dir, run_folder),
+    )
 
 
 

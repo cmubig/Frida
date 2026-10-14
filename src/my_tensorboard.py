@@ -1,5 +1,6 @@
 from PIL import Image
 from io import BytesIO
+import os
 import tensorboardX as tb
 from tensorboardX import SummaryWriter
 from tensorboardX.summary import Summary
@@ -12,9 +13,23 @@ def process_img_for_logging(img, max_size=1024.):
     img = cv2.resize(img, (int(img.shape[1]/fact), int(img.shape[0]/fact)))
     return img
 
+def _to_uint8_rgb(img):
+    '''Convert HWC image (float or int) to uint8 RGB for PNG writing.'''
+    img = np.asarray(img)
+    if img.dtype != np.uint8:
+        if img.max() <= 1.0:
+            img = img * 255.0
+        img = np.clip(img, 0, 255).astype(np.uint8)
+    return img
+
 class TensorBoard(object):
-    def __init__(self, model_dir):
+    def __init__(self, model_dir, image_dir=None):
+        self.model_dir = model_dir
+        self.image_dir = image_dir
+        if self.image_dir is not None:
+            os.makedirs(self.image_dir, exist_ok=True)
         self.summary_writer = SummaryWriter(model_dir)
+
     def add_image(self, tag, img, step=None, max_size=1024.):
         ''' Expects channels last rgb image '''
         img = np.array(img)
@@ -26,6 +41,14 @@ class TensorBoard(object):
             if img.mode != 'RGB':
                 img = img.convert('RGB')
             img = np.array(img)
+
+        if self.image_dir is not None:
+            step_i = 0 if step is None else int(step)
+            out_dir = os.path.join(self.image_dir, tag)
+            os.makedirs(out_dir, exist_ok=True)
+            out_path = os.path.join(out_dir, f'{step_i:06d}.png')
+            Image.fromarray(_to_uint8_rgb(img)).save(out_path)
+
         img = np.transpose(img, (2, 0, 1))
         self.summary_writer.add_image(tag, img, step)
         self.summary_writer.flush()
