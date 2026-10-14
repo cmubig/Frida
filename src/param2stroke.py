@@ -75,152 +75,89 @@ class BezierRenderer(nn.Module):
         
         self.set_render_size(size_x, size_y)
 
-        # self.weights = nn.Parameter(torch.eye(2)) # multiply each point in trajectory by this
-        # self.biases = nn.Parameter(torch.zeros(2)) # add this to each point
-        
         self.thick_mult = nn.Parameter(torch.ones((1)))
-        # self.thick_bias = nn.Parameter(torch.zeros((1)))
-        # self.thick_mult = nn.Parameter(torch.ones((1))*0.3)
         self.thick_bias = nn.Parameter(torch.zeros((1))+0.1)
         self.dark_exp = nn.Parameter(torch.ones((1)))
 
-        # self.conv_mult = nn.Parameter(torch.zeros((1)))
-        # self.conv = nn.Sequential(
-        #     nn.Conv2d(self.P, 8, kernel_size=3, padding='same'),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True),
-        #     nn.Conv2d(8, 16, kernel_size=3, padding='same'),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True),
-        #     nn.Conv2d(16, 32, kernel_size=3, padding='same'),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True),
-        #     nn.Conv2d(32, 64, kernel_size=3, padding='same'),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True),
-        #     nn.Conv2d(64, 64, kernel_size=3, padding='same'),
-        #     nn.ReLU(),
-        #     # unfinished
-        # )
-
     def set_render_size(self, size_x, size_y):
         '''
-        Set the internal dimensions that strokes should be rendered at
+        Set the internal dimensions that strokes should be rendered at.
+        grid_coords is registered as a non-persistent buffer so .to(device) moves it once.
+        Shape: (1, 1, size_y, size_x, 2) for broadcast with batched segment endpoints.
         '''
         self.size_x = size_x 
         self.size_y = size_y
-        idxs_x = torch.arange(size_x) / size_x
-        idxs_y = torch.arange(size_y) / size_y
+        idxs_x = torch.arange(size_x, dtype=torch.float32) / size_x
+        idxs_y = torch.arange(size_y, dtype=torch.float32) / size_y
         x_coords, y_coords = torch.meshgrid(idxs_y, idxs_x, indexing='ij') # G x G
-        self.grid_coords = torch.stack((x_coords, y_coords), dim=2).reshape(1,size_y, size_x,2) # 1 x G x G x 2
+        grid = torch.stack((x_coords, y_coords), dim=-1)  # (size_y, size_x, 2)
+        self.register_buffer(
+            'grid_coords',
+            grid.view(1, 1, size_y, size_x, 2),
+            persistent=False,
+        )
 
-    def forward(self, trajectories, heights, use_conv):        
-        # trajectories: (n, 2, self.P)
-        # heights: (n, 1, self.P)
-        strokes = []
-        for i in range(len(trajectories)):
-            # Expand num_ctrl_pts to self.P (smooths the curve)
-            stroke = self.curve_to_stroke(trajectories[i]) # (P, 2) range:[0,1]
-
-            heights_ = (heights[i]*2 + 0.5) / 64 # Hacky fixed scaling to help start better
-
-            # Stroke trajectory to bitmap
-            stroke = self.render_stroke(stroke, heights_)
-
-            strokes.append(stroke)
-        strokes = torch.stack(strokes, dim=0)
-        return strokes
+    def forward(self, trajectories, heights, use_conv=False):
+        # trajectories: (B, 2, self.P)
+        # heights: (B, 1, self.P)
+        # use_conv kept for API compatibility; soft distance-field path only.
+        stroke = trajectories.permute(0, 2, 1)  # (B, P, 2)
+        heights_ = (heights * 2 + 0.5) / 64
+        return self.render_stroke(stroke, heights_)
 
     def curve_to_stroke(self, curve):
         # curve: (2, self.P)
-        # return torch.matmul(self.weights, curve).T + self.biases # (self.P, 2)
         return curve.T
 
     def render_stroke(self, stroke, heights):
-        # stroke: (P, 2)
-        # heights: (1, P)
-        n = len(stroke)
-        vs = stroke[:-1].reshape((-1,1,1,2)) # (P-1, 1, 1, 2)
-        vs = torch.tile(vs, (1, self.size_y, self.size_x, 1)) # (P-1, size_y, size_x, 2)
+        '''
+        Soft distance-field rasterization of polyline strokes.
 
-        ws = stroke[1:].reshape((-1,1,1,2)) # (P-1, 1, 1, 2)
-        ws = torch.tile(ws, (1, self.size_y, self.size_x, 1)) # (P-1, size_y, size_x, 2)
+        stroke: (P, 2) or (B, P, 2) in [0,1] canvas proportions
+        heights: (1, P) or (B, 1, P)
+        returns: (size_y, size_x) or (B, size_y, size_x)
 
-        coords = torch.tile(self.grid_coords, (n-1,1,1,1)).to(ws.device) # (P-1, size_y, size_x, 2)
+        Uses broadcasting (no torch.tile). Keep B modest when grads are enabled:
+        intermediates are (B, P-1, H, W).
+        '''
+        squeeze_batch = stroke.dim() == 2
+        if squeeze_batch:
+            stroke = stroke.unsqueeze(0)
+            if heights.dim() == 2:
+                heights = heights.unsqueeze(0)
 
-        # For each of the P segments, compute distance from every point to the line as well as the fraction along the line
-        distances, fraction = self.dist_line_segment(coords, vs, ws) # (P-1, size_y, size_x)
-        
-        # Compute interpolated heights for each line segment
-        start_heights = heights[0, :-1].unsqueeze(1).unsqueeze(2) # (P-1, 1, 1)
-        end_heights = heights[0, 1:].unsqueeze(1).unsqueeze(2) # (P-1, 1, 1)
-        interpolated_heights = start_heights * (1 - fraction) + end_heights * fraction # (P-1, size_y, size_x)
-        
-        # Convert heights into thickness values
-        thickness = interpolated_heights * self.thick_mult + self.thick_bias#torch.clamp(self.thick_bias, min=0.0, max=1.0)
-        thickness = torch.clamp(thickness, min=1e-8)
+        # Endpoints (B, P-1, 1, 1, 2) broadcast with grid (1, 1, Hy, Wx, 2)
+        vs = stroke[:, :-1, :].unsqueeze(2).unsqueeze(3)
+        ws = stroke[:, 1:, :].unsqueeze(2).unsqueeze(3)
+        distances, fraction = self.dist_line_segment(self.grid_coords, vs, ws)  # (B, P-1, Hy, Wx)
 
-        # Compute darkness for each line segment
-        darkness = torch.clamp((thickness - distances)/(thickness), min=0.0, max=1.0) # (P-1, size_y, size_x)
-        darkness = (darkness+1e-4)**self.dark_exp # (P-1, size_y, size_x)
+        start_heights = heights[:, 0, :-1].unsqueeze(2).unsqueeze(3)
+        end_heights = heights[:, 0, 1:].unsqueeze(2).unsqueeze(3)
+        interpolated_heights = start_heights * (1 - fraction) + end_heights * fraction
 
+        thickness = torch.clamp(
+            interpolated_heights * self.thick_mult + self.thick_bias, min=1e-8
+        )
+        darkness = torch.clamp((thickness - distances) / thickness, min=0.0, max=1.0)
+        darkness = (darkness + 1e-4) ** self.dark_exp
+        darkness = torch.max(darkness, dim=1).values  # (B, Hy, Wx)
 
-        import torchgeometry
-        import warnings
-        from brush_stroke import rigid_body_transform, rigid_body_transforms
-        
-        use_conv = False
-        if use_conv:
-            # Compute the angle the stroke segment is tilted at
-            angles = torch.atan2((stroke[1:,0]-stroke[:-1,0]), (stroke[1:,1] - stroke[:-1,1]))
-
-            # Create a transformation matrix to rotate and translate the stroke s.t. it is at middle
-            # of the image and has no rotation
-            M = rigid_body_transforms(a=angles,
-                                    xt=(self.size_x/2-stroke[:-1,1]), # TODO: is it stroke[:-1] or stroke[1:] ? 
-                                    yt=(self.size_y/2-stroke[:-1,0]), 
-                                    anchor_x=stroke[:-1,1], 
-                                    anchor_y=stroke[:-1,0])
-
-            # Rotate and translate strokes
-            with warnings.catch_warnings(): # suppress annoying torchgeometry warning
-                warnings.simplefilter("ignore")
-                darkness = torchgeometry.warp_perspective(darkness[:,None,:,:], 
-                        M, dsize=(self.size_y,self.size_x)) # (P-1, 1, size_y, size_x)
-
-            darkness = darkness[:,0,:,:].unsqueeze(0) # (1, P-1, size_y, size_x)
-
-            darkness = self.conv(darkness) # (1, P-1, size_y, size_x)
-
-            darkness = darkness.swapaxes(0,1) # (P-1, 1, size_y, size_x)
-
-            # Undo the translation/rotaiton
-            with warnings.catch_warnings(): # suppress annoing torchgeometry warning
-                warnings.simplefilter("ignore")
-                darkness = torchgeometry.warp_perspective(darkness, 
-                        torch.inverse(M), dsize=(self.size_y,self.size_x))
-
-            darkness = darkness.squeeze(1) # (P, size_y, size_x)
-        # Max across channels to get final stroke
-        darkness = torch.max(darkness, dim=0).values # (size_y, size_x)
-        
+        if squeeze_batch:
+            return darkness[0]
         return darkness
 
-    
     # distance from point p to line segment v--w
     # also returns the fraction of the length of v--w that the point p is along
     def dist_line_segment(self, p, v, w):
-        d = torch.linalg.norm(v-w, dim=3) # (n-1) x G x G
-        dot = (p-v) * (w-v)
-        dot_sum = torch.sum(dot, dim=3) / (d**2 + 1e-5)
-        t = dot_sum.unsqueeze(3) # (n-1) x G x G x 1
-        t = torch.clamp(t, min=0, max=1) # (n-1) x G x G x 1
-        proj = v + t * (w-v) # (n-1) x G x G x 2
-        return torch.linalg.norm(p-proj, dim=3), t.squeeze(3)
+        # p, v, w broadcast to (..., Hy, Wx, 2); last dim is xy
+        d = torch.linalg.norm(v - w, dim=-1)
+        dot = (p - v) * (w - v)
+        dot_sum = torch.sum(dot, dim=-1) / (d ** 2 + 1e-5)
+        t = torch.clamp(dot_sum, min=0, max=1).unsqueeze(-1)
+        proj = v + t * (w - v)
+        return torch.linalg.norm(p - proj, dim=-1), t.squeeze(-1)
 
     def validate(self):
-        # Ensure that parameters are within some valid range
-        #self.thick_exp.data.clamp_(min=1.0)
         pass
 
 def get_param2img(opt, device='cuda'):
@@ -279,63 +216,96 @@ class StrokeParametersToImage(nn.Module):
                                        size_y=self.size_y,
                                        num_pts=32)
 
+    @staticmethod
+    def _batch_offset(val, batch, device, dtype):
+        '''Scalar or length-B tensor -> shape that broadcasts with (B, P).'''
+        if not torch.is_tensor(val):
+            val = torch.as_tensor(val, device=device, dtype=dtype)
+        else:
+            val = val.to(device=device, dtype=dtype)
+        val = val.reshape(-1)
+        if val.numel() == 1:
+            return val.view(1, 1)
+        if val.numel() != batch:
+            raise ValueError(f'Expected scalar or length-{batch} offset, got {val.numel()}')
+        return val.view(batch, 1)
+
     def get_rotated_trajectory(self, rotation, trajectory):
         '''
-        Rotate a trajectory some specified rotation (in radian).
-        Rotates around (0,0) 
+        Rotate trajectories around (0,0).
         args:
-            rotation : torch.Tensor([radians])
-            trajectory : torch.Tensor((1,n_points,2)) y=dim_0
+            rotation : scalar or (B,) radians
+            trajectory : (B, n_points, 2) with y in dim 0, x in dim 1
+        returns:
+            (B, n_points, 2)
         '''
-        x, y = trajectory[0,:,1], trajectory[0,:,0]
+        x = trajectory[:, :, 1]
+        y = trajectory[:, :, 0]
 
-        x_rot = x*torch.cos(rotation) + y*torch.sin(rotation)
-        y_rot = -1*x*torch.sin(rotation) + y*torch.cos(rotation)
+        if not torch.is_tensor(rotation):
+            rotation = torch.as_tensor(rotation, device=trajectory.device, dtype=trajectory.dtype)
+        else:
+            rotation = rotation.to(device=trajectory.device, dtype=trajectory.dtype)
+        rot = rotation.reshape(-1)
+        if rot.numel() == 1:
+            cos_r = torch.cos(rot)
+            sin_r = torch.sin(rot)
+            x_rot = x * cos_r + y * sin_r
+            y_rot = -1 * x * sin_r + y * cos_r
+        else:
+            if rot.numel() != trajectory.shape[0]:
+                raise ValueError(
+                    f'Expected scalar or length-{trajectory.shape[0]} rotation, got {rot.numel()}'
+                )
+            cos_r = torch.cos(rot).view(-1, 1)
+            sin_r = torch.sin(rot).view(-1, 1)
+            x_rot = x * cos_r + y * sin_r
+            y_rot = -1 * x * sin_r + y * cos_r
 
-        return torch.stack([y_rot, x_rot], dim=1).unsqueeze(0)
+        return torch.stack([y_rot, x_rot], dim=2)
 
-    def forward(self, parameter, x_start, y_start, theta, use_conv):
+    def forward(self, parameter, x_start, y_start, theta, use_conv=False):
         '''
         args:
             parameter : (batch, num_pts, 3)
-            x_start : where to start stroke. range [0,1]
-            y_start : where to start stroke. range [0,1]
-            theta : how much to rotate stroke. Radians.
-            use_conv : 
+            x_start : scalar or (batch,) start x in [0,1]
+            y_start : scalar or (batch,) start y in [0,1]
+            theta : scalar or (batch,) rotation in radians
+            use_conv : unused (API compat); soft renderer only
         '''
         # parameter: (batch, num_pts, 3)
-        traj = parameter[:,:,0:2] # (batch, num_pts, 2)
-        heights = parameter[:,:,2:3] # (batch, num_pts, 1)
+        batch = parameter.shape[0]
+        traj = parameter[:, :, 0:2]  # (batch, num_pts, 2)
+        heights = parameter[:, :, 2:3]  # (batch, num_pts, 1)
 
         # x,y to y,x
-        traj = torch.flip(traj, dims=(2,)) 
+        traj = torch.flip(traj, dims=(2,))
 
         # To be consistent with the way BrushStroke.execute runs trajectories
-        traj[:,:,0] = -1.0*traj[:,:,0] # y = -y yeah weird
-
-        traj[:,:,0] += self.y_b
-        traj[:,:,1] += self.x_b
+        # y = -y yeah weird; then add biases (out-of-place for autograd)
+        traj = torch.stack([
+            -1.0 * traj[:, :, 0] + self.y_b,
+            traj[:, :, 1] + self.x_b,
+        ], dim=2)
 
         # Rotate before converting to proportions (errors when canvas isn't square)
         traj = self.get_rotated_trajectory(theta, traj)
-        
-        # traj from meters to proportion
-        traj[:,:,0] *= self.y_m
-        traj[:,:,1] *= self.x_m 
 
-        # From traj starting  x=0,y=0 to  x=x_start, y=y_start
-        traj[:,:,0] += y_start
-        traj[:,:,1] += x_start
+        # traj from meters to proportion, then offset to start pose
+        y_off = self._batch_offset(y_start, batch, traj.device, traj.dtype)
+        x_off = self._batch_offset(x_start, batch, traj.device, traj.dtype)
+        traj = torch.stack([
+            traj[:, :, 0] * self.y_m + y_off,
+            traj[:, :, 1] * self.x_m + x_off,
+        ], dim=2)
 
         # batch, ctrl_point, 2 -> batch, 2, ctrl_points
-        traj = torch.permute(traj, (0,2,1))
-        heights = torch.permute(heights, (0,2,1))
-        
+        traj = torch.permute(traj, (0, 2, 1))
+        heights = torch.permute(heights, (0, 2, 1))
+
         # Run through Differentiable renderer
-        x = self.renderer(traj,# * self.traj_factor[None] + self.traj_bias, 
-                          heights,
-                          use_conv=use_conv) # (batch, size_y, size_x)
-        
+        x = self.renderer(traj, heights, use_conv=use_conv)  # (batch, size_y, size_x)
+
         return x
     
 l1_loss = nn.L1Loss()

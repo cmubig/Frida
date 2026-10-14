@@ -231,26 +231,47 @@ class BrushStroke(nn.Module):
                 # Well balanced RGB, less constraint
                 stroke.color_transform.data.clamp_(0.02,0.85)
 
+    def clear_path_cache(self):
+        self._path_cache = None
+
     def get_path(self):
+        cache = getattr(self, '_path_cache', None)
+        if cache is not None:
+            return cache
+
         if self.is_dot:
             path = torch.zeros((4,4), device=self.vertices.device, dtype=self.vertices.dtype)
             path[:,2] = 0.75
+            self._path_cache = path
             return path
 
         # softplus only here; expand_stroke already clamps oversized trims.
         # Hard project_radii is applied in make_valid (no_grad) so radii keep gradients.
-        radii = torch.nn.functional.softplus(self.radii)
-        xy = sample_filleted_polyline(self.vertices, radii, n_points=N_PATH_POINTS)
+        #
+        # Filleted expand_stroke is Python control flow with many host syncs; on CUDA
+        # that dominates. Run the tiny (N≈4) geometry on CPU, then move the 32×2
+        # samples back — same math, much less sync overhead.
+        device = self.vertices.device
+        if device.type == 'cpu':
+            radii = torch.nn.functional.softplus(self.radii)
+            xy = sample_filleted_polyline(self.vertices, radii, n_points=N_PATH_POINTS)
+        else:
+            vertices_cpu = self.vertices.cpu()
+            radii_cpu = torch.nn.functional.softplus(self.radii.cpu())
+            xy = sample_filleted_polyline(
+                vertices_cpu, radii_cpu, n_points=N_PATH_POINTS
+            ).to(device)
 
         # Linearly interpolate the 4 z values into 32 for each waypoint on trajectory
         z = self.z[None, None]  # (1,1,4)
         z = torch.nn.functional.interpolate(z, size=N_PATH_POINTS, scale_factor=None, mode='linear')
-        z = z[0, 0]  # (32,)
+        z = z[0, 0].clamp(self.MIN_STROKE_Z, 0.95)  # (32,)
 
         path = torch.cat([xy, z.unsqueeze(-1)], dim=-1)  # (32, 3)
-        path_clone = path.clone()
-        path_clone[:, 2] = path[:, 2].clamp(self.MIN_STROKE_Z, 0.95)
-        return path_clone
+        # Only cache when grads are enabled so a no_grad render cannot poison priors.
+        if torch.is_grad_enabled():
+            self._path_cache = path
+        return path
 
     def execute(self, painter, x_start, y_start, rotation):
         # x_start, y_start in global coordinates. rotation in radians

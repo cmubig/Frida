@@ -198,13 +198,24 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
 
     for it in tqdm(range(optim_iter), desc='Optimizing {} Strokes'.format(str(len(painting.brush_strokes)))):
         for o in optims: o.zero_grad() if o is not None else None
+        # Paths depend on stroke params; invalidate before each forward+prior pass.
+        for stroke in painting.brush_strokes:
+            stroke.clear_path_cache()
 
         lr_factor = (1 - 2*np.abs(it/optim_iter - 0.5)) + 0.005
         for i_o in range(len(optims)):
             if optims[i_o] is not None:
                 optims[i_o].param_groups[0]['lr'] = og_lrs[i_o]*lr_factor
 
-        p, alphas = painting(opt.h_render, opt.w_render, use_alpha=False, return_alphas=True)
+        # Path priors first so get_path caches are filled with grad-enabled tensors,
+        # then Painting.forward reuses them (avoids a second filleted-sample pass).
+        length_loss, smooth_loss, fillet_loss = path_prior_losses(painting, opt)
+
+        need_alphas = opt.fill_weight > 0
+        if need_alphas:
+            p, alphas = painting(opt.h_render, opt.w_render, use_alpha=False, return_alphas=True)
+        else:
+            p = painting(opt.h_render, opt.w_render, use_alpha=False, return_alphas=False)
         
         loss = 0
         for k in range(len(opt.objective)):
@@ -212,11 +223,9 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
                 opt.objective_data_loaded[k], p[:,:3], 
                 weight=opt.objective_weight[k],
                 num_augs=opt.num_augs)
-        #loss += (1-alphas).mean() * opt.fill_weight
-        if opt.fill_weight > 0:
+        if need_alphas:
             loss += torch.abs(1-alphas).mean() * opt.fill_weight
 
-        length_loss, smooth_loss, fillet_loss = path_prior_losses(painting, opt)
         loss = loss + length_loss + smooth_loss + fillet_loss
         if ((local_it) % opt.log_frequency == 0) and opt.writer is not None:
             opt.writer.add_scalar('loss/path_length_prior', length_loss.detach(), local_it)
