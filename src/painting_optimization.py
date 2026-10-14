@@ -93,6 +93,54 @@ def parse_emotion_data(s):
     weights = torch.tensor(weights).float().to(device)
     return weights.unsqueeze(0)
 
+
+def path_prior_losses(painting, opt):
+    """
+    Soft priors on filleted-polyline strokes:
+      - path length: squared hinge that kicks in after path_length_limit (meters)
+      - vertex smoothness: mean squared second differences of vertices
+      - fillet radii: pull softplus(radii) toward a medium target (avoid 0 / huge)
+    Returns (length_loss, smooth_loss, fillet_loss), already scaled by their weights.
+    """
+    length_w = getattr(opt, 'path_length_weight', 0.0) or 0.0
+    smooth_w = getattr(opt, 'path_smooth_weight', 0.0) or 0.0
+    fillet_w = getattr(opt, 'path_fillet_weight', 0.0) or 0.0
+    if length_w <= 0 and smooth_w <= 0 and fillet_w <= 0:
+        zero = torch.zeros((), device=device)
+        return zero, zero, zero
+
+    limit = getattr(opt, 'path_length_limit', None)
+    if limit is None:
+        limit = getattr(opt, 'MAX_STROKE_LENGTH', 0.1)
+    fillet_target = getattr(opt, 'path_fillet_target', 0.01) or 0.01
+
+    length_terms = []
+    smooth_terms = []
+    fillet_terms = []
+    for stroke in painting.brush_strokes:
+        if getattr(stroke, 'is_dot', False):
+            continue
+
+        if length_w > 0:
+            # Dense path length (meters); penalty only for length above limit
+            excess = torch.relu(stroke.get_length() - limit)
+            length_terms.append(excess ** 2)
+
+        if smooth_w > 0 and hasattr(stroke, 'vertices') and stroke.vertices.shape[0] >= 3:
+            v = stroke.vertices
+            d2 = v[2:] - 2.0 * v[1:-1] + v[:-2]
+            smooth_terms.append((d2 ** 2).mean())
+
+        if fillet_w > 0 and hasattr(stroke, 'radii'):
+            # Prefer medium radii; squared error in meters vs target
+            r = torch.nn.functional.softplus(stroke.radii)
+            fillet_terms.append(((r - fillet_target) ** 2).mean())
+
+    length_loss = (torch.stack(length_terms).mean() * length_w) if length_terms else torch.zeros((), device=device)
+    smooth_loss = (torch.stack(smooth_terms).mean() * smooth_w) if smooth_terms else torch.zeros((), device=device)
+    fillet_loss = (torch.stack(fillet_terms).mean() * fillet_w) if fillet_terms else torch.zeros((), device=device)
+    return length_loss, smooth_loss, fillet_loss
+
 def load_objectives_data(opt):
     # Load Objective data
     objective_data = [] 
@@ -167,6 +215,14 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
         #loss += (1-alphas).mean() * opt.fill_weight
         if opt.fill_weight > 0:
             loss += torch.abs(1-alphas).mean() * opt.fill_weight
+
+        length_loss, smooth_loss, fillet_loss = path_prior_losses(painting, opt)
+        loss = loss + length_loss + smooth_loss + fillet_loss
+        if ((local_it) % opt.log_frequency == 0) and opt.writer is not None:
+            opt.writer.add_scalar('loss/path_length_prior', length_loss.detach(), local_it)
+            opt.writer.add_scalar('loss/path_smooth_prior', smooth_loss.detach(), local_it)
+            opt.writer.add_scalar('loss/path_fillet_prior', fillet_loss.detach(), local_it)
+
         loss.backward()
 
         for o in optims: o.step() if o is not None else None

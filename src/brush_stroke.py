@@ -9,10 +9,12 @@ from kornia.geometry.transform import rotate
 bicubic = InterpolationMode.BICUBIC
 import warnings
 import numpy as np
-from scipy.interpolate import make_interp_spline
-from mocap.autoencoders import MLP_VAE
+from filleted_stroke import project_radii, sample_filleted_polyline
 
 # from param2stroke import special_sigmoid
+
+N_VERTICES = 4  # polyline corners; N-2 = 2 fillet radii
+N_PATH_POINTS = 32  # dense trajectory length expected by param2img / execute
 
 
 def get_quaternion_from_euler(roll, pitch, yaw):
@@ -131,12 +133,12 @@ def get_translation_transform(xt, yt):
     return A
 
 class BrushStroke(nn.Module):
-    vaes = {}
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def __init__(self, 
                  opt,
-                latent=None,
+                vertices=None,
+                radii=None,
                 color=None, 
                 ink=False,
                 a=None, xt=None, yt=None, 
@@ -163,15 +165,17 @@ class BrushStroke(nn.Module):
         self.a = nn.Parameter(torch.ones(1)*a) # Range [-2pi,2pi]
         self.z = nn.Parameter(torch.ones(4)*z) # Range [0,1]
 
-        self.vae_name = opt.vae_path
-        
-        if latent is None: 
-            latent = torch.randn(1, 64)
+        # Filleted polyline: N vertices + N-2 unconstrained radii (softplus in get_path)
+        if vertices is None:
+            # Short stroke along +x with small y jitter (meters, stroke-local)
+            t = torch.linspace(0.0, 0.06, N_VERTICES, device=device)
+            vertices = torch.stack([t, (torch.rand(N_VERTICES, device=device) - 0.5) * 0.02], dim=-1)
+        if radii is None:
+            # Unconstrained; softplus(~ -2) ≈ 0.13 * scale → small positive radii
+            radii = torch.full((N_VERTICES - 2,), -2.0, device=device)
 
-        self.latent = latent 
-        self.latent.requires_grad = True 
-        self.latent = nn.Parameter(self.latent)
-
+        self.vertices = nn.Parameter(vertices.float())
+        self.radii = nn.Parameter(radii.float())
 
         if not self.ink:
             self.color_transform = nn.Parameter(color)
@@ -207,7 +211,11 @@ class BrushStroke(nn.Module):
 
     def make_valid(stroke):
         with torch.no_grad():
-            stroke.latent.data.clamp_(-1.5, 1.5)
+            stroke.vertices.data.clamp_(-0.15, 0.15)
+            # Softplus then project to max feasible fillet; store inverse-softplus so get_path is stable
+            r_pos = torch.nn.functional.softplus(stroke.radii.data)
+            r_proj = project_radii(stroke.vertices.data, r_pos)
+            stroke.radii.data.copy_(torch.log(torch.expm1(r_proj.clamp_min(1e-6))))
 
             stroke.xt.data.clamp_(0,1.)
             stroke.yt.data.clamp_(0,1.)
@@ -225,29 +233,23 @@ class BrushStroke(nn.Module):
 
     def get_path(self):
         if self.is_dot:
-            path = torch.zeros((4,4))
+            path = torch.zeros((4,4), device=self.vertices.device, dtype=self.vertices.dtype)
             path[:,2] = 0.75
             return path
-        if self.vae_name not in BrushStroke.vaes:
-            vae = MLP_VAE(32, 64, 32)
-            vae.load_state_dict(torch.load(self.vae_name))
-            BrushStroke.vaes[self.vae_name] = vae
 
-        BrushStroke.vaes[self.vae_name].to(self.latent.device)
-        path = BrushStroke.vaes[self.vae_name].decode(self.latent)
+        # softplus only here; expand_stroke already clamps oversized trims.
+        # Hard project_radii is applied in make_valid (no_grad) so radii keep gradients.
+        radii = torch.nn.functional.softplus(self.radii)
+        xy = sample_filleted_polyline(self.vertices, radii, n_points=N_PATH_POINTS)
 
-        # Hack to add the z values in from the learnable parameter
-        z = self.z[None,None] # (1,1,4)
         # Linearly interpolate the 4 z values into 32 for each waypoint on trajectory
-        z = torch.nn.functional.interpolate(z, size=32, scale_factor=None, mode='linear') # (4,) -> (32,)
-        z = z[0,0] # (32,)
-        # print(path[:,-1].mean(), z.mean())
-        path[:,-1] = z # Hopefully this is a differentiable op?
+        z = self.z[None, None]  # (1,1,4)
+        z = torch.nn.functional.interpolate(z, size=N_PATH_POINTS, scale_factor=None, mode='linear')
+        z = z[0, 0]  # (32,)
 
-        # Clone the path so that the operation is not in-place (PyTorch quirk; allows gradients to flow through)
+        path = torch.cat([xy, z.unsqueeze(-1)], dim=-1)  # (32, 3)
         path_clone = path.clone()
-        path_clone[:,2] = path[:,2].clamp(self.MIN_STROKE_Z, 0.95)
-        
+        path_clone[:, 2] = path[:, 2].clamp(self.MIN_STROKE_Z, 0.95)
         return path_clone
 
     def execute(self, painter, x_start, y_start, rotation):

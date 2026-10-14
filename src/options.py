@@ -62,6 +62,16 @@ class Options(object):
         parser.add_argument('--num_adaptations', type=int, default=1)
         parser.add_argument('--fill_weight', type=float, default=0.0, help="Encourage strokes to fill canvas.")
         parser.add_argument('--strokes_per_batch', type=int, default=None)
+        parser.add_argument('--path_length_weight', type=float, default=10.0,
+                            help='Soft prior: penalize stroke path length above --path_length_limit.')
+        parser.add_argument('--path_length_limit', type=float, default=None,
+                            help='Length (m) where path-length prior kicks in. Default: MAX_STROKE_LENGTH.')
+        parser.add_argument('--path_smooth_weight', type=float, default=5.0,
+                            help='Soft prior: penalize second differences of polyline vertices.')
+        parser.add_argument('--path_fillet_weight', type=float, default=1.0,
+                            help='Soft prior: pull fillet radii toward a medium target (avoid extremes).')
+        parser.add_argument('--path_fillet_target', type=float, default=0.01,
+                            help='Preferred fillet radius in meters for the medium-radius prior.')
 
         # Optimization Parameters
         parser.add_argument('--objective', nargs='*', type=str, help='text|style|clip_conv_loss|l2|clip_fc_loss')

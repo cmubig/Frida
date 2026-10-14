@@ -35,17 +35,18 @@ class Painting(nn.Module):
         a = []
         z = []
         color = []
-        latent = []
+        path_params = []
         
         for n, p in self.named_parameters():
-            if "latent" in n.split('.')[-1]: latent.append(p)
-            if "xt" in n.split('.')[-1]: xt.append(p)
-            if "yt" in n.split('.')[-1]: yt.append(p)
-            if "a" in n.split('.')[-1]: a.append(p)
-            if "z" in n.split('.')[-1]: z.append(p)
-            if "color_transform" in n.split('.')[-1]: color.append(p)
+            leaf = n.split('.')[-1]
+            if leaf in ("vertices", "radii"): path_params.append(p)
+            if leaf == "xt": xt.append(p)
+            if leaf == "yt": yt.append(p)
+            if leaf == "a": a.append(p)
+            if leaf == "z": z.append(p)
+            if leaf == "color_transform": color.append(p)
 
-        path_opt = torch.optim.RMSprop(latent, lr=1e-1)
+        path_opt = torch.optim.RMSprop(path_params, lr=1e-2)
         position_opt = torch.optim.RMSprop(xt + yt, lr=5e-3*multiplier)
         height_opt = torch.optim.RMSprop(z, lr=5e-3*multiplier)
         rotation_opt = torch.optim.RMSprop(a, lr=1e-2*multiplier)
