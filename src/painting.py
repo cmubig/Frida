@@ -62,7 +62,7 @@ class Painting(nn.Module):
             if leaf == "z": z.append(p)
             if leaf == "color_transform": color.append(p)
 
-        path_opt = torch.optim.RMSprop(path_params, lr=1e-3)
+        path_opt = torch.optim.RMSprop(path_params, lr=5e-3)
         position_opt = torch.optim.RMSprop(xt + yt, lr=5e-3*multiplier)
         height_opt = torch.optim.RMSprop(z, lr=5e-3*multiplier)
         rotation_opt = torch.optim.RMSprop(a, lr=1e-2*multiplier)
