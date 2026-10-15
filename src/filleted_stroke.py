@@ -251,11 +251,19 @@ def _resample_polyline(pts: torch.Tensor, n_points: int) -> torch.Tensor:
     return x[0].T.contiguous()
 
 
-def project_radii(vertices: torch.Tensor, radii: torch.Tensor, eps: float = 1e-4) -> torch.Tensor:
-    """Clamp each interior radius so trims fit on adjacent edges."""
+# Max edge fraction used for fillet trim (t_max = EDGE_TRIM_FRAC * min(L0, L1)).
+EDGE_TRIM_FRAC = 1.45
+
+
+def max_fillet_radii(
+    vertices: torch.Tensor,
+    edge_frac: float = EDGE_TRIM_FRAC,
+    eps: float = 1e-4,
+) -> torch.Tensor:
+    """Per-corner max feasible fillet radius (meters), shape (N-2,)."""
     n = vertices.shape[0]
-    if n < 3 or radii.numel() == 0:
-        return radii
+    if n < 3:
+        return vertices.new_zeros((0,))
     out = []
     for k in range(n - 2):
         i = k + 1
@@ -269,12 +277,35 @@ def project_radii(vertices: torch.Tensor, radii: torch.Tensor, eps: float = 1e-4
         dot = torch.clamp((ua * ub).sum(), -1.0 + 1e-6, 1.0 - 1e-6)
         alpha = torch.acos(dot)
         if float(alpha.detach()) < 1e-3 or float((torch.pi - alpha).detach()) < 1e-3:
-            out.append(radii.new_zeros(()))
+            out.append(vertices.new_zeros(()))
             continue
-        t_max = torch.minimum(L0, L1) * 0.45
-        r_max = t_max * torch.tan(alpha * 0.5)
-        out.append(torch.minimum(torch.relu(radii[k]), r_max))
+        t_max = torch.minimum(L0, L1) * edge_frac
+        out.append(t_max * torch.tan(alpha * 0.5))
     return torch.stack(out)
+
+
+def radii_from_kappa(
+    vertices: torch.Tensor,
+    kappa: torch.Tensor,
+    edge_frac: float = EDGE_TRIM_FRAC,
+) -> torch.Tensor:
+    """
+    Convert normalized fillet κ ∈ [0, 1] to meters: r = κ * r_max(vertices).
+
+    κ=0 → sharp corner; κ=1 → max roundness allowed by adjacent edge lengths.
+    """
+    r_max = max_fillet_radii(vertices, edge_frac=edge_frac)
+    if r_max.numel() == 0:
+        return r_max
+    return kappa.clamp(0.0, 1.0) * r_max
+
+
+def project_radii(vertices: torch.Tensor, radii: torch.Tensor, eps: float = 1e-4) -> torch.Tensor:
+    """Clamp each interior radius so trims fit on adjacent edges."""
+    r_max = max_fillet_radii(vertices, eps=eps)
+    if r_max.numel() == 0:
+        return radii
+    return torch.minimum(torch.relu(radii), r_max)
 
 
 def sample_filleted_polyline(

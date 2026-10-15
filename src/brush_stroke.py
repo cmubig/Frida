@@ -9,12 +9,17 @@ from kornia.geometry.transform import rotate
 bicubic = InterpolationMode.BICUBIC
 import warnings
 import numpy as np
-from filleted_stroke import project_radii, sample_filleted_polyline
+from filleted_stroke import radii_from_kappa, sample_filleted_polyline
 
 # from param2stroke import special_sigmoid
 
-N_VERTICES = 4  # polyline corners; N-2 = 2 fillet radii
+N_VERTICES = 4  # polyline corners; N-2 = 2 fillet κ values
 N_PATH_POINTS = 32  # dense trajectory length expected by param2img / execute
+
+
+def _logit(p: torch.Tensor, eps: float = 1e-4) -> torch.Tensor:
+    p = p.clamp(eps, 1.0 - eps)
+    return torch.log(p) - torch.log1p(-p)
 
 
 def get_quaternion_from_euler(roll, pitch, yaw):
@@ -165,17 +170,19 @@ class BrushStroke(nn.Module):
         self.a = nn.Parameter(torch.ones(1)*a) # Range [-2pi,2pi]
         self.z = nn.Parameter(torch.ones(4)*z) # Range [0,1]
 
-        # Filleted polyline: N vertices + N-2 unconstrained radii (softplus in get_path)
+        # Filleted polyline: N vertices + N-2 fillet κ logits (κ = sigmoid(radii) ∈ (0,1)).
+        # κ=0 sharp corner, κ=1 max feasible roundness for current edge lengths / angle.
         if vertices is None:
             # Short stroke along +x with small y jitter (meters, stroke-local)
             t = torch.linspace(0.0, 0.06, N_VERTICES, device=device)
             vertices = torch.stack([t, (torch.rand(N_VERTICES, device=device) - 0.5) * 0.02], dim=-1)
         if radii is None:
-            # Unconstrained; softplus(~ -2) ≈ 0.13 * scale → small positive radii
-            radii = torch.full((N_VERTICES - 2,), -2.0, device=device)
+            # Random κ ~ U(0.2, 0.8) → logits
+            k = torch.empty(N_VERTICES - 2, device=device).uniform_(0.2, 0.8)
+            radii = _logit(k)
 
         self.vertices = nn.Parameter(vertices.float())
-        self.radii = nn.Parameter(radii.float())
+        self.radii = nn.Parameter(radii.float())  # logits for κ
 
         if not self.ink:
             self.color_transform = nn.Parameter(color)
@@ -209,13 +216,19 @@ class BrushStroke(nn.Module):
         x = torch.cat((x[:,:3]*0 + self.color_transform[None,:,None,None], x[:,3:]), dim=1)
         return x
 
+    def fillet_kappa(self):
+        """Normalized fillet κ ∈ (0, 1) per interior corner."""
+        return torch.sigmoid(self.radii)
+
+    def fillet_radii_m(self):
+        """Fillet radii in meters: κ * r_max(vertices)."""
+        return radii_from_kappa(self.vertices, self.fillet_kappa())
+
     def make_valid(stroke):
         with torch.no_grad():
             stroke.vertices.data.clamp_(-0.15, 0.15)
-            # Softplus then project to max feasible fillet; store inverse-softplus so get_path is stable
-            r_pos = torch.nn.functional.softplus(stroke.radii.data)
-            r_proj = project_radii(stroke.vertices.data, r_pos)
-            stroke.radii.data.copy_(torch.log(torch.expm1(r_proj.clamp_min(1e-6))))
+            # κ = sigmoid(radii) is already in (0,1); keep logits numerically tame
+            stroke.radii.data.clamp_(-8.0, 8.0)
 
             stroke.xt.data.clamp_(0,1.)
             stroke.yt.data.clamp_(0,1.)
@@ -245,21 +258,20 @@ class BrushStroke(nn.Module):
             self._path_cache = path
             return path
 
-        # softplus only here; expand_stroke already clamps oversized trims.
-        # Hard project_radii is applied in make_valid (no_grad) so radii keep gradients.
+        # κ = sigmoid(radii) → meters via r_max(vertices). expand_stroke also clamps trims.
         #
         # Filleted expand_stroke is Python control flow with many host syncs; on CUDA
         # that dominates. Run the tiny (N≈4) geometry on CPU, then move the 32×2
         # samples back — same math, much less sync overhead.
         device = self.vertices.device
         if device.type == 'cpu':
-            radii = torch.nn.functional.softplus(self.radii)
-            xy = sample_filleted_polyline(self.vertices, radii, n_points=N_PATH_POINTS)
+            radii_m = radii_from_kappa(self.vertices, torch.sigmoid(self.radii))
+            xy = sample_filleted_polyline(self.vertices, radii_m, n_points=N_PATH_POINTS)
         else:
             vertices_cpu = self.vertices.cpu()
-            radii_cpu = torch.nn.functional.softplus(self.radii.cpu())
+            radii_m = radii_from_kappa(vertices_cpu, torch.sigmoid(self.radii.cpu()))
             xy = sample_filleted_polyline(
-                vertices_cpu, radii_cpu, n_points=N_PATH_POINTS
+                vertices_cpu, radii_m, n_points=N_PATH_POINTS
             ).to(device)
 
         # Linearly interpolate the 4 z values into 32 for each waypoint on trajectory

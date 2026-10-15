@@ -99,7 +99,7 @@ def path_prior_losses(painting, opt):
     Soft priors on filleted-polyline strokes:
       - path length: squared hinge that kicks in after path_length_limit (meters)
       - vertex smoothness: mean squared second differences of vertices
-      - fillet radii: pull softplus(radii) toward a medium target (avoid 0 / huge)
+      - fillet κ: pull sigmoid(radii) toward a medium target in [0,1] (0=sharp, 1=max round)
     Returns (length_loss, smooth_loss, fillet_loss), already scaled by their weights.
     """
     length_w = getattr(opt, 'path_length_weight', 0.0) or 0.0
@@ -112,7 +112,7 @@ def path_prior_losses(painting, opt):
     limit = getattr(opt, 'path_length_limit', None)
     if limit is None:
         limit = getattr(opt, 'MAX_STROKE_LENGTH', 0.1)
-    fillet_target = getattr(opt, 'path_fillet_target', 0.01) or 0.01
+    fillet_target = getattr(opt, 'path_fillet_target', 0.5) or 0.5
 
     length_terms = []
     smooth_terms = []
@@ -132,9 +132,9 @@ def path_prior_losses(painting, opt):
             smooth_terms.append((d2 ** 2).mean())
 
         if fillet_w > 0 and hasattr(stroke, 'radii'):
-            # Prefer medium radii; squared error in meters vs target
-            r = torch.nn.functional.softplus(stroke.radii)
-            fillet_terms.append(((r - fillet_target) ** 2).mean())
+            # Prefer medium κ; squared error vs target in [0,1]
+            kappa = torch.sigmoid(stroke.radii)
+            fillet_terms.append(((kappa - fillet_target) ** 2).mean())
 
     length_loss = (torch.stack(length_terms).mean() * length_w) if length_terms else torch.zeros((), device=device)
     smooth_loss = (torch.stack(smooth_terms).mean() * smooth_w) if smooth_terms else torch.zeros((), device=device)

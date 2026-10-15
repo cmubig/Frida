@@ -69,9 +69,9 @@ class Options(object):
         parser.add_argument('--path_smooth_weight', type=float, default=5.0,
                             help='Soft prior: penalize second differences of polyline vertices.')
         parser.add_argument('--path_fillet_weight', type=float, default=1.0,
-                            help='Soft prior: pull fillet radii toward a medium target (avoid extremes).')
-        parser.add_argument('--path_fillet_target', type=float, default=0.01,
-                            help='Preferred fillet radius in meters for the medium-radius prior.')
+                            help='Soft prior: pull fillet κ (0=sharp, 1=max round) toward a medium target.')
+        parser.add_argument('--path_fillet_target', type=float, default=0.5,
+                            help='Preferred fillet κ in [0,1] for the medium-roundness prior.')
 
         # Optimization Parameters
         parser.add_argument('--objective', nargs='*', type=str, help='text|style|clip_conv_loss|l2|clip_fc_loss')
