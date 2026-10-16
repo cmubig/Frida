@@ -1,5 +1,4 @@
 python3 create_copaint_data.py \
-        --use_cache \
         --cache_dir ../src/caches/sharpie_short_strokes \
         --materials_json ../materials_ink.json \
         --lr_multiplier 2.0  \

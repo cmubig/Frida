@@ -1,5 +1,4 @@
 python3 create_copaint_data.py \
-        --use_cache \
         --cofrida_dataset nateraw/parti-prompts \
         --cache_dir ../src/caches/sharpie_short_strokes \
         --materials_json ../materials_ink.json \

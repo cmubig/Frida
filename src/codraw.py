@@ -206,7 +206,7 @@ if __name__ == '__main__':
             x_glob, y_glob,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
             # Runnit
-            stroke.execute(painter, x_glob, y_glob, stroke.transformation.a.item())
+            painter.execute_stroke(stroke, x_glob, y_glob, stroke.transformation.a.item())
 
         painter.to_neutral()
 

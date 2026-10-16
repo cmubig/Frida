@@ -21,7 +21,7 @@ from losses.clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip
 
 from paint_utils3 import *
 
-# python3 mturk.py --cofrida_model ./controlnet_models_35_70//checkpoint-2000/unet --codraw_eval_setting same_text_add_detail --codraw_metric_data_dir ./codraw_metric_data/new_amt_test/ --use_cache --cache_dir caches/cache_6_6_cvpr/ --ink --max_stroke_length 0.025 --optim_iter 400 --lr_multiplier 0.7 --min_strokes_added 35 --max_strokes_added 105
+# python3 mturk.py --cofrida_model ./controlnet_models_35_70//checkpoint-2000/unet --codraw_eval_setting same_text_add_detail --codraw_metric_data_dir ./codraw_metric_data/new_amt_test/ --cache_dir caches/cache_6_6_cvpr/ --ink --max_stroke_length 0.025 --optim_iter 400 --lr_multiplier 0.7 --min_strokes_added 35 --max_strokes_added 105
 
 
 def plan_from_image(opt, target_img, current_canvas, stroke_batch_size,

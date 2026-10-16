@@ -22,6 +22,156 @@ def _logit(p: torch.Tensor, eps: float = 1e-4) -> torch.Tensor:
     return torch.log(p) - torch.log1p(-p)
 
 
+# Shape families for stroke-library collection (Option A).
+LIBRARY_SHAPE_FAMILIES = (
+    'straight',   # near-linear baseline marks
+    'arc',        # gentle C-curve
+    's_curve',    # inflection
+    'corner',     # angled polyline, sharp κ
+    'hook',       # bend near the end
+    'round_turn', # soft C-curve with round κ
+)
+
+
+def _opt_float(opt, name, default):
+    '''Read a float from Options/materials without broken getattr defaults.'''
+    try:
+        val = float(getattr(opt, name))
+        if val == val:  # not NaN
+            return val
+    except Exception:
+        pass
+    return float(default)
+
+
+def _sample_library_length(opt) -> float:
+    '''Stratified short / medium / long in [MIN_STROKE_LENGTH, MAX_STROKE_LENGTH].'''
+    lo = _opt_float(opt, 'MIN_STROKE_LENGTH', 0.0025) or 0.0025
+    hi = _opt_float(opt, 'MAX_STROKE_LENGTH', 0.1) or 0.1
+    hi = max(hi, lo * 1.01)
+    # Equal mass on three length bands (log-uniform within band).
+    band = int(torch.randint(0, 3, (1,)).item())
+    edges = torch.log(torch.tensor([lo, lo + (hi - lo) / 3, lo + 2 * (hi - lo) / 3, hi]))
+    t = torch.rand(1).item()
+    log_len = edges[band] + t * (edges[band + 1] - edges[band])
+    return float(torch.exp(log_len).item())
+
+
+def _library_vertices_and_kappa(family: str, length: float, device):
+    '''Build (N_VERTICES, 2) vertices and (N_VERTICES-2,) κ from length-relative shape amps.
+
+    Lateral size is a fraction of stroke length (can be large vs length for
+    loopy / bent marks). Absolute amp is clamped near make_valid (±0.15 m).
+    '''
+    L = max(length, 1e-4)
+    amp_abs_cap = 0.14  # meters; safety vs make_valid clamp (±0.15)
+    t = torch.linspace(0.0, 1.0, N_VERTICES, device=device)
+    sign = 1.0 if torch.rand(1).item() < 0.5 else -1.0
+
+    def _u(lo, hi):
+        return lo + (hi - lo) * torch.rand(1).item()
+
+    def _cap(amp):
+        return min(float(amp), amp_abs_cap)
+
+    if family == 'straight':
+        # Mostly straight, but allow a visible wiggle on longer marks.
+        amp = _cap(_u(0.02, 0.12) * L)
+        xs = t * L
+        ys = sign * amp * (torch.rand(N_VERTICES, device=device) - 0.5) * 2.0
+        kappa = torch.empty(N_VERTICES - 2, device=device).uniform_(0.10, 0.55)
+
+    elif family == 'arc':
+        # Strong C-curves; optionally chord-compress x so the bulge isn't just a tall sine.
+        amp = _cap(_u(0.20, 0.65) * L)
+        chord = _u(0.55, 1.0)  # <1 pulls endpoints closer → rounder arc
+        xs = t * (L * chord)
+        ys = sign * amp * torch.sin(math.pi * t)
+        kappa = torch.empty(N_VERTICES - 2, device=device).uniform_(0.30, 0.85)
+
+    elif family == 's_curve':
+        amp = _cap(_u(0.18, 0.55) * L)
+        xs = t * L
+        # Uneven phase so the inflection isn't always centered.
+        phase = _u(-0.15, 0.15)
+        ys = sign * amp * torch.sin(2.0 * math.pi * (t + phase))
+        kappa = torch.empty(N_VERTICES - 2, device=device).uniform_(0.25, 0.80)
+
+    elif family == 'corner':
+        # Sharp bend; second leg can be long and steep (not just a small dogleg).
+        lat = _cap(_u(0.25, 0.85) * L)
+        x_bend = _u(0.25, 0.65) * L
+        leg2 = _u(0.25, 0.90) * L  # length of the second leg along x
+        xs = torch.tensor([0.0, x_bend, x_bend + 0.05 * L, x_bend + leg2], device=device)
+        ys = torch.tensor([0.0, 0.0, sign * lat, sign * lat * _u(0.7, 1.15)], device=device)
+        ys = ys + (torch.rand(N_VERTICES, device=device) - 0.5) * 0.20 * lat
+        kappa = torch.empty(N_VERTICES - 2, device=device).uniform_(0.02, 0.28)
+
+    elif family == 'hook':
+        # Late bend that can curl back a bit (x not strictly increasing).
+        amp = _cap(_u(0.25, 0.70) * L)
+        xs = t * L
+        envelope = torch.clamp((t - _u(0.20, 0.45)) / 0.55, 0.0, 1.0) ** 2
+        ys = sign * amp * envelope
+        # Occasional curl: pull the tip back toward the start in x.
+        if torch.rand(1).item() < 0.45:
+            xs = xs.clone()
+            xs[-1] = xs[-2] - _u(0.05, 0.35) * L
+            xs[-2] = xs[-2] - _u(0.0, 0.10) * L
+        kappa = torch.empty(N_VERTICES - 2, device=device).uniform_(0.15, 0.75)
+
+    elif family == 'round_turn':
+        # Soft U / C with large amplitude and high fillet κ.
+        amp = _cap(_u(0.25, 0.70) * L)
+        chord = _u(0.45, 0.95)
+        xs = t * (L * chord)
+        ys = sign * amp * torch.sin(math.pi * t)
+        kappa = torch.empty(N_VERTICES - 2, device=device).uniform_(0.70, 0.98)
+
+    else:
+        raise ValueError(f'Unknown library shape family: {family}')
+
+    # Small natural jitter so marks aren't perfectly synthetic.
+    vertices = torch.stack([xs, ys], dim=-1)
+    vertices = vertices + 0.015 * L * (torch.rand_like(vertices) - 0.5)
+    vertices[0] = 0.0  # keep start anchored before recentering below
+    # Anchor at origin for predictable packing / execute start.
+    vertices = vertices - vertices[0:1]
+    return vertices, kappa
+
+
+def _sample_library_z(device, min_z=0.1) -> torch.Tensor:
+    '''Sample pressure across the usable tip-calib range (0 light → 1 deepest).
+
+    Mixes flat strokes with strong within-stroke profiles (taper, swell, random)
+    so the stroke model sees real pressure → width changes.
+    '''
+    lo, hi = float(min_z), 0.95
+    span = hi - lo
+    u = torch.rand(1, device=device).item()
+
+    if u < 0.25:
+        # Nearly constant pressure (still covers the full range across strokes)
+        z = lo + span * torch.rand(1, device=device).expand(4)
+    elif u < 0.50:
+        # Taper light → heavy or heavy → light
+        a, b = lo + span * torch.rand(2, device=device)
+        t = torch.linspace(0, 1, 4, device=device)
+        z = a + (b - a) * t
+    elif u < 0.75:
+        # Swell or pinch in the middle
+        ends = lo + span * torch.rand(1, device=device)
+        mid = lo + span * torch.rand(1, device=device)
+        z = torch.stack([ends[0], mid[0], mid[0], ends[0]])
+        # Slight asymmetry so it isn't perfectly symmetric
+        z = z + 0.05 * span * (torch.rand(4, device=device) - 0.5)
+    else:
+        # Independent control points — can jump a lot along the stroke
+        z = lo + span * torch.rand(4, device=device)
+
+    return z.clamp(lo, hi)
+
+
 def get_quaternion_from_euler(roll, pitch, yaw):
     """
     Convert an Euler angle to a quaternion.
@@ -148,7 +298,7 @@ class BrushStroke(nn.Module):
                 ink=False,
                 a=None, xt=None, yt=None, 
                 z=None,
-                device='cuda',
+                device=None,
                 is_dot=False):
         super(BrushStroke, self).__init__()
 
@@ -159,16 +309,20 @@ class BrushStroke(nn.Module):
         self.max_length_before_new_paint = opt.max_length_before_new_paint
         self.ink = ink
 
-        if color is None: color=(torch.rand(3).to(device)*.4)+0.3
-        if a is None: a=(torch.rand(1)*2-1)*3.14
-        if xt is None: xt=torch.rand(1)
-        if yt is None: yt=torch.rand(1)
-        if z is None: z=torch.rand(4)
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        self.xt = nn.Parameter(torch.ones(1)*xt) # Range [0,1]
-        self.yt = nn.Parameter(torch.ones(1)*yt) # Range [0,1]
-        self.a = nn.Parameter(torch.ones(1)*a) # Range [-2pi,2pi]
-        self.z = nn.Parameter(torch.ones(4)*z) # Range [0,1]
+        if color is None: color=(torch.rand(3, device=device)*.4)+0.3
+        if a is None: a=(torch.rand(1, device=device)*2-1)*3.14
+        if xt is None: xt=torch.rand(1, device=device)
+        if yt is None: yt=torch.rand(1, device=device)
+        if z is None: z=torch.rand(4, device=device)
+
+        # Keep params on the same device as the provided tensors (library sampling uses CUDA).
+        self.xt = nn.Parameter(torch.as_tensor(xt, dtype=torch.float32, device=device).reshape(1))
+        self.yt = nn.Parameter(torch.as_tensor(yt, dtype=torch.float32, device=device).reshape(1))
+        self.a = nn.Parameter(torch.as_tensor(a, dtype=torch.float32, device=device).reshape(1))
+        self.z = nn.Parameter(torch.as_tensor(z, dtype=torch.float32, device=device).reshape(4))
 
         # Filleted polyline: N vertices + N-2 fillet κ logits (κ = sigmoid(radii) ∈ (0,1)).
         # κ=0 sharp corner, κ=1 max feasible roundness for current edge lengths / angle.
@@ -233,7 +387,9 @@ class BrushStroke(nn.Module):
             stroke.xt.data.clamp_(0,1.)
             stroke.yt.data.clamp_(0,1.)
             stroke.z.data.clamp_(0.02,0.98)
-            stroke.z[0].data.clamp_(0.1,0.1) # So the brush doesn't fan out
+            if not stroke.ink:
+                # Soft brushes splay on a hard touchdown; ink tips don't need this.
+                stroke.z[0].data.clamp_(0.1,0.1)
             # stroke.z.data.clamp_(0.5,0.5)################3
 
             #stroke.color_transform.data.clamp_(0.02,0.75)
@@ -247,10 +403,19 @@ class BrushStroke(nn.Module):
     def clear_path_cache(self):
         self._path_cache = None
 
+    def __getstate__(self):
+        # Never pickle derived path cache (wrong device after load / .to()).
+        state = super().__getstate__()
+        state = dict(state)
+        state['_path_cache'] = None
+        return state
+
     def get_path(self):
         cache = getattr(self, '_path_cache', None)
-        if cache is not None:
+        # Also drop cache if params moved devices without clearing.
+        if cache is not None and cache.device == self.vertices.device:
             return cache
+        self._path_cache = None
 
         if self.is_dot:
             path = torch.zeros((4,4), device=self.vertices.device, dtype=self.vertices.dtype)
@@ -280,8 +445,10 @@ class BrushStroke(nn.Module):
         z = z[0, 0].clamp(self.MIN_STROKE_Z, 0.95)  # (32,)
 
         path = torch.cat([xy, z.unsqueeze(-1)], dim=-1)  # (32, 3)
-        # Only cache when grads are enabled so a no_grad render cannot poison priors.
-        if torch.is_grad_enabled():
+        # Cache only for optimizable strokes (not robot/library execute with frozen params).
+        if torch.is_grad_enabled() and (
+            self.vertices.requires_grad or self.radii.requires_grad or self.z.requires_grad
+        ):
             self._path_cache = path
         return path
 
@@ -359,6 +526,66 @@ class BrushStroke(nn.Module):
         ys = path[:,1]
         approx_len = (((xs[1:] - xs[:-1])**2 + (ys[1:] - ys[:-1])**2)**0.5).sum()
         return approx_len
+
+    def path_aabb(self):
+        """Axis-aligned bounds of the dense XY path in stroke-local meters.
+
+        Returns (x_min, y_min, x_max, y_max).
+        """
+        xy = self.get_path()[:, :2]
+        mins = xy.min(dim=0).values
+        maxs = xy.max(dim=0).values
+        return mins[0].item(), mins[1].item(), maxs[0].item(), maxs[1].item()
+
+    @classmethod
+    def sample_for_library(cls, opt, family=None, device=None):
+        """Sample a stroke from a structured shape family for library collection.
+
+        Covers straight / arc / S / corner / hook / round-turn with stratified
+        lengths and family-appropriate fillet κ. Lateral bend is length-relative.
+        Pose (xt, yt, a) is left for the library packer to set.
+        """
+        # CPU is enough for library geometry; keeps execute/path packing simple.
+        if device is None:
+            device = 'cpu'
+        if family is None:
+            family = LIBRARY_SHAPE_FAMILIES[int(torch.randint(0, len(LIBRARY_SHAPE_FAMILIES), (1,)).item())]
+
+        length = _sample_library_length(opt)
+        vertices, kappa = _library_vertices_and_kappa(family, length, device)
+        radii = _logit(kappa)
+        try:
+            min_z = float(opt.MIN_STROKE_Z)
+        except Exception:
+            min_z = 0.1
+        z = _sample_library_z(device, min_z=min_z)
+
+        try:
+            ink = bool(opt.ink)
+        except Exception:
+            ink = False
+
+        stroke = cls(
+            opt,
+            vertices=vertices,
+            radii=radii,
+            a=torch.zeros(1, device=device),
+            xt=torch.zeros(1, device=device),
+            yt=torch.zeros(1, device=device),
+            z=z,
+            ink=ink,
+            device=device,
+        )
+        stroke.library_shape_family = family
+        BrushStroke.make_valid(stroke)
+        stroke.clear_path_cache()
+        # Packing-friendly frame: x starts at 0, y centered on the execute origin.
+        with torch.no_grad():
+            x_min, y_min, x_max, y_max = stroke.path_aabb()
+            stroke.vertices[:, 0] -= x_min
+            stroke.vertices[:, 1] -= 0.5 * (y_min + y_max)
+        stroke.clear_path_cache()
+        return stroke
     
     def get_rotated_trajectory(rotation, trajectory):
         # Rotation in radians

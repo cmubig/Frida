@@ -34,7 +34,7 @@ In the data creation phase, paintings/drawings are created in the FRIDA simulati
 
 ```
 python3 create_copaint_data.py 
-        [--use_cache] Load a pre-trained brush stroke model
+        [--cache_dir path] Directory with calibration / stroke-model caches (reused by default if present)
         [--cache_dir path] Path to brush model
         [--materials_json path] Path to file describing the materials used by FRIDA
         [--lr_multiplier float] Scale the learning rate for data generation
@@ -100,16 +100,14 @@ cd Frida/src/
 python3 codraw.py 
     [--cofrida_model path] Path to trained Instruct-Pix2Pix (see --output_dir used with train_instruct_pix2pix.py)
 python3 codraw.py  
-        --use_cache 
         --cache_dir caches/sharpie_short_strokes/ 
-        --dont_retrain_stroke_model 
         --robot xarm 
         --brush_length 0.2 
         --ink   
         --lr_multiplier 0.3 
         --num_strokes 120
 # Example below
-python3 codraw.py --use_cache --cache_dir caches/sharpie_short_strokes/ --cofrida_model ../cofrida/cofrida_model_ink --dont_retrain_stroke_model --robot xarm --brush_length 0.2 --ink --lr_multiplier 0.7 --num_strokes 120 --simulate
+python3 codraw.py --cache_dir caches/sharpie_short_strokes/ --cofrida_model ../cofrida/cofrida_model_ink --robot xarm --brush_length 0.2 --ink --lr_multiplier 0.7 --num_strokes 120 --simulate
 ```
 
 ### Pretrained CoFRIDA models

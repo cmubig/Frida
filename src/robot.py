@@ -40,9 +40,30 @@ class XArm(Robot, object):
         Low-level action functionality of the robot.
         This is an abstract class, see its children for usage.
     '''
-    def __init__(self, ip, debug):
+    ROLL, PITCH, YAW = 180.0, 0.0, 0.0
+
+    def __init__(self, ip, debug, tool_length_m=0.0, neutral_joints_deg=None,
+            v_max_mm_s=60.0, a_lat_mm_s2=150.0, joint_rate_limit_deg_s=60.0):
         from xarm.wrapper import XArmAPI
         self.debug_bool = debug
+        self.tool_length_m = float(tool_length_m or 0.0)
+        self.neutral_joints_deg = None if neutral_joints_deg is None else [float(a) for a in neutral_joints_deg]
+
+        # Contact motion profile (mm, mm/s, mm/s^2, deg/s)
+        self.v_max = float(v_max_mm_s)
+        self.v_min = 12.0
+        self.v_air = 70.0
+        self.a_lat = float(a_lat_mm_s2)
+        # Keep mvacc moderate: high accel with a long TCP trips error 24 at corners.
+        self.mvacc = 280.0
+        self.joint_rate_limit = float(joint_rate_limit_deg_s)
+        self.sharp_turn_deg = 25.0
+        self.transit_min_mm = 30.0
+        self.joint_speed_deg = 50.0
+        self.joint_acc_deg = 350.0
+        # How many waypoints to queue before waiting (stop-and-go, no blend).
+        self.queue_chunk = 24
+        self._ik_cache = {}
 
         self.arm = XArmAPI(ip)
 
@@ -50,14 +71,33 @@ class XArm(Robot, object):
         if self.debug_bool:
             print(msg)
 
+    def _apply_tcp_offset(self):
+        '''Set TCP at the tool tip so cartesian poses are tip-referenced.
+
+        xArm expects [x, y, z, roll, pitch, yaw] in mm / degrees.
+        Does not change joint-space go-home; avoid reset()/move_gohome with long tools.
+        '''
+        tip_mm = self.tool_length_m * 1000.0
+        self.debug(f'XArm TCP offset z={tip_mm:.1f} mm (TOOL_LENGTH_M={self.tool_length_m})')
+        # Offset along tool +Z (pen pointing down toward the table).
+        code = self.arm.set_tcp_offset([0, 0, tip_mm, 0, 0, 0])
+        if code not in (0, None):
+            print(f'Warning: set_tcp_offset returned {code}')
+
     def good_morning_robot(self):
         self.arm.motion_enable(enable=True)
-        self.arm.reset(wait=True)
         self.arm.set_mode(0)
-        self.arm.reset(wait=True)
         self.arm.set_state(state=0)
-
-        self.arm.reset(wait=True)
+        # Apply TCP before any cartesian motion. Skip arm.reset()/move_gohome —
+        # that joint home ignores TCP and can drive a long pen into the table.
+        self._apply_tcp_offset()
+        self.arm.set_state(state=0)
+        self._ik_cache = {}
+        try:
+            print('XArm reduced mode:', self.arm.get_reduced_mode())
+            print('XArm reduced states:', self.arm.get_reduced_states())
+        except Exception as e:
+            print('XArm could not read reduced mode:', e)
 
     def good_night_robot(self):
         self.arm.disconnect()
@@ -179,68 +219,294 @@ class XArm(Robot, object):
                 self.good_morning_robot()
                 print('Cannot go to position', e)
     
-    def go_to_cartesian_pose_fast(self, positions, orientations,
-            speed=150):
+    def _arm_error_code(self):
+        try:
+            code, err = self.arm.get_err_warn_code()
+            if code == 0:
+                return int(err[0])
+        except Exception:
+            pass
+        return -1
+
+    def _motion_ok(self):
+        '''True if the controller has no error and isn't stopped.
+
+        Use this instead of SDK return codes: move_arc_lines returns None.
         '''
-        args:
-            positions [np.array(3)] list of 3D coordinates in meters
-            orientations [p.array(4)] (not actual quaternion). It's just [[roll,pitch,yaw,other value],...]
-        '''
-        positions, orientations = np.array(positions), np.array(orientations)
-        if len(positions.shape) == 1:
-            positions = positions[None,:]
-            orientations = orientations[None,:]
-        
-        paths = []
-            
-        for i in range(len(positions)):
-            x,y,z = positions[i][1], positions[i][0], positions[i][2]
-            x,y,z = x*1000, y*-1000, z*1000 #m to mm
-            q = orientations[i]
-            q = (q / np.pi) * 180 # radian to degrees
-            # For xarm, we feed in euler angle instead of quaternion
-            # roll, pitch, yaw = q[0], q[1], q[2]
-            roll, pitch, yaw = 180, 0, 0
+        try:
+            return self.arm.error_code == 0 and self.arm.state < 4
+        except Exception:
+            return False
 
-            radius = 0.0
-            paths.append([x,y,z,roll,pitch,yaw,radius]) #TODO: set radius?
-            # paths.append([x,y,z,roll,pitch,yaw]) #TODO: set radius?
-            # https://github.com/xArm-Developer/xArm-Python-SDK/blob/master/doc/api/xarm_api.md#def-move_arc_linesself-paths-is_radiannone-times1-first_pause_time01-repeat_pause_time0-automatic_calibrationtrue-speednone-mvaccnone-mvtimenone-waitfalse
-
-            if len(paths) > 2:
-                # Calculate the angle of the turn that the newest point creates
-                ba = np.array(paths[-3][:3]) - np.array(paths[-2][:3])
-                bc = np.array(paths[-1][:3]) - np.array(paths[-2][:3])
-
-                cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
-                angle = np.arccos(cosine_angle)
-                angle = np.degrees(angle)
-                angle = np.nan_to_num(angle)
-                # print(angle)
-                if True:#np.abs(180-angle) > 40:
-
-                    
-                    paths = paths[:-1] +[paths[-2]]*70 + paths[-1:]
-
-                #     # Run the previous points
-                #     # try:
-                #     #     self.arm.move_arc_lines(
-                #     #         paths=paths[:-1], speed=speed, wait=True, mvacc=500,#mvacc=1#mvacc=50
-                #     #     )
-                #     # except Exception as e:
-                #     #     print('Cannot go to position', e)
-                #     # paths = paths[-1:]
-                # if np.abs(180-angle) > 40:
-                #     paths = paths[:-1] +[paths[-2]]*200 + paths[-1:]
-                # else:
-                #     paths = paths[:-1] +[paths[-2]]*50 + paths[-1:]
-        if len(paths) > 0:
+    def _recover_motion(self, retries=6, sleep_s=0.35):
+        '''Clear stop/error and wait until the controller is actually ready.'''
+        for i in range(retries):
             try:
-                self.arm.move_arc_lines(
-                    paths=paths, speed=speed, wait=True, mvacc=500,#mvacc=1#mvacc=50
-                )
+                self.arm.clean_warn()
+                self.arm.clean_error()
+                self.arm.motion_enable(enable=True)
+                self.arm.set_mode(0)
+                self.arm.set_state(state=0)
+                time.sleep(sleep_s)
+                if self._motion_ok():
+                    return True
+                print(f'XArm recover: still error={self._arm_error_code()} (try {i+1}/{retries})')
             except Exception as e:
-                print('Cannot go to position', e)
+                print('XArm recover_motion failed:', e)
+            time.sleep(sleep_s)
+        return self._motion_ok()
+
+    def _ready(self):
+        return self._motion_ok() or self._recover_motion()
+
+    def _current_xyz(self):
+        code, state = self.arm.get_position()
+        if code != 0:
+            return None
+        return np.array(state[:3], dtype=np.float64)
+
+    def _ik(self, xyz_mm):
+        '''Joint angles (deg) for a tip-down pose at xyz_mm, or None if unreachable.'''
+        key = tuple(float(c) for c in np.round(np.asarray(xyz_mm, dtype=np.float64), 1))
+        if key in self._ik_cache:
+            return self._ik_cache[key]
+        q = None
+        try:
+            code, angles = self.arm.get_inverse_kinematics(
+                [key[0], key[1], key[2], self.ROLL, self.PITCH, self.YAW],
+                input_is_radian=False, return_is_radian=False,
+            )
+            if code == 0 and angles:
+                q = np.array(angles, dtype=np.float64)
+        except Exception as e:
+            print('XArm IK failed:', e)
+        self._ik_cache[key] = q
+        return q
+
+    def _fail(self, what, target_mm=None):
+        '''Log, recover once, lift straight up a little. Always returns False.'''
+        err = self._arm_error_code()
+        try:
+            _, joints = self.arm.get_servo_angle()
+        except Exception:
+            joints = None
+        tgt = None if target_mm is None else np.round(np.asarray(target_mm), 1).tolist()
+        joints = None if joints is None else np.round(np.asarray(joints, dtype=np.float64), 1).tolist()
+        print(f'XArm {what} failed: err={err} target_mm={tgt} joints_deg={joints}')
+        if self._recover_motion():
+            curr = self._current_xyz()
+            if curr is not None:
+                self.arm.set_position(
+                    x=float(curr[0]), y=float(curr[1]), z=float(curr[2] + 20.0),
+                    roll=self.ROLL, pitch=self.PITCH, yaw=self.YAW,
+                    speed=10, mvacc=100, wait=True,
+                )
+                if not self._motion_ok():
+                    self._recover_motion()
+        return False
+
+    def _joint_move(self, xyz_mm=None, q=None):
+        '''Joint-space move to a tip-down pose (or given joints); can't cross a cartesian singularity.'''
+        if q is None:
+            q = self._ik(xyz_mm)
+            if q is None:
+                print(f'XArm IK has no solution for {np.round(xyz_mm, 1).tolist()}')
+                return False
+        if not self._ready():
+            return self._fail('joint move (not ready)', xyz_mm)
+        self.arm.set_servo_angle(
+            angle=[float(a) for a in q], speed=self.joint_speed_deg,
+            mvacc=self.joint_acc_deg, is_radian=False, wait=True,
+        )
+        if not self._motion_ok():
+            return self._fail('joint move', xyz_mm)
+        return True
+
+    def _frida_to_xarm_mm(self, positions):
+        '''FRIDA meters (N,3)/(3,) → xArm mm (N,3).'''
+        positions = np.asarray(positions, dtype=np.float64)
+        if positions.ndim == 1:
+            positions = positions[None, :]
+        xyz = np.empty((len(positions), 3), dtype=np.float64)
+        xyz[:, 0] = positions[:, 1] * 1000.0
+        xyz[:, 1] = positions[:, 0] * -1000.0
+        xyz[:, 2] = positions[:, 2] * 1000.0
+        return xyz
+
+    def go_neutral(self, position_m, hover_m=None):
+        '''Lift clear of the paper (cartesian), then joint-space move to neutral.
+
+        args:
+            position_m: FRIDA-meter neutral position (used via IK unless
+                neutral_joints_deg is set)
+            hover_m: FRIDA-meter z the tip must reach before the joint move
+        '''
+        if not self._ready():
+            return self._fail('neutral (not ready)')
+        target = self._frida_to_xarm_mm(position_m)[0]
+        curr = self._current_xyz()
+        if curr is not None and hover_m is not None:
+            hover_z = float(hover_m) * 1000.0
+            if curr[2] < hover_z - 1.0:
+                self.arm.set_position(
+                    x=float(curr[0]), y=float(curr[1]), z=hover_z,
+                    roll=self.ROLL, pitch=self.PITCH, yaw=self.YAW,
+                    speed=self.v_air / 2, mvacc=self.mvacc, wait=True,
+                )
+                if not self._motion_ok():
+                    return self._fail('neutral lift', [curr[0], curr[1], hover_z])
+        if self.neutral_joints_deg is not None:
+            return self._joint_move(q=self.neutral_joints_deg)
+        return self._joint_move(target)
+
+    def _transit(self, target_mm):
+        '''Get the tip to target_mm: short hops in cartesian, longer ones in joint space.'''
+        curr = self._current_xyz()
+        if curr is not None and np.linalg.norm(curr - target_mm) < self.transit_min_mm:
+            self.arm.set_position(
+                x=float(target_mm[0]), y=float(target_mm[1]), z=float(target_mm[2]),
+                roll=self.ROLL, pitch=self.PITCH, yaw=self.YAW,
+                speed=self.v_air, mvacc=self.mvacc, wait=True,
+            )
+            if not self._motion_ok():
+                return self._fail('short transit', target_mm)
+            return True
+        return self._joint_move(target_mm)
+
+    def _contact_profile(self, xyz):
+        '''Per-waypoint speed (mm/s) for the segment ending at i.
+
+        No blending: the old reliable path stopped at every point (the ×70
+        duplicate hack). Blends of ~0.5 mm at tens of mm/s need thousands of
+        mm/s² of lateral accel and trip error 24.
+
+        Speed follows local curvature, v = sqrt(a_lat * R); sharp corners and
+        vertical approach/lift use slower air/min speeds.
+        '''
+        n = len(xyz)
+        R = np.full(n, np.inf)
+        dev = np.zeros(n)
+        for i in range(1, n - 1):
+            a, b, c = xyz[i - 1], xyz[i], xyz[i + 1]
+            ab, bc, ca = np.linalg.norm(b - a), np.linalg.norm(c - b), np.linalg.norm(a - c)
+            area2 = np.linalg.norm(np.cross(b - a, c - a))
+            if area2 > 1e-9:
+                R[i] = ab * bc * ca / (2.0 * area2)
+            if ab > 1e-6 and bc > 1e-6:
+                cos = float(np.clip(np.dot(b - a, c - b) / (ab * bc), -1.0, 1.0))
+                dev[i] = np.degrees(np.arccos(cos))
+
+        v = np.zeros(n)
+        for i in range(1, n):
+            seg = xyz[i] - xyz[i - 1]
+            seg_len = float(np.linalg.norm(seg))
+            vertical = seg_len > 1e-6 and np.linalg.norm(seg[:2]) < 0.3 * seg_len
+            if vertical:
+                v[i] = self.v_air
+            else:
+                r_min = min(R[i - 1], R[i])
+                v[i] = float(np.clip(np.sqrt(self.a_lat * r_min), self.v_min, self.v_max))
+            # Slow into / out of a sharp corner (still stop-and-go; no blend).
+            if i < n - 1 and dev[i] >= self.sharp_turn_deg:
+                v[i] = self.v_min
+            if i > 1 and dev[i - 1] >= self.sharp_turn_deg:
+                v[i] = min(v[i], self.v_min)
+        return v
+
+    def _preflight(self, xyz, v):
+        '''IK every waypoint; reject singular/unreachable strokes, else scale speed to joint-rate limit.'''
+        qs = []
+        for p in xyz:
+            q = self._ik(p)
+            if q is None:
+                print(f'XArm preflight: no IK for {np.round(p, 1).tolist()}; skipping stroke')
+                return None
+            qs.append(q)
+        axis = int(getattr(self.arm, 'axis', 6) or 6)
+        peak_rate = 0.0
+        for i in range(1, len(xyz)):
+            dq = (qs[i][:axis] - qs[i - 1][:axis] + 180.0) % 360.0 - 180.0
+            dq_max = float(np.max(np.abs(dq)))
+            seg_len = float(np.linalg.norm(xyz[i] - xyz[i - 1]))
+            if seg_len < 5.0 and dq_max > 15.0:
+                print(f'XArm preflight: near-singular segment ({dq_max:.1f} deg over '
+                      f'{seg_len:.1f} mm) at {np.round(xyz[i], 1).tolist()}; skipping stroke')
+                return None
+            if seg_len > 1e-6:
+                peak_rate = max(peak_rate, dq_max * v[i] / seg_len)
+        if peak_rate > self.joint_rate_limit:
+            scale = self.joint_rate_limit / peak_rate
+            self.debug(f'XArm preflight: scaling stroke speed by {scale:.2f} '
+                       f'(peak joint rate {peak_rate:.0f} deg/s)')
+            v = v * scale
+        return v
+
+    def _nearest_waypoint(self, xyz, curr):
+        if curr is None or len(xyz) == 0:
+            return 0
+        d = np.linalg.norm(xyz - curr[None, :], axis=1)
+        return int(np.argmin(d))
+
+    def go_to_cartesian_pose_fast(self, positions, orientations, dedup_mm=1.5):
+        '''
+        Stroke motion: joint-space transit to the first waypoint, then stop-and-go
+        cartesian moves (no blend) with curvature-limited speed. Returns True/False.
+
+        args:
+            positions: (N,3) or (3,) meters in FRIDA coords
+            orientations: ignored (tip is always pointing down)
+        '''
+        positions = np.asarray(positions, dtype=np.float64)
+        if positions.ndim == 1:
+            positions = positions[None, :]
+        if len(positions) == 0:
+            return True
+        if not self._ready():
+            return self._fail('stroke (not ready)')
+
+        xyz = self._frida_to_xarm_mm(positions)
+
+        keep = [0]
+        for i in range(1, len(xyz)):
+            if np.linalg.norm(xyz[i] - xyz[keep[-1]]) >= dedup_mm:
+                keep.append(i)
+        if keep[-1] != len(xyz) - 1:
+            keep.append(len(xyz) - 1)
+        xyz = xyz[keep]
+
+        if len(xyz) == 1:
+            return self._transit(xyz[0])
+
+        v = self._contact_profile(xyz)
+        v = self._preflight(xyz, v)
+        if v is None:
+            return False
+        if not self._transit(xyz[0]):
+            return False
+
+        last = len(xyz) - 1
+        # Stop-and-go: radius=None (SDK → -1) never blends. Queue small chunks
+        # and wait on the last of each so mid-path error 24 is attributed correctly.
+        # (XArmAPI wrapper has no wait_move; set_position(wait=True) does it.)
+        i = 1
+        while i <= last:
+            chunk_end = min(i + self.queue_chunk - 1, last)
+            for j in range(i, chunk_end + 1):
+                self.arm.set_position(
+                    x=float(xyz[j, 0]), y=float(xyz[j, 1]), z=float(xyz[j, 2]),
+                    roll=self.ROLL, pitch=self.PITCH, yaw=self.YAW,
+                    speed=float(v[j]), mvacc=self.mvacc,
+                    radius=None, wait=(j == chunk_end),
+                )
+            if not self._motion_ok():
+                curr = self._current_xyz()
+                near = self._nearest_waypoint(xyz, curr)
+                return self._fail(
+                    f'stroke near waypoint {near}/{last} (chunk {i}-{chunk_end})',
+                    None if curr is None else curr,
+                )
+            i = chunk_end + 1
+        return True
 
 class Franka(Robot, object):
     '''
@@ -492,8 +758,11 @@ class SimulatedRobot(Robot, object):
     def good_night_robot(self):
         pass
 
-    def go_to_cartesian_pose(self, position, orientation):
-        pass
+    def go_to_cartesian_pose(self, position, orientation, **kwargs):
+        return True
+
+    def go_neutral(self, position_m, hover_m=None):
+        return True
 
 
 

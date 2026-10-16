@@ -217,17 +217,19 @@ def optimize_painting(opt, painting, optim_iter, color_palette=None,
         else:
             p = painting(opt.h_render, opt.w_render, use_alpha=False, return_alphas=False)
         
-        loss = 0
+        objective_loss = 0
         for k in range(len(opt.objective)):
-            loss += parse_objective(opt.objective[k], 
+            objective_loss += parse_objective(opt.objective[k], 
                 opt.objective_data_loaded[k], p[:,:3], 
                 weight=opt.objective_weight[k],
                 num_augs=opt.num_augs)
         if need_alphas:
-            loss += torch.abs(1-alphas).mean() * opt.fill_weight
+            objective_loss = objective_loss + torch.abs(1-alphas).mean() * opt.fill_weight
 
-        loss = loss + length_loss + smooth_loss + fillet_loss
+        loss = objective_loss + length_loss + smooth_loss + fillet_loss
         if ((local_it) % opt.log_frequency == 0) and opt.writer is not None:
+            opt.writer.add_scalar('loss/objective', objective_loss.detach(), local_it)
+            opt.writer.add_scalar('loss/total', loss.detach(), local_it)
             opt.writer.add_scalar('loss/path_length_prior', length_loss.detach(), local_it)
             opt.writer.add_scalar('loss/path_smooth_prior', smooth_loss.detach(), local_it)
             opt.writer.add_scalar('loss/path_fillet_prior', fillet_loss.detach(), local_it)

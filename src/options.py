@@ -28,13 +28,15 @@ class Options(object):
         parser.add_argument("--robot", type=str, default='franka', help='Which robot to use "franka" "xarm" or "sawyer"')
         parser.add_argument("--xarm_ip", type=str, default='192.168.2.157', help='IP address of XArm.')
 
-        parser.add_argument('--use_cache', action='store_true')
         parser.add_argument("--materials_json", type=str, 
             default='../materials.json', help='path to json file specifying material locations.')
         parser.add_argument("--cache_dir", type=str,
             default='./caches/cache_6_6_cvpr', help='Where to store cached files.')
         parser.add_argument('--simulate', action='store_true', help="Don't execute. Just plan without a robot. Requires already cached data.")
         parser.add_argument('--no_camera', action='store_true', help="No camera; use if you just want to execute without adaptations.")
+        parser.add_argument('--high_quality_camera', action='store_true',
+            help="Use full shutter capture instead of faster live-view/preview mode.")
+
         parser.add_argument('--ink', action='store_true')
         parser.add_argument('--paint_from_image', action='store_true')
         parser.add_argument('--vae_path', type=str)
@@ -53,7 +55,12 @@ class Options(object):
 
         # Stroke Library Parameters
         parser.add_argument('--num_papers', default=40, type=int, help='How papers of strokes to paint for stroke modelling data.')
-        parser.add_argument('--dont_retrain_stroke_model', action='store_true')
+        parser.add_argument('--recalibrate', action='store_true',
+                            help='Redo brush tip, camera canvas, and XY coordinate calibration (default: reuse files in cache_dir if present).')
+        parser.add_argument('--rebuild_stroke_library', action='store_true',
+                            help='Repaint the stroke library (default: reuse cache_dir/stroke_library if present).')
+        parser.add_argument('--retrain_stroke_model', action='store_true',
+                            help='Retrain param2img from the stroke library (default: reuse cache_dir/param2img.pt if present).')
         parser.add_argument('--brush_length', type=float, default=None)
 
         # Planning Parameters
@@ -161,12 +168,11 @@ class Options(object):
         self.X_CANVAS_MAX = self.CANVAS_POSITION[0] + self.CANVAS_WIDTH_M/2 - thresh
         self.X_CANVAS_MIN = self.CANVAS_POSITION[0] - self.CANVAS_WIDTH_M/2 + thresh
 
-        if self.use_cache and os.path.exists(os.path.join(self.cache_dir, 'stroke_library', 'stroke_settings_during_library.json')):
+        if os.path.exists(os.path.join(self.cache_dir, 'stroke_library', 'stroke_settings_during_library.json')):
             print("Retrieving settings from stroke library for consistency:")
             with open(os.path.join(self.cache_dir, 'stroke_library', 'stroke_settings_during_library.json'), 'r') as f:
                 settings = json.load(f)
                 print(settings)
-                self.MAX_BEND = settings['MAX_BEND']
                 self.MIN_STROKE_Z = settings['MIN_STROKE_Z']
                 self.MIN_STROKE_LENGTH = settings['MIN_STROKE_LENGTH']
                 self.MAX_STROKE_LENGTH = settings['MAX_STROKE_LENGTH']

@@ -18,7 +18,7 @@ from scipy.ndimage import median_filter
 import pickle
 import math
 import gzip
-from brush_stroke import BrushStroke
+from brush_stroke import BrushStroke, LIBRARY_SHAPE_FAMILIES
 
 from paint_utils3 import canvas_to_global_coordinates
 from robot import *
@@ -52,7 +52,7 @@ class Painter():
         kwargs:
         '''
         self.opt = opt # Options object
-        use_cache = opt.use_cache
+        recalibrate = opt.recalibrate
 
         self.robot = None
         if opt.simulate:
@@ -60,7 +60,20 @@ class Painter():
         elif opt.robot == "franka":
             self.robot = Franka(debug=True)
         elif opt.robot == "xarm":
-            self.robot = XArm(opt.xarm_ip, debug=True)
+            def _opt(key, default):
+                try:
+                    value = getattr(opt, key)
+                except (AttributeError, KeyError):
+                    return default
+                return default if value is None else value
+            self.robot = XArm(
+                opt.xarm_ip, debug=True,
+                tool_length_m=_opt('TOOL_LENGTH_M', 0.0),
+                neutral_joints_deg=_opt('NEUTRAL_JOINTS_DEG', None),
+                v_max_mm_s=_opt('XARM_V_MAX_MM_S', 60.0),
+                a_lat_mm_s2=_opt('XARM_A_LAT_MM_S2', 150.0),
+                joint_rate_limit_deg_s=_opt('XARM_JOINT_RATE_LIMIT_DEG_S', 60.0),
+            )
         elif opt.robot == None:
             self.robot = SimulatedRobot(debug=True)
         if opt.simulate:
@@ -92,8 +105,9 @@ class Painter():
         self.to_neutral()
 
         # Set how high the table is wrt the brush
-        if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, "brush_tip_to_table_calib.json")):
-            params = json.load(open(os.path.join(self.opt.cache_dir, "brush_tip_to_table_calib.json"),'rb'))
+        tip_calib_path = os.path.join(self.opt.cache_dir, "brush_tip_to_table_calib.json")
+        if not recalibrate and os.path.exists(tip_calib_path):
+            params = json.load(open(tip_calib_path,'rb'))
             self.Z_CANVAS = params['Z_CANVAS']
             self.Z_MAX_CANVAS = params['Z_MAX_CANVAS']
         else:
@@ -144,13 +158,13 @@ class Painter():
 
         if self.camera is not None:
             self.camera.debug = True
-            self.camera.calibrate_canvas(use_cache=use_cache)
+            self.camera.calibrate_canvas(recalibrate=recalibrate)
 
         img = self.camera.get_canvas()
         self.opt.CANVAS_WIDTH_PIX, self.opt.CANVAS_HEIGHT_PIX = img.shape[1], img.shape[0]
 
         # Ensure that x,y on the canvas photograph is x,y for the robot interacting with the canvas
-        self.coordinate_calibration(use_cache=opt.use_cache)
+        self.coordinate_calibration(recalibrate=recalibrate)
 
         # self.paint_fill_in_library() ######################################################
 
@@ -158,7 +172,7 @@ class Painter():
         stroke_lib_exists = os.path.exists(os.path.join(self.opt.cache_dir, 'stroke_library'))
         if stroke_lib_exists:
             stroke_lib_exists = len(os.listdir(os.path.join(self.opt.cache_dir, 'stroke_library')))
-        if not stroke_lib_exists or not use_cache:
+        if not stroke_lib_exists or opt.rebuild_stroke_library:
             if not opt.simulate:
                 try:
                     input('Need to create stroke library. Press enter to start.')
@@ -172,7 +186,6 @@ class Painter():
         with open(os.path.join(self.opt.cache_dir, 'stroke_library', 'stroke_settings_during_library.json'), 'r') as f:
             settings = json.load(f)
             print(settings)
-            self.opt.MAX_BEND = settings['MAX_BEND']
             self.opt.MIN_STROKE_Z = settings['MIN_STROKE_Z']
             self.opt.MIN_STROKE_LENGTH = settings['MIN_STROKE_LENGTH']
             self.opt.MAX_STROKE_LENGTH = settings['MAX_STROKE_LENGTH']
@@ -180,9 +193,8 @@ class Painter():
             self.opt.STROKE_LIBRARY_CANVAS_WIDTH_M = settings['CANVAS_WIDTH_M']
             self.opt.STROKE_LIBRARY_CANVAS_HEIGHT_M = settings['CANVAS_HEIGHT_M']
 
-        # if not os.path.exists(os.path.join(self.opt.cache_dir, 'param2img.pt')) or not use_cache:
-        #     if not self.opt.dont_retrain_stroke_model:
-        if not use_cache or not self.opt.dont_retrain_stroke_model:
+        param2img_path = os.path.join(self.opt.cache_dir, 'param2img.pt')
+        if self.opt.retrain_stroke_model or not os.path.exists(param2img_path):
             from param2stroke import train_param2stroke
             train_param2stroke(self.opt)
 
@@ -197,7 +209,27 @@ class Painter():
                 y = 0.4
             elif self.opt.robot == 'xarm':
                 y = 0.1
-            self.move_to_trajectories([[0,y,self.opt.INIT_TABLE_Z]], [None])
+            if self.opt.robot == 'xarm' and hasattr(self.robot, 'go_neutral'):
+                z_canvas = getattr(self, 'Z_CANVAS', None)
+                hover_m = None if z_canvas is None else z_canvas + 0.03
+                self.robot.go_neutral([0, y, self.opt.INIT_TABLE_Z], hover_m=hover_m)
+            else:
+                self.move_to_trajectories([[0, y, self.opt.INIT_TABLE_Z]], [None])
+
+    def execute_stroke(self, stroke, x, y, rotation, label=''):
+        '''Execute a stroke; on robot failure go to neutral and retry once.
+
+        Returns True if it executed. Failures are counted in self.failed_strokes.
+        '''
+        if stroke.execute(self, x, y, rotation) is not False:
+            return True
+        print(f'Stroke {label} failed on robot; retrying once')
+        self.to_neutral()
+        if stroke.execute(self, x, y, rotation) is not False:
+            return True
+        self.failed_strokes = getattr(self, 'failed_strokes', 0) + 1
+        print(f'Stroke {label} skipped after retry ({self.failed_strokes} skipped so far)')
+        return False
 
     def move_to_trajectories(self, positions, orientations):
         for i in range(len(orientations)):
@@ -410,13 +442,14 @@ class Painter():
                     self._move(x_glob,y_glob,self.Z_CANVAS+.02,  speed=0.1)
 
 
-    def coordinate_calibration(self, debug=True, use_cache=False):
+    def coordinate_calibration(self, debug=True, recalibrate=False):
         # If you run painter.paint on a given x,y it will be slightly off (both in real and simulation)
         # Close this gap by transforming the given x,y into a coordinate that painter.paint will use
         # to perfectly hit that given x,y using a homograph transformation
 
-        if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, "cached_H_coord.pkl")):
-            self.H_coord = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_H_coord.pkl"),'rb'), encoding='latin1')
+        coord_path = os.path.join(self.opt.cache_dir, "cached_H_coord.pkl")
+        if not recalibrate and os.path.exists(coord_path):
+            self.H_coord = pickle.load(open(coord_path,'rb'), encoding='latin1')
             return self.H_coord
 
         import matplotlib
@@ -555,137 +588,225 @@ class Painter():
     def paint_extended_stroke_library(self, save_batch_size=10, image_save_height=768):
         w = self.opt.CANVAS_WIDTH_PIX
         h = self.opt.CANVAS_HEIGHT_PIX
+        canvas_w_m = self.opt.CANVAS_WIDTH_M
+        canvas_h_m = self.opt.CANVAS_HEIGHT_M
 
         self.to_neutral()
         canvas_without_stroke = self.camera.get_canvas(max_height=image_save_height)
-        strokes_without_getting_new_paint = 999 
+        strokes_without_getting_new_paint = 999
         strokes_without_cleaning = 9999
         distance_since_getting_paint = 0
 
         lib_dir = os.path.join(self.opt.cache_dir, 'stroke_library')
-        if not os.path.exists(lib_dir): os.mkdir(lib_dir)
+        if not os.path.exists(lib_dir):
+            os.mkdir(lib_dir)
+        else:
+            # Drop previous batches so a rebuild can't mix rgb_uint8 with legacy wrapped files.
+            removed = 0
+            for fn in os.listdir(lib_dir):
+                if fn.startswith(('canvases_before_', 'canvases_after_', 'stroke_parameters')) \
+                        or fn == 'stroke_settings_during_library.json':
+                    os.remove(os.path.join(lib_dir, fn))
+                    removed += 1
+            if removed:
+                print(f'Cleared {removed} old stroke-library files before rebuild.')
 
-        # Figure out how many strokes can be made on the given canvas size
-        n_strokes_y = int(math.floor(self.opt.CANVAS_HEIGHT_M/(0.5*self.opt.MAX_STROKE_LENGTH)))
+        # AABB shelf packing: sample realistic shapes freely; place by measured bounds.
+        edge_margin_m = 0.008
+        gap_m = 0.006 if self.opt.ink else 0.010
+        x_limit_m = canvas_w_m - edge_margin_m
+        y_limit_m = canvas_h_m - edge_margin_m
+        usable_h_m = max(y_limit_m - edge_margin_m, 0.04)
+        meters_to_x_pix = w / canvas_w_m
+        meters_to_y_pix = h / canvas_h_m
+        print(f'Stroke library packing: AABB shelves, margins={edge_margin_m*100:.1f}cm, '
+              f'gap={gap_m*100:.1f}cm, usable height={usable_h_m*100:.1f}cm')
 
-        brush_strokes = [] # list of BrushStroke
-        canvases_before = [] # Photos of canvases without stroke
-        canvases_after = [] # photos of canvases with stroke
+        brush_strokes = []  # list of BrushStroke
+        canvases_before = []  # Photos of canvases without stroke
+        canvases_after = []  # photos of canvases with stroke
+
+        def _save_library_batch(n_strokes_done, strokes_batch, before_batch, after_batch):
+            bs_fn = os.path.join(lib_dir, 'stroke_parameters{:05d}.npy'.format(n_strokes_done))
+            with open(bs_fn, 'wb') as f:
+                pickle.dump(strokes_batch, f)
+
+            def _canvases_to_uint8(batch):
+                # Camera may return uint8 [0,255] or float; never do uint8*255 (wraps).
+                arr = np.stack(batch, axis=0)
+                if np.issubdtype(arr.dtype, np.floating):
+                    if float(arr.max()) <= 1.0 + 1e-3:
+                        arr = arr * 255.0
+                    arr = np.clip(arr, 0, 255)
+                return arr.astype(np.uint8)
+
+            canvases_before_fn = os.path.join(lib_dir, 'canvases_before_{:05d}.npy'.format(n_strokes_done))
+            with gzip.GzipFile(canvases_before_fn, 'w') as f:
+                np.save(f, _canvases_to_uint8(before_batch))
+            canvases_after_fn = os.path.join(lib_dir, 'canvases_after_{:05d}.npy'.format(n_strokes_done))
+            with gzip.GzipFile(canvases_after_fn, 'w') as f:
+                np.save(f, _canvases_to_uint8(after_batch))
+
+            with open(os.path.join(lib_dir, 'stroke_settings_during_library.json'), 'w') as f:
+                settings = {
+                    'MIN_STROKE_Z': self.opt.MIN_STROKE_Z,
+                    'MIN_STROKE_LENGTH': self.opt.MIN_STROKE_LENGTH,
+                    'MAX_STROKE_LENGTH': self.opt.MAX_STROKE_LENGTH,
+                    'MAX_ALPHA': self.opt.MAX_ALPHA,
+                    'CANVAS_WIDTH_M': self.opt.CANVAS_WIDTH_M,
+                    'CANVAS_HEIGHT_M': self.opt.CANVAS_HEIGHT_M,
+                    'LIBRARY_SHAPE_FAMILIES': list(LIBRARY_SHAPE_FAMILIES),
+                    # Direct photo bytes. Older libs used wrapped uint8(u8*255); load inverts those.
+                    'LIBRARY_CANVAS_ENCODING': 'rgb_uint8',
+                }
+                json.dump(settings, f, indent=4)
 
         n_strokes = 0
         for paper_it in range(self.opt.num_papers):
-            for y_offset_pix_og in np.linspace((.03/self.opt.CANVAS_HEIGHT_M), 0.99-(.02/self.opt.CANVAS_HEIGHT_M), n_strokes_y)*h:
-                # for x_offset_pix in np.linspace(0.02, 0.99-(self.opt.MAX_STROKE_LENGTH/self.opt.CANVAS_WIDTH), n_strokes_x)*w:
+            x_cursor_m = edge_margin_m
+            # Shelf tracked in meters from top of paper (image y grows downward in pix).
+            shelf_top_m = edge_margin_m
+            shelf_max_h = 0.0
+            shelves_used = 0
+            strokes_on_paper = 0
+            strokes_failed = 0
+            page_full = False
 
-                x_offset_pix = 0.02 * w 
-                while(True): # x loop
-                    if not self.opt.ink:
-                        if strokes_without_cleaning >= 20:
-                            self.clean_paint_brush()
-                            self.get_paint(0)
-                            strokes_without_cleaning, strokes_without_getting_new_paint = 0, 0
-                            distance_since_getting_paint = 0
-                        # if strokes_without_getting_new_paint >= 6:
-                        if distance_since_getting_paint >= self.opt.max_length_before_new_paint:
-                            self.get_paint(0)
-                            strokes_without_getting_new_paint = 0
-                            distance_since_getting_paint = 0
-                        strokes_without_getting_new_paint += 1
-                        strokes_without_cleaning += 1
+            while not page_full:
+                if not self.opt.ink:
+                    if strokes_without_cleaning >= 20:
+                        self.clean_paint_brush()
+                        self.get_paint(0)
+                        strokes_without_cleaning, strokes_without_getting_new_paint = 0, 0
+                        distance_since_getting_paint = 0
+                    if distance_since_getting_paint >= self.opt.max_length_before_new_paint:
+                        self.get_paint(0)
+                        strokes_without_getting_new_paint = 0
+                        distance_since_getting_paint = 0
+                    strokes_without_getting_new_paint += 1
+                    strokes_without_cleaning += 1
 
-                    random_stroke = BrushStroke(self.opt)
-                    
-                    stroke_length_m = random_stroke.get_path()[:,0].max().item()
-                    stroke_length_pix = stroke_length_m * (w / self.opt.CANVAS_WIDTH_M)
-                    if stroke_length_pix + x_offset_pix > 0.98*w:
-                        break # No room left on the page width
-                    
-                    y_offset_pix = y_offset_pix_og
+                random_stroke = BrushStroke.sample_for_library(self.opt)
+                x_min, y_min, x_max, y_max = random_stroke.path_aabb()
+                stroke_width_m = max(x_max - x_min, 1e-4)
+                stroke_height_m = max(y_max - y_min, 1e-4)
 
-                    with torch.no_grad(): # Save other variables with brush stroke for training
-                        random_stroke.xt *= 0
-                        random_stroke.xt += (x_offset_pix / w)
-                        random_stroke.yt *= 0
-                        random_stroke.yt += (y_offset_pix / h)
-                        random_stroke.a *= 0
-                        
-                    x, y = x_offset_pix / w, 1 - (y_offset_pix / h)
-                    x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
-                    x,y,_ = canvas_to_global_coordinates(x,y,None,self.opt)
-                    
-                    random_stroke.execute(self, x, y, 0)
+                # Single stroke taller than the page cannot be placed.
+                if stroke_height_m > usable_h_m:
+                    continue
 
-                    distance_since_getting_paint += random_stroke.get_length().item()
+                # Start a new shelf if this stroke does not fit on the current one.
+                if x_cursor_m + stroke_width_m > x_limit_m:
+                    if shelf_max_h <= 0:
+                        # First stroke on an empty shelf is wider than the page — skip.
+                        continue
+                    shelf_top_m = shelf_top_m + shelf_max_h + gap_m
+                    x_cursor_m = edge_margin_m
+                    shelf_max_h = 0.0
 
-                    self.to_neutral()
-                    canvas_with_stroke = self.camera.get_canvas(max_height=image_save_height)
+                if shelf_top_m + stroke_height_m > y_limit_m:
+                    page_full = True
+                    break
 
-                    if n_strokes % 3 == 0:
-                        import matplotlib
-                        matplotlib.use('Agg')
-                        import matplotlib.pyplot as plt
-                        fig = plt.figure()
-                        ax = fig.gca()
-                        # ax.scatter(canvas_with_stroke.shape[1]/2, canvas_with_stroke.shape[0]/2)
+                if shelf_max_h == 0.0:
+                    shelves_used += 1
 
-                        ax.imshow(canvas_with_stroke)
+                # Execute origin at horizontal start and vertical center of the stroke AABB.
+                x_offset_m = x_cursor_m
+                y_offset_m = shelf_top_m + 0.5 * stroke_height_m
+                x_offset_pix = x_offset_m * meters_to_x_pix
+                y_offset_pix = y_offset_m * meters_to_y_pix
 
-                        ax.scatter((x_offset_pix / w)*canvas_with_stroke.shape[1], 
-                                   (y_offset_pix / h)*canvas_with_stroke.shape[0],
-                                   facecolors='none', edgecolors='r')
-                        ax.set_xticks([]), ax.set_yticks([])
-                        fig.tight_layout()
-                        self.writer.add_figure('stroke_library/{}'.format(n_strokes), fig, 0)
-                        plt.close(fig)
+                with torch.no_grad():  # Save placement with brush stroke for training
+                    random_stroke.xt *= 0
+                    random_stroke.xt += (x_offset_pix / w)
+                    random_stroke.yt *= 0
+                    random_stroke.yt += (y_offset_pix / h)
+                    random_stroke.a *= 0
 
-                    brush_strokes.append(random_stroke)
-                    canvases_before.append(canvas_without_stroke)
-                    canvases_after.append(canvas_with_stroke)
+                x, y = x_offset_pix / w, 1 - (y_offset_pix / h)
+                x, y = min(max(x, 0.), 1.), min(max(y, 0.), 1.)  # safety
+                x, y, _ = canvas_to_global_coordinates(x, y, None, self.opt)
 
-                    n_strokes += 1
+                stroke_ok = random_stroke.execute(self, x, y, 0) is not False
 
+                distance_since_getting_paint += random_stroke.get_length().item()
+
+                self.to_neutral()
+                canvas_with_stroke = self.camera.get_canvas(max_height=image_save_height)
+
+                if not stroke_ok:
+                    # A partial mark may be on the paper: keep the photo as the next
+                    # "before" and skip the space, but don't train on this stroke.
+                    strokes_failed += 1
+                    print(f'Stroke library: stroke failed on robot, not saved '
+                          f'({strokes_failed} failed on this paper)')
                     canvas_without_stroke = canvas_with_stroke.copy()
+                    x_cursor_m += stroke_width_m + gap_m
+                    shelf_max_h = max(shelf_max_h, stroke_height_m)
+                    continue
 
-                    if n_strokes % save_batch_size == 0:
-                        # Save data
-                        bs_fn = os.path.join(lib_dir, 'stroke_parameters{:05d}.npy'.format(n_strokes))
-                        with open(bs_fn,'wb') as f:
-                            pickle.dump(brush_strokes, f)
-                            
-                        canvases_before_fn = os.path.join(lib_dir, 'canvases_before_{:05d}.npy'.format(n_strokes))
-                        with gzip.GzipFile(canvases_before_fn, 'w') as f:
-                            canvases_before = np.stack(np.stack(canvases_before, axis=0), axis=0)
-                            canvases_before = (canvases_before * 255).astype(np.uint8)
-                            np.save(f, canvases_before)
-                        canvases_after_fn = os.path.join(lib_dir, 'canvases_after_{:05d}.npy'.format(n_strokes))
-                        with gzip.GzipFile(canvases_after_fn, 'w') as f:
-                            canvases_after = np.stack(np.stack(canvases_after, axis=0), axis=0)
-                            canvases_after = (canvases_after * 255).astype(np.uint8)
-                            np.save(f, canvases_after)
-                            
-                        with open(os.path.join(self.opt.cache_dir, 'stroke_library', 'stroke_settings_during_library.json'), 'w') as f:
-                            settings = {}
-                            settings['MAX_BEND'] = self.opt.MAX_BEND
-                            settings['MIN_STROKE_Z'] = self.opt.MIN_STROKE_Z
-                            settings['MIN_STROKE_LENGTH'] = self.opt.MIN_STROKE_LENGTH
-                            settings['MAX_STROKE_LENGTH'] = self.opt.MAX_STROKE_LENGTH
-                            settings['MAX_ALPHA'] = self.opt.MAX_ALPHA
-                            settings['CANVAS_WIDTH_M'] = self.opt.CANVAS_WIDTH_M
-                            settings['CANVAS_HEIGHT_M'] = self.opt.CANVAS_HEIGHT_M
-                            json.dump(settings, f, indent=4)
-                    
-                        # Go back to empty because memory gets too large
-                        brush_strokes = []
-                        canvases_before = []
-                        canvases_after = [] 
-                    
-                    gap = 0.03*w if self.opt.ink else 0.05*w
-                    x_offset_pix += stroke_length_pix + gap
+                if n_strokes % 3 == 0:
+                    import matplotlib
+                    matplotlib.use('Agg')
+                    import matplotlib.pyplot as plt
+                    # Mark commanded stroke tip (execute origin + path[0]), with the
+                    # same H_coord warp execute() applies — so a miss vs ink means calib off.
+                    path0 = random_stroke.get_path()[0].detach().cpu().numpy()
+                    x_cmd, y_cmd = float(x), float(y)
+                    if self.H_coord is not None:
+                        sim = np.array([x_cmd, y_cmd, 1.0], dtype=np.float64)
+                        real = self.H_coord.dot(sim)
+                        x_cmd, y_cmd = real[0] / real[2], real[1] / real[2]
+                    x_tip = x_cmd + float(path0[0])
+                    y_tip = y_cmd + float(path0[1])
+                    tip_x_prop = (x_tip - self.opt.CANVAS_POSITION[0]) / canvas_w_m + 0.5
+                    tip_y_prop = (y_tip - self.opt.CANVAS_POSITION[1]) / canvas_h_m
+                    tip_x_img = tip_x_prop * canvas_with_stroke.shape[1]
+                    tip_y_img = (1.0 - tip_y_prop) * canvas_with_stroke.shape[0]
 
-            if paper_it != self.opt.num_papers-1:
+                    fig = plt.figure()
+                    ax = fig.gca()
+                    ax.imshow(canvas_with_stroke)
+                    ax.scatter(tip_x_img, tip_y_img, facecolors='none', edgecolors='r')
+                    family = getattr(random_stroke, 'library_shape_family', '')
+                    ax.set_title(f'{family}  {stroke_width_m*100:.1f}x{stroke_height_m*100:.1f}cm')
+                    ax.set_xticks([]), ax.set_yticks([])
+                    fig.tight_layout()
+                    self.writer.add_figure('stroke_library/{}'.format(n_strokes), fig, 0)
+                    plt.close(fig)
+
+                brush_strokes.append(random_stroke)
+                canvases_before.append(canvas_without_stroke)
+                canvases_after.append(canvas_with_stroke)
+
+                n_strokes += 1
+                strokes_on_paper += 1
+                canvas_without_stroke = canvas_with_stroke.copy()
+
+                x_cursor_m += stroke_width_m + gap_m
+                shelf_max_h = max(shelf_max_h, stroke_height_m)
+
+                if n_strokes % save_batch_size == 0:
+                    _save_library_batch(n_strokes, brush_strokes, canvases_before, canvases_after)
+                    brush_strokes = []
+                    canvases_before = []
+                    canvases_after = []
+
+            print(f'Stroke library paper {paper_it+1}/{self.opt.num_papers}: '
+                  f'{strokes_on_paper} strokes on {shelves_used} shelves, '
+                  f'{strokes_failed} failed and not saved')
+
+            # Flush remaining batch strokes for this paper.
+            if brush_strokes:
+                _save_library_batch(n_strokes, brush_strokes, canvases_before, canvases_after)
+                brush_strokes = []
+                canvases_before = []
+                canvases_after = []
+
+            if paper_it != self.opt.num_papers - 1:
                 try:
                     input('Place down new paper. Press enter to start.')
                 except SyntaxError:
                     pass
-                # Retake with the new paper
                 canvas_without_stroke = self.camera.get_canvas(max_height=image_save_height)

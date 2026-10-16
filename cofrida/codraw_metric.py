@@ -18,8 +18,8 @@ from painting import *
 from losses.clip_loss import clip_conv_loss, clip_model, clip_text_loss, clip
 from paint_utils3 import *
 
-# python3 codraw_metric.py --use_cache --cache_dir caches/cache_6_6_cvpr/ --num_strokes 75 --ink --max_stroke_length 0.025
-# python3 codraw_metric.py --use_cache --cache_dir caches/cache_6_6_cvpr/ --num_strokes 35 --ink --max_stroke_length 0.025 --optim_iter 300 --lr_multiplier 0.5 --min_strokes_added 35 --max_strokes_added 70
+# python3 codraw_metric.py --cache_dir caches/cache_6_6_cvpr/ --num_strokes 75 --ink --max_stroke_length 0.025
+# python3 codraw_metric.py --cache_dir caches/cache_6_6_cvpr/ --num_strokes 35 --ink --max_stroke_length 0.025 --optim_iter 300 --lr_multiplier 0.5 --min_strokes_added 35 --max_strokes_added 70
 
 
 def plan_from_image(opt, target_img, current_canvas, stroke_batch_size,

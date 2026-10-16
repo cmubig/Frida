@@ -10,6 +10,5 @@
     "MAX_ALPHA":0,
     "MIN_STROKE_LENGTH":0.005,
     "MAX_STROKE_LENGTH":0.06,
-    "MIN_STROKE_Z":0.1,
-    "MAX_BEND":0.015
+    "MIN_STROKE_Z":0.1
 }

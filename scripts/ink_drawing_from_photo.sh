@@ -1,5 +1,4 @@
 python3 src/paint.py \
-        --use_cache \
         --cache_dir src/caches/sharpie_short_strokes \
         --objective clip_conv_loss  \
         --objective_data src/frida.jpg \
@@ -11,5 +10,4 @@ python3 src/paint.py \
         --lr_multiplier 0.7  \
         --optim_iter 50  \
         --init_optim_iter 500 \
-        --dont_retrain_stroke_model \
         --simulate

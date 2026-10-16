@@ -55,6 +55,7 @@ class TensorBoard(object):
 
     def add_scalar(self, tag, value, step=None):
         self.summary_writer.add_scalar(tag, value, step)
+        self.summary_writer.flush()
 
     def add_text(self, tag, text, step):
         self.summary_writer.add_text(tag, text, step)

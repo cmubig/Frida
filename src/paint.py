@@ -132,7 +132,8 @@ if __name__ == '__main__':
             x_glob, y_glob,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
             # Runnit
-            stroke.execute(painter, x_glob, y_glob, stroke.a.item())
+            painter.execute_stroke(stroke, x_glob, y_glob, stroke.a.item(),
+                                   label=str(strokes_executed))
 
             strokes_executed += 1
             consecutive_paints += 1
@@ -158,6 +159,9 @@ if __name__ == '__main__':
 
     if not painter.opt.ink:
         for i in range(3): painter.clean_paint_brush()
+
+    print(f'Strokes executed: {strokes_executed}, skipped after robot failure: '
+          f'{getattr(painter, "failed_strokes", 0)}')
 
     to_video(canvas_photos, fn=os.path.join(opt.plan_gif_dir,'sim_canvases{}.mp4'.format(str(time.time()))))
     # with torch.no_grad():

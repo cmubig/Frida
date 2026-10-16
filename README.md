@@ -135,8 +135,10 @@ python3 paint.py
     [--robot] Which robot to use [franka|xarm]
     [--xarm_ip] If using xarm, specify its IP address
     [--materials_json path] Where JSON file specifying location of painting materials is
-    [--use_cache] Use cached calibration files. Necessary if --simulation
-    [--cache_dir path] Where the cached calibration files are stored if using them
+    [--cache_dir path] Where calibration / stroke-library caches are stored (reused by default if present)
+    [--recalibrate] Redo brush tip, camera canvas, and XY coordinate calibration
+    [--rebuild_stroke_library] Repaint the stroke library
+    [--retrain_stroke_model] Retrain param2img from the stroke library
     [--ink] If using a marker or brush pen, use this so the robot knows it doesn't need paint
     [--render_height int] Height of the sim. canvases. Decrease for CUDA memory errors. Default 256
     [--num_papers int] Number of full sheets of paper to fill with training brush strokes (30 per paper)
@@ -151,7 +153,6 @@ python3 paint.py
     [--num_adaptations int] Number of times to pause robot execution to take a photo and replan
     [--init_optim_iter int] Optimization iterations for initial plan
     [--optim_iter int] Optimization iterations for each time FRIDA replans
-    [--dont_retrain_stroke_model] If set, the stroke model will not be retrained during optimization and it will be taken from the cache_dir path
     [--painting_path path] Path to the painting file to use for initialization, it must be a .pkl file
 ```
 
@@ -175,7 +176,7 @@ Frida can paint with a number of different objectives that can be used singularl
 Each objective specified must have a specified data file and weight given to it. Objectives can be specified for the initial optimization pass and for the full, final optimization. Here is an example of how to specify objectives where we have an initial objetive to make the painting look like `style_img.jpg` and then a final objective to have the style of `style_img.jpg` with the text description `"a frog ballerina"`:
 ```
 cd Frida/src
-python3 paint.py --simulate --use_cache --cache_dir caches/sharpie_short_strokes
+python3 paint.py --simulate --cache_dir caches/sharpie_short_strokes
    --objective style text
    --objective_data path/to/style_img.jpg  "a frog ballerina"
    --objective_weight 0.2  1.0

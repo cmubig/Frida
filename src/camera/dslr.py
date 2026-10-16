@@ -23,6 +23,9 @@ import glob
 
 from camera.dslr_gphoto import *
 
+# Fixed rectified-canvas height (px). Width follows paper aspect from materials.
+CANVAS_RENDER_HEIGHT = 768
+
 # https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/opencv_viewer_example.py
 
 class WebCam():
@@ -39,22 +42,15 @@ class WebCam():
         self.opt = opt
 
     def get_rgb_image(self, channels='rgb'):
-        # while True:
-        #     targ, img = capture_image(self.camera, channels, self.debug)
-        #     plt.imshow(img)
-        #     plt.show()
-
-        return capture_image(self.camera, channels)
-        
-        # Dirty fix for image delay
-        # for i in range(4):
-        #     targ, img = capture_image(self.camera, channels)
-        # return targ, img
+        # Live-view preview by default (faster). Pass --high_quality_camera for full shutter.
+        preview = not getattr(self.opt, 'high_quality_camera', False)
+        return capture_image(self.camera, channels, preview=preview, debug=self.debug)
 
     # return RGB image, color corrected
-    def get_color_correct_image(self, use_cache=False):
+    def get_color_correct_image(self, recalibrate=False):
         if not self.has_color_info and self.opt.calib_colors:
-            if not use_cache or not os.path.exists(os.path.join(self.opt.cache_dir, 'cached_color_calibration.pkl')):
+            color_calib_path = os.path.join(self.opt.cache_dir, 'cached_color_calibration.pkl')
+            if recalibrate or not os.path.exists(color_calib_path):
                 try:
                     input('No color info found. Beginning color calibration. Ensure you have placed Macbeth color checker in camera frame and press ENTER to continue.')
                 except SyntaxError:
@@ -87,22 +83,44 @@ class WebCam():
         else:
             return img
 
-    def get_canvas(self, use_cache=False, max_height=None):
+    def _canvas_pixel_size(self):
+        '''Fixed rectified canvas size (h, w) from paper aspect + CANVAS_RENDER_HEIGHT.
+
+        Independent of camera frame aspect (preview vs shutter, portrait, etc.).
+        '''
+        # Options.__getattr__ KeyErrors missing keys, so don't use getattr(opt, ...).
+        h = int(CANVAS_RENDER_HEIGHT)
+        aspect = float(self.opt.CANVAS_WIDTH_M) / float(self.opt.CANVAS_HEIGHT_M)
+        w = max(1, int(round(h * aspect)))
+        return h, w
+
+    def _load_h_canvas(self, path):
+        raw = pickle.load(open(path, 'rb'), encoding='latin1')
+        if isinstance(raw, dict) and 'H' in raw:
+            self.H_canvas = raw['H']
+            return raw.get('w'), raw.get('h')
+        self.H_canvas = raw
+        return None, None
+
+    def _save_h_canvas(self, path, w, h):
+        with open(path, 'wb') as f:
+            pickle.dump({'H': self.H_canvas, 'w': w, 'h': h}, f)
+
+    def get_canvas(self, recalibrate=False, max_height=None):
         if self.H_canvas is None:
-            self.calibrate_canvas(use_cache)
+            self.calibrate_canvas(recalibrate=recalibrate)
         
         # use corrected image if possible
         if (self.has_color_info and self.opt.calib_colors):
-            img = self.get_color_correct_image(use_cache)
+            img = self.get_color_correct_image(recalibrate=recalibrate)
         else:
             _, img = self.get_rgb_image()
 
-        canvas = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
-        w = int(img.shape[0] * (self.opt.CANVAS_WIDTH_M/self.opt.CANVAS_HEIGHT_M))
-        canvas = canvas[:, :w]
+        h, w = self._canvas_pixel_size()
+        canvas = cv2.warpPerspective(img, self.H_canvas, (w, h))
         if max_height is not None and canvas.shape[0] > max_height:
-            fact = 1.0 * img.shape[0] / max_height
-            canvas = cv2.resize(canvas, (int(canvas.shape[1]/fact), int(canvas.shape[0]/fact)))
+            fact = 1.0 * canvas.shape[0] / max_height
+            canvas = cv2.resize(canvas, (int(canvas.shape[1] / fact), int(canvas.shape[0] / fact)))
         return canvas
     
     def get_canvas_tensor(self, h=None, w=None):
@@ -115,22 +133,23 @@ class WebCam():
 
         return canvas
 
-    def calibrate_canvas(self, use_cache=False):
-        img = self.get_color_correct_image(use_cache=use_cache)
-        h = img.shape[0]
-        # original image shape is too wide of an aspect ratio compared to paper
-        # w = int(h * LETTER_WH_RATIO)
-        w = int(h * (self.opt.CANVAS_WIDTH_M/self.opt.CANVAS_HEIGHT_M))
-        assert(w <= img.shape[1])
+    def calibrate_canvas(self, recalibrate=False):
+        img = self.get_color_correct_image(recalibrate=recalibrate)
+        h, w = self._canvas_pixel_size()
+        print(f'Canvas calib: image {img.shape[1]}x{img.shape[0]} -> '
+              f'rectified canvas {w}x{h} (paper aspect '
+              f'{self.opt.CANVAS_WIDTH_M / self.opt.CANVAS_HEIGHT_M:.3f})')
 
-        if use_cache and os.path.exists(os.path.join(self.opt.cache_dir, 'cached_H_canvas.pkl')):
-            self.H_canvas = pickle.load(open(os.path.join(self.opt.cache_dir, "cached_H_canvas.pkl"),'rb'), encoding='latin1')
-            img1_warp = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
-            # plt.imshow(img1_warp[:, :w])
-            # plt.title('Hopefully this looks like just the canvas')
-            # plt.show()
+        canvas_h_path = os.path.join(self.opt.cache_dir, 'cached_H_canvas.pkl')
+        if not recalibrate and os.path.exists(canvas_h_path):
+            cached_w, cached_h = self._load_h_canvas(canvas_h_path)
+            if cached_w is None:
+                print('Warning: old cached_H_canvas.pkl has no size metadata; '
+                      'warp target is now fixed 768px height. Use --recalibrate if it looks wrong.')
+            elif (cached_w, cached_h) != (w, h):
+                print(f'Warning: cached canvas size was {cached_w}x{cached_h}, '
+                      f'now targeting {w}x{h}. Prefer --recalibrate if warp looks wrong.')
             return
-
 
         self.canvas_points = find_corners(img, show_search=self.debug)
 
@@ -148,21 +167,15 @@ class WebCam():
         plt.title("Here are the found corners")
         plt.show()
 
-        true_points = np.array([[0,0],[w,0], [w,h],[0,h]])
+        true_points = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
         self.H_canvas, _ = cv2.findHomography(self.canvas_points, true_points)
-        img1_warp = cv2.warpPerspective(img, self.H_canvas, (img.shape[1], img.shape[0]))
-        
-        # print(img1_warp[:, :w].shape)
-        # print(img1_warp.shape)
-        plt.imshow(img1_warp[:, :w])
+        img1_warp = cv2.warpPerspective(img, self.H_canvas, (w, h))
+
+        plt.imshow(img1_warp)
         plt.title('Hopefully this looks like just the canvas')
         plt.show()
-        # plt.imshow(img1_warp)
-        # plt.title('Hopefully this looks like just the canvas')
-        # plt.show()
-        
-        with open(os.path.join(self.opt.cache_dir, 'cached_H_canvas.pkl'),'wb') as f:
-            pickle.dump(self.H_canvas, f)
+
+        self._save_h_canvas(canvas_h_path, w, h)
 
     def init_color_calib(self):
         path, img = self.get_rgb_image()
@@ -231,5 +244,5 @@ class SimulatedWebCam():
             canvas = Resize((h,w), antialias=True)(canvas)
         canvas = torch.cat([canvas, torch.ones(1,1,h,w)], dim=1)
         return canvas
-    def calibrate_canvas(self, use_cache=False):
+    def calibrate_canvas(self, recalibrate=False):
         pass
