@@ -12,6 +12,14 @@ import torch
 import torch.nn.functional as F
 
 
+# Corners within this many radians of straight get no fillet. Must be well above
+# the ~1.4e-3 floor that the dot-product clamp below puts on (pi - alpha):
+# with the old 1e-3, nearly straight corners got huge arcs whose control
+# point is an ill-conditioned intersection of almost-parallel tangents, and the
+# path could jump meters away.
+FLAT_ANGLE = 2e-2
+
+
 def _norm(v: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     return v / v.norm().clamp_min(eps)
 
@@ -95,7 +103,7 @@ def expand_stroke(
         ub = _norm(B - P)
         dot = torch.clamp((ua * ub).sum(), -1.0 + 1e-6, 1.0 - 1e-6)
         alpha = torch.acos(dot)
-        near_flat = (alpha < 1e-3) | ((torch.pi - alpha) < 1e-3) | (rr < eps)
+        near_flat = (alpha < 1e-3) | ((torch.pi - alpha) < FLAT_ANGLE) | (rr < eps)
         if bool(near_flat.detach()):
             metas[i] = {"r": rr * 0, "alpha": alpha, "ua": ua, "ub": ub, "skip": True}
             continue
@@ -276,7 +284,7 @@ def max_fillet_radii(
         ub = _norm(B - P)
         dot = torch.clamp((ua * ub).sum(), -1.0 + 1e-6, 1.0 - 1e-6)
         alpha = torch.acos(dot)
-        if float(alpha.detach()) < 1e-3 or float((torch.pi - alpha).detach()) < 1e-3:
+        if float(alpha.detach()) < 1e-3 or float((torch.pi - alpha).detach()) < FLAT_ANGLE:
             out.append(vertices.new_zeros(()))
             continue
         t_max = torch.minimum(L0, L1) * edge_frac
