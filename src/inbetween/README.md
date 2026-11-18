@@ -7,7 +7,38 @@ stroke model (`param2stroke.py`); FRIDA files are not modified.
 
 All commands run from `src/`.
 
-## Quick start
+## Editor (for animators)
+
+```bash
+python -m inbetween.app        # opens the editor at http://localhost:8765
+```
+
+The layout follows Adobe Animate / Flare: tools on the left, stage in the
+middle, Properties on the right, Timeline at the bottom, with Animate's
+shortcuts (press `?` in the editor for the full list).
+
+- **Brush (B)** draws with stylus pressure. Each mark is fitted to a robot
+  stroke right away, so what you see is what the robot will paint. Pressure
+  maps to visible width: the lightest touch still leaves a mark.
+- **F6 Insert Keyframe** copies the current drawing. Reshape it with
+  **Selection (V)** (move; the round handle rotates) and **Subselection (A)**
+  (drag corner points). Strokes keep their identity, so in-betweening knows
+  what moves where.
+- **F7 Insert Blank Keyframe** starts empty with onion skin on. Redraw strokes
+  over their ghosts. Each traced stroke replaces the ghost it was drawn over:
+  the nearest ghost is suggested (orange), or **Alt+click** a ghost first to
+  choose it, which is needed when something moved far. "Pick another ghost"
+  in Properties fixes a wrong link.
+- **Create In-betweens (Ctrl+Enter)** runs the pipeline (Refined, Arc or
+  Linear). **Ease** is set per span in Properties; **F5 / Shift+F5** add or
+  remove frames to change timing, as in Animate.
+- Changing a stroke on an in-between **pins** it (orange diamond); the next
+  Create In-betweens keeps it and re-flows the neighbors. Delete unpins.
+- **Paint Preview (P)** shows the stroke model's predicted painting.
+- **File > Save** writes the keyframe file below; **File > Export Robot
+  Frames** writes the input for `paint_frames.py`.
+
+## Command line
 
 ```bash
 # 1. (optional) regenerate the example keyframes
@@ -39,6 +70,8 @@ python -m pytest -q inbetween/tests
 | Refinement | `refine.py` | Adjusts pressure so painted width changes evenly between fixed frames |
 | Measurement | `metrics.py` | Width deviation from an even change ("popping"), per stroke |
 | Robot | `paint_frames.py` | Paints each frame exactly as planned, no re-planning |
+| Drawing input | `fit.py` | Fits a freehand mark + stylus pressure to a robot stroke |
+| Editor | `app.py`, `editor/` | Local server + browser editor; `editor/geometry.js` mirrors FRIDA's stroke path math |
 
 ### How refinement works
 
@@ -112,5 +145,8 @@ the IDs carry over.
 - Pose (`xt`, `yt`, `a`) is not refined; refinement only changes pressure.
 - Strokes popping in or out appear all at once; there is no grow or fade yet.
 - `paint_frames.py` was only dry-run in `--simulate` mode, not on hardware.
+- One drawn mark becomes one robot stroke (4 corners). Long or complex marks
+  are approximated; the editor warns when the fit is off by more than 1.5 mm.
+- The editor was tested with a mouse in a browser, not yet with a real stylus.
 - Metrics come from the stroke model. Claims about real paintings need
   photographed frames, measured the same way.

@@ -100,3 +100,27 @@ def test_sigmoid_response_is_monotone_unit_range():
     y = sigmoid_response(z)
     assert abs(float(y[0])) < 1e-6 and abs(float(y[-1]) - 1) < 1e-6
     assert bool((y[1:] >= y[:-1]).all())
+
+
+def test_near_straight_strokes_do_not_blow_up():
+    """Regression: nearly straight corners used to produce paths meters away."""
+    from inbetween.strokes import logit, stroke_path
+    g = torch.Generator().manual_seed(0)
+    for _ in range(500):
+        L = 0.02 + 0.08 * float(torch.rand(1, generator=g))
+        ang = 2 * math.pi * float(torch.rand(1, generator=g))
+        d = torch.tensor([math.cos(ang), math.sin(ang)])
+        noise = torch.randn(4, 2, generator=g) * 10 ** (-2 - 5 * float(torch.rand(1, generator=g)))
+        v = torch.stack([d * L * k / 3 for k in range(4)]) + noise
+        p = stroke_path(v.float(), logit(torch.rand(2, generator=g) * 0.98 + 0.01), torch.full((4,), 0.5), 0.1)
+        assert torch.isfinite(p).all() and float(p[:, :2].abs().max()) < 0.2
+
+
+def test_fit_follows_drawing(r):
+    from inbetween.fit import fit_stroke
+    pts = [[0.3 + 0.25 * t, 0.5 - 0.15 * math.sin(math.pi * t)] for t in [i / 40 for i in range(41)]]
+    s, err = fit_stroke(pts, [0.2 + 0.6 * i / 40 for i in range(41)], r)
+    assert err < 1.0  # mm
+    c = r.path_canvas(stroke_tensors(s))  # (y, x) proportions
+    assert abs(float(c[0, 1]) - pts[0][0]) < 2e-3 and abs(float(c[-1, 1]) - pts[-1][0]) < 2e-3
+    assert s.z[0] < s.z[-1]  # pressure rose along the drawing

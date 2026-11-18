@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flipbook Animator</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <!-- Menu bar (Animate / Flare style) -->
+  <nav id="menubar">
+    <span class="brand">Flipbook</span>
+    <div class="menu" data-menu="file"><span>File</span>
+      <div class="dropdown">
+        <button data-cmd="new">New<kbd>Ctrl+N</kbd></button>
+        <button data-cmd="open">Open…<kbd>Ctrl+O</kbd></button>
+        <button data-cmd="save">Save<kbd>Ctrl+S</kbd></button>
+        <hr>
+        <button data-cmd="exportFrames">Export Robot Frames…</button>
+      </div>
+    </div>
+    <div class="menu" data-menu="edit"><span>Edit</span>
+      <div class="dropdown">
+        <button data-cmd="undo">Undo<kbd>Ctrl+Z</kbd></button>
+        <button data-cmd="redo">Redo<kbd>Ctrl+Shift+Z</kbd></button>
+        <hr>
+        <button data-cmd="selectAll">Select All<kbd>Ctrl+A</kbd></button>
+        <button data-cmd="deselect">Deselect All<kbd>Esc</kbd></button>
+        <button data-cmd="delete">Delete<kbd>Del</kbd></button>
+      </div>
+    </div>
+    <div class="menu" data-menu="view"><span>View</span>
+      <div class="dropdown">
+        <button data-cmd="zoomIn">Zoom In<kbd>Ctrl+=</kbd></button>
+        <button data-cmd="zoomOut">Zoom Out<kbd>Ctrl+-</kbd></button>
+        <button data-cmd="zoomFit">Fit in Window<kbd>Ctrl+0</kbd></button>
+        <hr>
+        <button data-cmd="toggleOnion">Onion Skin<kbd>O</kbd></button>
+        <button data-cmd="togglePreview">Paint Preview<kbd>P</kbd></button>
+      </div>
+    </div>
+    <div class="menu" data-menu="insert"><span>Insert</span>
+      <div class="dropdown">
+        <button data-cmd="insertFrame">Frame<kbd>F5</kbd></button>
+        <button data-cmd="removeFrame">Remove Frame<kbd>Shift+F5</kbd></button>
+        <button data-cmd="insertKeyframe">Keyframe<kbd>F6</kbd></button>
+        <button data-cmd="insertBlankKeyframe">Blank Keyframe<kbd>F7</kbd></button>
+        <button data-cmd="clearKeyframe">Clear Keyframe<kbd>Shift+F6</kbd></button>
+        <hr>
+        <button data-cmd="generate">Create In-betweens<kbd>Ctrl+Enter</kbd></button>
+      </div>
+    </div>
+    <div class="menu" data-menu="control"><span>Control</span>
+      <div class="dropdown">
+        <button data-cmd="play">Play / Stop<kbd>Enter</kbd></button>
+        <button data-cmd="prevFrame">Previous Frame<kbd>,</kbd></button>
+        <button data-cmd="nextFrame">Next Frame<kbd>.</kbd></button>
+        <button data-cmd="prevKey">Previous Keyframe<kbd>Shift+,</kbd></button>
+        <button data-cmd="nextKey">Next Keyframe<kbd>Shift+.</kbd></button>
+      </div>
+    </div>
+    <div class="menu" data-menu="help"><span>Help</span>
+      <div class="dropdown">
+        <button data-cmd="shortcuts">Keyboard Shortcuts<kbd>?</kbd></button>
+      </div>
+    </div>
+    <span id="docname">Untitled</span>
+  </nav>
+
+  <div id="main">
+    <!-- Tools panel -->
+    <aside id="tools">
+      <button class="tool" data-tool="selection" title="Selection Tool (V): select, move, rotate strokes"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L9.5 19z"/></svg></button>
+      <button class="tool" data-tool="subselection" title="Subselection Tool (A): drag a stroke's corner points"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L9.5 19z" fill="none" stroke-width="1.8"/></svg></button>
+      <button class="tool" data-tool="brush" title="Brush Tool (B): draw strokes; pressure sets width. Alt+click a ghost to trace it."><svg viewBox="0 0 24 24"><path d="M14 4l6 6-8.5 8.5c-1.5 1.5-4 1.5-5.5 0s-1.5-4 0-5.5z M4 20c1-3 2-4 4-4"/></svg></button>
+      <hr>
+      <button class="tool" data-tool="hand" title="Hand Tool (H): pan the stage (or hold Space)"><svg viewBox="0 0 24 24"><path d="M8 12V5a1.5 1.5 0 013 0v6V4a1.5 1.5 0 013 0v7V6a1.5 1.5 0 013 0v8c0 4-2.5 7-6 7s-5-1.5-7-5l-1.5-3a1.4 1.4 0 012.3-1.5L8 13"/></svg></button>
+      <button class="tool" data-tool="zoom" title="Zoom Tool (Z): click to zoom in, Alt+click to zoom out"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6" fill="none" stroke-width="2"/><path d="M14.5 14.5L20 20" stroke-width="2.5"/></svg></button>
+    </aside>
+
+    <!-- Stage -->
+    <section id="stagewrap">
+      <div id="stagebar">
+        <span id="scenename">Scene 1</span>
+        <span id="modehint"></span>
+        <span class="spacer"></span>
+        <label>Zoom <select id="zoomsel">
+          <option value="fit">Fit</option><option value="0.5">50%</option><option value="1">100%</option>
+          <option value="2">200%</option><option value="4">400%</option>
+        </select></label>
+      </div>
+      <div id="stage"><canvas id="canvas"></canvas><div id="toast"></div></div>
+    </section>
+
+    <!-- Properties panel -->
+    <aside id="props">
+      <div class="paneltabs"><span class="active">Properties</span></div>
+      <div id="propbody"></div>
+    </aside>
+  </div>
+
+  <!-- Timeline -->
+  <section id="timeline">
+    <div class="paneltabs"><span class="active">Timeline</span></div>
+    <div id="tlbar">
+      <button id="tl-play" title="Play / Stop (Enter)">▶</button>
+      <button id="tl-prevkey" title="Previous keyframe (Shift+,)">⏮</button>
+      <button id="tl-prev" title="Previous frame (,)">◀</button>
+      <button id="tl-next" title="Next frame (.)">▶︎</button>
+      <button id="tl-nextkey" title="Next keyframe (Shift+.)">⏭</button>
+      <span class="tlfield">Frame <b id="tl-frame">1</b></span>
+      <label class="tlfield">FPS <input id="tl-fps" type="number" min="1" max="60" value="8"></label>
+      <span class="sep"></span>
+      <button id="tl-onion" class="toggle" title="Onion Skin (O): show neighboring keyframes as ghosts">Onion Skin</button>
+      <button id="tl-preview" class="toggle" title="Paint Preview (P): show the stroke model's predicted painting">Paint Preview</button>
+      <span class="sep"></span>
+      <label class="tlfield">In-betweens <select id="tl-method">
+        <option value="refined">Refined (paint-aware)</option>
+        <option value="arc">Arc</option>
+        <option value="linear">Linear</option>
+      </select></label>
+      <button id="tl-generate" class="primary" title="Create In-betweens (Ctrl+Enter)">Create In-betweens</button>
+      <span id="tl-status"></span>
+    </div>
+    <div id="tlgrid">
+      <div id="tllayers"><div class="tlhead"></div><div class="layer active">✎ Layer 1</div></div>
+      <div id="tlframes"><canvas id="tlcanvas"></canvas></div>
+    </div>
+  </section>
+</div>
+
+<div id="ctxmenu" class="dropdown floating"></div>
+<div id="modal" hidden><div class="modalbox"><div id="modalbody"></div><button id="modalclose">Close</button></div></div>
+<input type="file" id="fileinput" accept=".json,application/json" hidden>
+
+<script src="geometry.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

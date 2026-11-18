@@ -41,7 +41,18 @@ Ours, `src/inbetween/` (see its README.md; run commands from `src/`):
 - `metrics.py`: width deviation from even change ("popping"), per stroke.
 - `cli.py`: `python -m inbetween.cli <keys.json> --out <dir> --compare`.
 - `paint_frames.py`: robot paints each frame exactly as planned, one sheet per frame.
-- `tests/`: `python -m pytest -q inbetween/tests` (must pass before committing).
+- `fit.py`: freehand mark + stylus pressure -> robot stroke (pressure mapped to visible width).
+- `app.py` + `editor/`: local server and Animate/Flare-style browser editor
+  (`python -m inbetween.app`). F6 = copy keyframe and reshape; F7 = blank keyframe, trace over
+  onion skin (traced stroke replaces its ghost; Alt+click picks the ghost). `editor/geometry.js`
+  must stay identical in behavior to FRIDA's path math (tested by `test_editor_geometry.py`).
+- `tests/`: `python -m pytest -q inbetween/tests` (must pass before committing; the browser test
+  needs Playwright, the geometry test needs Node).
+
+FRIDA change: `src/filleted_stroke.py` treats corners within 0.02 rad of straight as straight
+(`FLAT_ANGLE`). The old 1e-3 threshold sat below a clamp floor, so near-straight corners could
+produce paths meters away (about 1.4% of random near-straight strokes). Shape change on ordinary
+strokes is at most 0.6 mm.
 
 ## Rules
 
@@ -54,7 +65,7 @@ Ours, `src/inbetween/` (see its README.md; run commands from `src/`):
 
 ## Next steps (priority order for the deadline)
 
-1. Animator's real keyframes in the JSON format (an authoring tool or script that writes it).
+1. Animator draws real keyframes in the editor; test with their actual stylus.
 2. Robot session 1: check Sharpie model vs real strokes; time one frame; test paper registration
    (peg bar) and fixed-camera photos via `paint_frames.py --photo_dir`.
 3. Measure popping on photographed frames (same width-profile idea on photos).

@@ -114,11 +114,14 @@ class Sequence:
 
 def load_sequence(path: str) -> Sequence:
     with open(path) as f:
-        d = json.load(f)
+        return sequence_from_dict(json.load(f), name=path)
+
+
+def sequence_from_dict(d: dict, name: str = "document") -> Sequence:
     if d.get("format") != FORMAT_NAME:
-        raise ValueError(f"{path}: not a {FORMAT_NAME} file")
+        raise ValueError(f"{name}: not a {FORMAT_NAME} file")
     if int(d.get("version", 0)) != FORMAT_VERSION:
-        raise ValueError(f"{path}: unsupported version {d.get('version')}")
+        raise ValueError(f"{name}: unsupported version {d.get('version')}")
 
     def frames(items, kind):
         out = []
@@ -148,8 +151,8 @@ def load_sequence(path: str) -> Sequence:
     return Sequence(keys=keys, edits=edits, timing=d.get("timing", {}), meta=meta)
 
 
-def save_frames(path: str, frames: List[Frame], meta: Optional[dict] = None) -> None:
-    out = {
+def frames_to_dict(frames: List[Frame], meta: Optional[dict] = None) -> dict:
+    return {
         "format": FORMAT_NAME + "-frames",
         "version": FORMAT_VERSION,
         **(meta or {}),
@@ -163,6 +166,10 @@ def save_frames(path: str, frames: List[Frame], meta: Optional[dict] = None) -> 
             for fr in frames
         ],
     }
+
+
+def save_frames(path: str, frames: List[Frame], meta: Optional[dict] = None) -> None:
+    out = frames_to_dict(frames, meta)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w") as f:
         json.dump(out, f, indent=1)
