@@ -58,6 +58,38 @@ const isBetween = (f) => !keyAt(f) && !!prevKey(f) && !!nextKey(f);
 function sortKeys() { keys().sort((a, b) => a.frame - b.frame); }
 function newId() { return "s" + S.doc.editor.next_id++; }
 
+// ------------------------------------------------------------ clipboard ---
+// Copy / cut / paste strokes like Animate. Regular paste and duplicate make
+// new strokes (new IDs, they pop in). Paste in Place keeps a stroke's ID when
+// this keyframe doesn't have that stroke yet, so the in-betweens animate it
+// from where it was copied (handy for a stroke you forgot to trace).
+let clip = [];
+const selected = () => content(S.ui.frame).strokes.filter((s) => S.ui.sel.has(s.id));
+function pasteStrokes(strokes, { inPlace = false } = {}) {
+  const f = S.ui.frame, k = keyAt(f);
+  if (!strokes.length) return toast("Nothing to paste.");
+  if (!k) return toast("Paste onto a keyframe (F6 / F7 makes one here).");
+  pushUndo();
+  const have = new Set(k.strokes.map((s) => s.id));
+  const top = Math.max(-1, ...k.strokes.map((s) => s.order), ...(prevKey(f)?.strokes || []).map((s) => s.order));
+  const dx = inPlace ? 0 : 10 / paperW(), dy = inPlace ? 0 : 10 / paperH();
+  const sorted = [...strokes].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+  const ids = [];
+  let next = top;
+  for (const src of sorted) {
+    const s = clone(src);
+    s.xt += dx; s.yt += dy;
+    if (inPlace && !have.has(s.id)) {
+      const g = prevKey(f)?.strokes.find((x) => x.id === s.id);
+      if (g) s.order = g.order; else s.order = ++next;
+    } else { s.id = newId(); s.order = ++next; }
+    have.add(s.id); k.strokes.push(s); ids.push(s.id);
+  }
+  S.ui.sel = new Set(ids);
+  changed(); renderAll();
+  return ids;
+}
+
 // What is on frame f, and how it can be edited.
 function content(f) {
   const k = keyAt(f);
@@ -562,6 +594,28 @@ const cmds = {
   undo() { if (!S.hist.undo.length) return; S.hist.redo.push(JSON.stringify(S.doc)); S.doc = JSON.parse(S.hist.undo.pop()); afterHistory(); },
   redo() { if (!S.hist.redo.length) return; S.hist.undo.push(JSON.stringify(S.doc)); S.doc = JSON.parse(S.hist.redo.pop()); afterHistory(); },
   selectAll() { S.ui.sel = new Set(content(S.ui.frame).strokes.map((s) => s.id)); renderAll(); },
+  copy() {
+    const sel = selected();
+    if (!sel.length) return toast("Select strokes to copy.");
+    clip = clone(sel); toast(`Copied ${sel.length} stroke${sel.length > 1 ? "s" : ""}.`);
+  },
+  cut() {
+    const sel = selected();
+    if (!sel.length) return toast("Select strokes to cut.");
+    if (content(S.ui.frame).mode !== "key") return toast("Cut strokes on a keyframe; in-betweens follow the keyframes.");
+    clip = clone(sel); cmds.delete();
+  },
+  paste() { pasteStrokes(clip); },
+  pasteInPlace() {
+    const ids = pasteStrokes(clip, { inPlace: true });
+    if (ids && ids.some((id) => clip.find((s) => s.id === id)))
+      toast("Pasted in place. Strokes kept their identity, so in-betweens animate them from the copied keyframe.");
+  },
+  duplicate() {
+    const sel = selected();
+    if (!sel.length) return toast("Select strokes to duplicate.");
+    pasteStrokes(sel); // the clipboard is left as it was, as in Animate
+  },
   deselect() { S.ui.sel.clear(); S.ui.picking = null; S.ui.linkTarget = null; renderAll(); },
   delete() {
     const f = S.ui.frame, c = content(f);
@@ -803,6 +857,10 @@ document.addEventListener("keydown", (e) => {
     if (k === "o") return run("open");
     if (k === "n") return run("new");
     if (k === "a") return run("selectAll");
+    if (k === "c") return run("copy");
+    if (k === "x") return run("cut");
+    if (k === "v" || k === "V") return run(e.shiftKey ? "pasteInPlace" : "paste");
+    if (k === "d") return run("duplicate");
     if (k === "Enter") return run("generate");
     if (k === "=" || k === "+") return run("zoomIn");
     if (k === "-") return run("zoomOut");
@@ -967,7 +1025,8 @@ function showShortcuts() {
     ["F5 / Shift+F5", "Insert / remove frame (timing)"], ["F6", "Insert keyframe (copy the drawing)"], ["F7", "Insert blank keyframe (trace over onion skin)"],
     ["Shift+F6", "Clear keyframe"], ["Ctrl+Enter", "Create in-betweens"], ["Enter", "Play / stop"], [", / .", "Previous / next frame"],
     ["Shift+, / Shift+.", "Previous / next keyframe"], ["O", "Onion skin"], ["P", "Paint preview (stroke model)"], ["Del", "Delete stroke, or unpin on an in-between"],
-    ["Ctrl+Z / Ctrl+Shift+Z", "Undo / redo"], ["Ctrl+S / Ctrl+O", "Save / open keyframes"], ["Ctrl+= / Ctrl+- / Ctrl+0", "Zoom in / out / fit"]];
+    ["Ctrl+Z / Ctrl+Shift+Z", "Undo / redo"], ["Ctrl+C / Ctrl+X / Ctrl+V", "Copy / cut / paste (pasted strokes are new)"],
+    ["Ctrl+Shift+V", "Paste in place (keeps stroke identity if the keyframe doesn't have it)"], ["Ctrl+D", "Duplicate"], ["Ctrl+S / Ctrl+O", "Save / open keyframes"], ["Ctrl+= / Ctrl+- / Ctrl+0", "Zoom in / out / fit"]];
   $("modalbody").innerHTML = `<h3>Keyboard Shortcuts</h3><table>${rows.map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("")}</table>`;
   $("modal").hidden = false;
 }

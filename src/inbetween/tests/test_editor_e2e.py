@@ -136,3 +136,59 @@ def test_marquee_selects_strokes_fully_inside(server):
         assert pg.evaluate("S.ui.sel.size") == 0
         assert errors == []
         browser.close()
+
+
+def test_copy_paste_duplicate(server):
+    with playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg = browser.new_page(viewport={"width": 1440, "height": 900})
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(server)
+        pg.wait_for_function("S.cfg && S.doc")
+        st = pg.locator("#canvas").bounding_box()
+        tl = pg.locator("#tlcanvas").bounding_box()
+
+        def scr(px, py):
+            v = pg.evaluate("[S.view.ox, S.view.oy, S.view.scale, S.cfg.canvas_width_m/S.cfg.canvas_height_m]")
+            return st["x"] + v[0] + px * v[2] * v[3], st["y"] + v[1] + py * v[2]
+
+        def draw(pts):
+            pg.mouse.move(*scr(*pts[0]))
+            pg.mouse.down()
+            for q in pts[1:]:
+                pg.mouse.move(*scr(*q), steps=2)
+            pg.mouse.up()
+            pg.wait_for_function("!pendingFit", timeout=30000)
+
+        key = lambda i: pg.evaluate(f"S.doc.keys[{i}].strokes.map(s => [s.id, +s.xt.toFixed(5), +s.yt.toFixed(5)])")
+
+        draw([(0.2 + 0.1 * i / 10, 0.3) for i in range(11)])  # s1
+        draw([(0.2 + 0.1 * i / 10, 0.5) for i in range(11)])  # s2
+        pg.keyboard.press("v")
+        pg.mouse.click(*scr(0.25, 0.3))  # select s1
+        pg.keyboard.press("Control+c")
+        pg.keyboard.press("Control+v")  # new stroke, offset
+        k0 = key(0)
+        assert [s[0] for s in k0] == ["s1", "s2", "s3"]
+        assert k0[2][1] > k0[0][1] and k0[2][2] > k0[0][2]
+
+        pg.keyboard.press("Control+d")  # duplicate the pasted s3
+        assert [s[0] for s in key(0)] == ["s1", "s2", "s3", "s4"]
+
+        pg.mouse.click(tl["x"] + 9 * 14 + 7, tl["y"] + 30)
+        pg.keyboard.press("F7")
+        pg.keyboard.press("Control+Shift+v")  # s1 is not in this keyframe yet: keeps its ID, same spot
+        assert key(1) == [k0[0]]
+        pg.keyboard.press("Control+Shift+v")  # s1 now exists here: a new stroke
+        assert [s[0] for s in key(1)] == ["s1", "s5"]
+
+        pg.keyboard.press("Control+x")  # cut s5
+        assert [s[0] for s in key(1)] == ["s1"]
+        pg.keyboard.press("Control+z")
+        assert [s[0] for s in key(1)] == ["s1", "s5"]
+        assert errors == []
+        browser.close()

@@ -35,6 +35,7 @@ shortcuts (press `?` in the editor for the full list).
 - Changing a stroke on an in-between **pins** it (orange diamond); the next
   Create In-betweens keeps it and re-flows the neighbors. Delete unpins.
 - **Paint Preview (P)** shows the stroke model's predicted painting.
+- **Ctrl+C / X / V** copy, cut and paste strokes (pasted strokes are new); **Ctrl+D** duplicates. **Ctrl+Shift+V** pastes in place and keeps a stroke's identity when the keyframe doesn't have it yet, so it animates from where it was copied.
 - **File > Save** writes the keyframe file below; **File > Export Robot
   Frames** writes the input for `paint_frames.py`.
 
