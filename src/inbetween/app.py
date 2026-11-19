@@ -25,7 +25,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import torch
 
-from .fit import fit_stroke, visible_z_min
+from .fit import fit_mark, fit_stroke, visible_z_min
 from .interpolate import interpolate
 from .metrics import popping
 from .refine import RefineConfig, refine
@@ -116,8 +116,13 @@ def make_handler(state: State):
         def route(self, req):
             if self.path == "/api/fit":
                 color = req.get("color", [0.05, 0.05, 0.05])
-                s, err = fit_stroke(req["points"], req.get("pressure", []), state.renderer(), color=color)
-                return {"stroke": s.to_dict(), "error_mm": err}
+                if req.get("split", True):
+                    pieces = fit_mark(req["points"], req.get("pressure", []), state.renderer(),
+                                      max_err_mm=float(req.get("max_err_mm", 1.0)), color=color)
+                else:
+                    pieces = [fit_stroke(req["points"], req.get("pressure", []), state.renderer(), color=color)]
+                return {"strokes": [{"stroke": s.to_dict(), "error_mm": e} for s, e in pieces],
+                        "stroke": pieces[0][0].to_dict(), "error_mm": max(e for _, e in pieces)}
             if self.path == "/api/inbetween":
                 seq = sequence_from_dict(req["doc"])
                 r = state.renderer(req.get("response"))

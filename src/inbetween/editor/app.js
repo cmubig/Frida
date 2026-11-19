@@ -538,15 +538,43 @@ async function finishBrush(pts) {
   try {
     const color = S.cfg.ink ? [0.05, 0.05, 0.05] : hexToRgb(S.ui.color);
     const res = await api("/api/fit", { points: pts.map((p) => [p[0], p[1]]), pressure: pts.map((p) => p[2]), color });
-    const s = res.stroke;
-    const ghost = target && traceCandidates(f).find((g) => g.id === target);
+    // A mark too complex for one robot stroke comes back split into pieces, in drawing order.
+    const pieces = (res.strokes || [{ stroke: res.stroke, error_mm: res.error_mm }]).map((x) => x.stroke);
+    const worst = res.error_mm;
+    const cand = traceCandidates(f);
+    const ghost = target && cand.find((g) => g.id === target);
+    const piecePts = (s) => Geo.canvasPath(s, S.cfg).map((p) => [p[0], p[1]]);
+    // Link pieces to ghosts: the chosen ghost goes to the piece nearest it; when tracing
+    // with onion skin, each other piece takes its nearest unused ghost.
+    const link = new Map();
+    if (ghost) {
+      let bi = 0, bd = Infinity;
+      pieces.forEach((s, i) => { const d = markDistance(piecePts(s), ghost); if (d < bd) { bd = d; bi = i; } });
+      link.set(bi, ghost);
+    }
+    if (pieces.length > 1 && S.ui.onion && cand.length) {
+      const used = new Set([...link.values()].map((g) => g.id));
+      pieces.forEach((s, i) => {
+        if (link.has(i)) return;
+        const id = nearestGhost(piecePts(s), cand.filter((g) => !used.has(g.id)));
+        if (id) { const g = cand.find((x) => x.id === id); link.set(i, g); used.add(id); }
+      });
+    }
     pushUndo();
-    if (ghost) { s.id = ghost.id; s.order = ghost.order; }
-    else { s.id = newId(); s.order = Math.max(-1, ...k.strokes.map((x) => x.order), ...(prevKey(f)?.strokes || []).map((x) => x.order)) + 1; }
-    k.strokes.push(s);
-    S.ui.sel = new Set([s.id]);
-    if (ghost) toast(`Traced: replaces ghost ${ghost.id}. Wrong one? Use "Pick another ghost" in Properties.`);
-    else if (res.error_mm > 1.5) toast(`This mark is complex; the robot stroke follows it within ${res.error_mm.toFixed(1)} mm. Try shorter marks.`);
+    let next = Math.max(-1, ...k.strokes.map((x) => x.order), ...(prevKey(f)?.strokes || []).map((x) => x.order)) + 1;
+    pieces.forEach((s, i) => {
+      const g = link.get(i);
+      if (g) { s.id = g.id; s.order = g.order; } else { s.id = newId(); s.order = next++; }
+      k.strokes.push(s);
+    });
+    S.ui.sel = new Set(pieces.map((s) => s.id));
+    const linked = [...link.values()].map((g) => g.id);
+    if (pieces.length > 1) {
+      toast(`Too complex for one robot stroke: split into ${pieces.length} strokes` +
+            (linked.length ? `, ${linked.length} traced onto ghosts (${linked.join(", ")}).` : ".") +
+            (worst > 1.5 ? ` Still off by up to ${worst.toFixed(1)} mm; try shorter marks.` : ""));
+    } else if (ghost) toast(`Traced: replaces ghost ${ghost.id}. Wrong one? Use "Pick another ghost" in Properties.`);
+    else if (worst > 1.5) toast(`This mark is complex; the robot stroke follows it within ${worst.toFixed(1)} mm. Try shorter marks.`);
     changed();
   } catch (e) {
     toast("Could not fit stroke: " + e.message);

@@ -42,6 +42,8 @@ Ours, `src/inbetween/` (see its README.md; run commands from `src/`):
 - `cli.py`: `python -m inbetween.cli <keys.json> --out <dir> --compare`.
 - `paint_frames.py`: robot paints each frame exactly as planned, one sheet per frame.
 - `fit.py`: freehand mark + stylus pressure -> robot stroke (pressure mapped to visible width).
+  `fit_mark` splits a mark one stroke can't follow within 1 mm at its sharpest turns (up to 8
+  connected pieces); the editor links each traced piece to its nearest ghost.
 - `app.py` + `editor/`: local server and Animate/Flare-style browser editor
   (`python -m inbetween.app`). F6 = copy keyframe and reshape; F7 = blank keyframe, trace over
   onion skin (traced stroke replaces its ghost; Alt+click picks the ghost). `editor/geometry.js`

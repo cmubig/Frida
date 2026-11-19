@@ -3,7 +3,8 @@
 A drawn mark is a list of canvas points (proportions, x right, y down) with
 stylus pressure in 0..1. A FRIDA stroke has 4 corner points, 2 corner
 roundness values and 4 pressure values, so the fit finds the stroke whose
-path is closest to the drawing.
+path is closest to the drawing. A mark too complex for one stroke (a loop, a
+zigzag, a long scribble) is split into several strokes by fit_mark.
 
 Pressure is mapped to *visible width*, not straight to the robot's z: light
 stylus pressure maps to the lightest pressure that still leaves a mark, so a
@@ -123,3 +124,73 @@ def fit_stroke(points: Sequence[Sequence[float]], pressure: Sequence[float], r: 
         color=list(color),
     )
     return s, err_mm
+
+
+def _split_index(P: torch.Tensor, r: Renderer, min_frac: float = 0.15) -> int:
+    """Where to cut a drawn mark (M, 2 canvas proportions) in two: the sharpest
+    turn away from the ends, or the middle of its length if it has no clear corner."""
+    m = r.model
+    xy = torch.stack([P[:, 0] / float(m.x_m), P[:, 1] / float(m.y_m)], dim=1)  # meters
+    seg = (xy[1:] - xy[:-1]).norm(dim=1)
+    s = torch.cat([torch.zeros(1), seg.cumsum(0)])
+    total = float(s[-1])
+    frac = s / total if total > 0 else torch.linspace(0, 1, len(P))
+    mid = int(torch.argmin((frac - 0.5).abs()))
+    lo, hi = 1, len(P) - 2
+    inner = [i for i in range(lo, hi + 1) if min_frac <= float(frac[i]) <= 1 - min_frac]
+    if not inner:
+        return max(1, min(mid, len(P) - 2))
+    # Turning angle over a window of about 3% of the length on each side.
+    w = 0.03 * total
+    best, best_ang = mid, 0.0
+    for i in inner:
+        j0 = int(torch.searchsorted(s, s[i] - w).clamp(0, i - 1))
+        j1 = int(torch.searchsorted(s, s[i] + w).clamp(i + 1, len(P) - 1))
+        a, b = xy[i] - xy[j0], xy[j1] - xy[i]
+        na, nb = float(a.norm()), float(b.norm())
+        if na < 1e-9 or nb < 1e-9:
+            continue
+        ang = float(torch.arccos((a @ b / (na * nb)).clamp(-1, 1)))
+        if ang > best_ang:
+            best, best_ang = i, ang
+    return best if best_ang > 0.5 else (mid if mid in inner else inner[len(inner) // 2])  # 0.5 rad ~ 30 deg
+
+
+def fit_mark(points: Sequence[Sequence[float]], pressure: Sequence[float], r: Renderer,
+             max_err_mm: float = 1.0, max_pieces: int = 8, min_piece_mm: float = 4.0,
+             iters: int = 80, color=(0.05, 0.05, 0.05)) -> List[Tuple[Stroke, float]]:
+    """Fit a drawn mark to one robot stroke, or split it into several when one
+    stroke cannot follow it within max_err_mm (a loop, a zigzag, a long scribble).
+
+    Splits happen at the sharpest turn (else mid-length), recursively, until every
+    piece fits, a piece would be shorter than min_piece_mm, or max_pieces is reached.
+    Neighboring pieces share the cut point, so the painted mark stays connected.
+    Returns [(stroke, err_mm), ...] in drawing order."""
+    P = [list(p)[:2] for p in points]
+    pr = list(pressure) if len(pressure) == len(P) else [0.5] * len(P)
+    m = r.model
+
+    def length_mm(pts):
+        t = torch.tensor(pts, dtype=torch.float32)
+        if len(t) < 2:
+            return 0.0
+        d = torch.stack([(t[1:, 0] - t[:-1, 0]) / float(m.x_m), (t[1:, 1] - t[:-1, 1]) / float(m.y_m)], 1)
+        return float(d.norm(dim=1).sum()) * 1000
+
+    out: List[Tuple[Stroke, float]] = []
+
+    def rec(pts, prs, budget):
+        s, err = fit_stroke(pts, prs, r, iters=iters, color=color)
+        if err <= max_err_mm or budget <= 1 or len(pts) < 5 or length_mm(pts) < 2 * min_piece_mm:
+            out.append((s, err))
+            return 1
+        k = _split_index(torch.tensor(pts, dtype=torch.float32), r)
+        left, right = pts[: k + 1], pts[k:]
+        if min(length_mm(left), length_mm(right)) < min_piece_mm:
+            out.append((s, err))
+            return 1
+        used = rec(left, prs[: k + 1], budget - 1)
+        return used + rec(right, prs[k:], budget - used)
+
+    rec(P, pr, max_pieces)
+    return out

@@ -192,3 +192,50 @@ def test_copy_paste_duplicate(server):
         assert [s[0] for s in key(1)] == ["s1", "s5"]
         assert errors == []
         browser.close()
+
+
+def test_complex_mark_splits_into_linked_strokes(server):
+    with playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg = browser.new_page(viewport={"width": 1440, "height": 900})
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(server)
+        pg.wait_for_function("S.cfg && S.doc")
+        st = pg.locator("#canvas").bounding_box()
+        tl = pg.locator("#tlcanvas").bounding_box()
+
+        def scr(px, py):
+            v = pg.evaluate("[S.view.ox, S.view.oy, S.view.scale, S.cfg.canvas_width_m/S.cfg.canvas_height_m]")
+            return st["x"] + v[0] + px * v[2] * v[3], st["y"] + v[1] + py * v[2]
+
+        def draw(pts):
+            pg.mouse.move(*scr(*pts[0]))
+            pg.mouse.down()
+            for q in pts[1:]:
+                pg.mouse.move(*scr(*q), steps=2)
+            pg.mouse.up()
+            pg.wait_for_function("!pendingFit", timeout=60000)
+
+        def loop(cx, cy):
+            return [(cx + 0.1 * math.cos(2 * math.pi * 1.3 * i / 60), cy + 0.1 * math.sin(2 * math.pi * 1.3 * i / 60))
+                    for i in range(61)]
+
+        draw(loop(0.35, 0.5))
+        ids0 = pg.evaluate("S.doc.keys[0].strokes.map(s => s.id)")
+        assert len(ids0) > 1  # one gesture, several robot strokes
+        assert sorted(pg.evaluate("[...S.ui.sel]")) == sorted(ids0)
+
+        # Trace the same loop on a blank keyframe: every piece links to a ghost.
+        pg.mouse.click(tl["x"] + 9 * 14 + 7, tl["y"] + 30)
+        pg.keyboard.press("F7")
+        draw(loop(0.36, 0.5))
+        ids1 = pg.evaluate("S.doc.keys[1].strokes.map(s => s.id)")
+        assert len(set(ids1) & set(ids0)) >= min(len(ids0), len(ids1)) - 1
+        pg.keyboard.press("Control+z")
+        assert pg.evaluate("S.doc.keys[1].strokes.length") == 0  # one undo removes all pieces
+        assert errors == []
+        browser.close()

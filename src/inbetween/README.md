@@ -18,8 +18,9 @@ middle, Properties on the right, Timeline at the bottom, with Animate's
 shortcuts (press `?` in the editor for the full list).
 
 - **Brush (B)** draws with stylus pressure. Each mark is fitted to a robot
-  stroke right away, so what you see is what the robot will paint. Pressure
-  maps to visible width: the lightest touch still leaves a mark.
+  stroke right away, so what you see is what the robot will paint; a mark too
+  complex for one stroke is split into several. Pressure maps to visible
+  width: the lightest touch still leaves a mark.
 - **F6 Insert Keyframe** copies the current drawing. Reshape it with
   **Selection (V)** (move; the round handle rotates) and **Subselection (A)**
   (drag corner points). Strokes keep their identity, so in-betweening knows
@@ -146,8 +147,11 @@ the IDs carry over.
 - Pose (`xt`, `yt`, `a`) is not refined; refinement only changes pressure.
 - Strokes popping in or out appear all at once; there is no grow or fade yet.
 - `paint_frames.py` was only dry-run in `--simulate` mode, not on hardware.
-- One drawn mark becomes one robot stroke (4 corners). Long or complex marks
-  are approximated; the editor warns when the fit is off by more than 1.5 mm.
+- A robot stroke has only 4 corners. A drawn mark that one stroke can't follow
+  within 1 mm (a loop, a zigzag, a long scribble) is split automatically into
+  up to 8 connected strokes, cut at its sharpest turns. When tracing, each
+  piece links to its nearest ghost. Pressure detail inside one piece is kept
+  only at 4 points.
 - The editor was tested with a mouse in a browser, not yet with a real stylus.
 - Metrics come from the stroke model. Claims about real paintings need
   photographed frames, measured the same way.

@@ -124,3 +124,25 @@ def test_fit_follows_drawing(r):
     c = r.path_canvas(stroke_tensors(s))  # (y, x) proportions
     assert abs(float(c[0, 1]) - pts[0][0]) < 2e-3 and abs(float(c[-1, 1]) - pts[-1][0]) < 2e-3
     assert s.z[0] < s.z[-1]  # pressure rose along the drawing
+
+
+def test_complex_mark_is_split(r):
+    from inbetween.fit import fit_mark
+    # A simple arc stays one stroke.
+    arc = [[0.3 + 0.25 * t, 0.5 - 0.15 * math.sin(math.pi * t)] for t in [i / 40 for i in range(41)]]
+    assert len(fit_mark(arc, [0.5] * 41, r)) == 1
+    # A zigzag with four sharp turns cannot be one 4-corner stroke: it is split,
+    # every piece fits closely, and neighboring pieces meet at the cut.
+    zig = []
+    for seg in range(5):
+        for i in range(12):
+            t = i / 12
+            zig.append([0.2 + 0.12 * (seg + t), 0.4 + (0.12 * t if seg % 2 == 0 else 0.12 * (1 - t))])
+    zig.append([0.8, 0.52])
+    pieces = fit_mark(zig, [0.5] * len(zig), r, max_err_mm=1.0)
+    assert len(pieces) > 1
+    assert max(e for _, e in pieces) < 1.5
+    ends = [r.path_canvas(stroke_tensors(s)) for s, _ in pieces]
+    for a, b in zip(ends, ends[1:]):
+        gap = (a[-1] - b[0]).abs().max()
+        assert float(gap) < 0.01  # proportions of the canvas
