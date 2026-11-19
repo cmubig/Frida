@@ -235,6 +235,15 @@ function render() {
   // selection
   for (const s of c.strokes) if (S.ui.sel.has(s.id)) drawSelection(s);
   if (S.ui.sel.size && (S.ui.tool === "selection")) drawRotateHandle(c.strokes.filter((s) => S.ui.sel.has(s.id)));
+  // selection rectangle
+  if (drag && drag.kind === "marquee") {
+    const x = Math.min(drag.x0, drag.x1), y = Math.min(drag.y0, drag.y1);
+    const w = Math.abs(drag.x1 - drag.x0), h = Math.abs(drag.y1 - drag.y0);
+    ctx.save(); ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+    ctx.setLineDash([4, 3]); ctx.strokeStyle = "#222"; ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+    ctx.restore();
+  }
   // live brush
   if (drag && drag.kind === "brush") drawLive(drag.pts);
   if (pendingFit) drawLive(pendingFit, true);
@@ -383,7 +392,12 @@ cv.addEventListener("pointerdown", (e) => {
       drag = { kind: "move", start: toProp(x, y), moved: false,
                orig: c.strokes.filter((s) => S.ui.sel.has(s.id)).map((s) => ({ id: s.id, xt: s.xt, yt: s.yt })) };
     }
-  } else if (!e.shiftKey) S.ui.sel.clear();
+  } else {
+    // empty spot: drag a dashed rectangle to select every stroke fully inside it
+    // (Shift+drag adds to the selection), as with Animate's Selection tool
+    if (!e.shiftKey) S.ui.sel.clear();
+    drag = { kind: "marquee", x0: x, y0: y, x1: x, y1: y, base: new Set(S.ui.sel) };
+  }
   renderAll();
 });
 
@@ -398,6 +412,11 @@ cv.addEventListener("pointermove", (e) => {
     addBrushPoints(e);
     const cand = traceCandidates(S.ui.frame);
     S.ui.suggest = S.ui.linkTarget ? null : (S.ui.onion && cand.length ? nearestGhost(drag.pts, cand) : null);
+    render(); return;
+  }
+  if (drag.kind === "marquee") {
+    drag.x1 = x; drag.y1 = y;
+    S.ui.sel = new Set([...drag.base, ...strokesInRect(content(S.ui.frame).strokes, drag)]);
     render(); return;
   }
   if (drag.kind === "move") {
@@ -440,6 +459,12 @@ cv.addEventListener("wheel", (e) => {
   else { S.view.ox -= e.deltaX; S.view.oy -= e.deltaY; S.view.fit = false; render(); }
 }, { passive: false });
 
+function strokesInRect(strokes, r) {
+  const x0 = Math.min(r.x0, r.x1), x1 = Math.max(r.x0, r.x1), y0 = Math.min(r.y0, r.y1), y1 = Math.max(r.y0, r.y1);
+  if (x1 - x0 < 3 && y1 - y0 < 3) return [];
+  return strokes.filter((s) => strokeScreenPath(s).every((p) => p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1))
+                .map((s) => s.id);
+}
 function center(s) {
   const p = Geo.canvasPath(s, S.cfg);
   return [p.reduce((a, q) => a + q[0], 0) / p.length, p.reduce((a, q) => a + q[1], 0) / p.length];
@@ -937,7 +962,7 @@ let toastTimer = null;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 3200); }
 function status(msg) { $("tl-status").textContent = msg; }
 function showShortcuts() {
-  const rows = [["V", "Selection tool: select, move; round handle rotates"], ["A", "Subselection tool: drag corner points"], ["B", "Brush tool (stylus pressure sets width)"],
+  const rows = [["V", "Selection tool: click or drag a rectangle to select (Shift adds), drag to move; round handle rotates"], ["A", "Subselection tool: drag corner points"], ["B", "Brush tool (stylus pressure sets width)"],
     ["Alt+click ghost", "Brush: choose which ghost the next stroke traces"], ["H / Space", "Hand tool / temporary pan"], ["Z", "Zoom tool (Alt+click zooms out)"],
     ["F5 / Shift+F5", "Insert / remove frame (timing)"], ["F6", "Insert keyframe (copy the drawing)"], ["F7", "Insert blank keyframe (trace over onion skin)"],
     ["Shift+F6", "Clear keyframe"], ["Ctrl+Enter", "Create in-betweens"], ["Enter", "Play / stop"], [", / .", "Previous / next frame"],

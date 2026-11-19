@@ -86,3 +86,53 @@ def test_trace_generate_pin_rotate(server):
         assert pg.evaluate("S.doc.edits.length") == 0
         assert errors == []
         browser.close()
+
+
+def test_marquee_selects_strokes_fully_inside(server):
+    with playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg = browser.new_page(viewport={"width": 1440, "height": 900})
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(server)
+        pg.wait_for_function("S.cfg && S.doc")
+        st = pg.locator("#canvas").bounding_box()
+
+        def scr(px, py):
+            v = pg.evaluate("[S.view.ox, S.view.oy, S.view.scale, S.cfg.canvas_width_m/S.cfg.canvas_height_m]")
+            return st["x"] + v[0] + px * v[2] * v[3], st["y"] + v[1] + py * v[2]
+
+        def draw(pts):
+            pg.mouse.move(*scr(*pts[0]))
+            pg.mouse.down()
+            for q in pts[1:]:
+                pg.mouse.move(*scr(*q), steps=2)
+            pg.mouse.up()
+            pg.wait_for_function("!pendingFit", timeout=30000)
+
+        def box(a, b, shift=False):
+            if shift:
+                pg.keyboard.down("Shift")
+            pg.mouse.move(*scr(*a))
+            pg.mouse.down()
+            pg.mouse.move(*scr(*b), steps=6)
+            pg.mouse.up()
+            if shift:
+                pg.keyboard.up("Shift")
+            return sorted(pg.evaluate("[...S.ui.sel]"))
+
+        draw([(0.2 + 0.1 * i / 10, 0.3) for i in range(11)])  # s1, top left
+        draw([(0.2 + 0.1 * i / 10, 0.5) for i in range(11)])  # s2, middle left
+        draw([(0.6 + 0.1 * i / 10, 0.3) for i in range(11)])  # s3, top right
+        pg.keyboard.press("v")
+        assert box((0.1, 0.2), (0.4, 0.6)) == ["s1", "s2"]         # both left strokes
+        assert box((0.25, 0.2), (0.45, 0.4)) == []                 # s1 only partly inside
+        assert box((0.5, 0.2), (0.8, 0.4), shift=True) == ["s3"]   # Shift adds to an empty selection
+        assert box((0.1, 0.45), (0.4, 0.55), shift=True) == ["s2", "s3"]
+        pg.mouse.click(*scr(0.5, 0.8))                             # click on empty paper clears
+        assert pg.evaluate("S.ui.sel.size") == 0
+        assert errors == []
+        browser.close()
