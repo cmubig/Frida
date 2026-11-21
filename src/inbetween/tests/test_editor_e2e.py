@@ -239,3 +239,55 @@ def test_complex_mark_splits_into_linked_strokes(server):
         assert pg.evaluate("S.doc.keys[1].strokes.length") == 0  # one undo removes all pieces
         assert errors == []
         browser.close()
+
+
+def test_export_frida_plans_zip(server, tmp_path):
+    import pickle
+    import zipfile
+    with playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg = browser.new_page(viewport={"width": 1440, "height": 900}, accept_downloads=True)
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(server)
+        pg.wait_for_function("S.cfg && S.doc")
+        st = pg.locator("#canvas").bounding_box()
+        tl = pg.locator("#tlcanvas").bounding_box()
+
+        def scr(px, py):
+            v = pg.evaluate("[S.view.ox, S.view.oy, S.view.scale, S.cfg.canvas_width_m/S.cfg.canvas_height_m]")
+            return st["x"] + v[0] + px * v[2] * v[3], st["y"] + v[1] + py * v[2]
+
+        pg.mouse.move(*scr(0.2, 0.5))
+        pg.mouse.down()
+        for i in range(1, 11):
+            pg.mouse.move(*scr(0.2 + 0.03 * i, 0.5), steps=2)
+        pg.mouse.up()
+        pg.wait_for_function("!pendingFit", timeout=30000)
+        pg.mouse.click(tl["x"] + 4 * 14 + 7, tl["y"] + 30)
+        pg.keyboard.press("F6")  # keyframe at frame 4, then move the stroke
+        pg.keyboard.press("v")
+        x, y = scr(0.35, 0.5)
+        pg.mouse.move(x, y)
+        pg.mouse.down()
+        pg.mouse.move(x + 40, y - 30, steps=4)
+        pg.mouse.up()
+        pg.select_option("#tl-method", "arc")
+        pg.keyboard.press("Control+Enter")
+        pg.wait_for_function("!S.ui.busy && Object.keys(S.gen.frames).length === 3", timeout=120000)
+
+        with pg.expect_download(timeout=180000) as dl:
+            pg.evaluate("cmds.exportPlans()")
+        path = tmp_path / "plans.zip"
+        dl.value.save_as(path)
+        with zipfile.ZipFile(path) as z:
+            names = set(z.namelist())
+            assert {f"frame_{i:03d}.pkl" for i in range(5)} <= names
+            assert {"frame_000.png", "frames.json", "README.txt"} <= names
+            painting, palette = pickle.loads(z.read("frame_002.pkl"))
+        assert len(painting) == 1
+        assert errors == []
+        browser.close()

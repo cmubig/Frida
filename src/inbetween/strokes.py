@@ -177,7 +177,10 @@ def save_frames(path: str, frames: List[Frame], meta: Optional[dict] = None) -> 
 
 def load_frames(path: str) -> List[Frame]:
     with open(path) as f:
-        d = json.load(f)
+        return frames_from_dict(json.load(f))
+
+
+def frames_from_dict(d: dict) -> List[Frame]:
     return [
         Frame(
             frame=int(item["frame"]),

@@ -38,7 +38,12 @@ shortcuts (press `?` in the editor for the full list).
 - **Paint Preview (P)** shows the stroke model's predicted painting.
 - **Ctrl+C / X / V** copy, cut and paste strokes (pasted strokes are new); **Ctrl+D** duplicates. **Ctrl+Shift+V** pastes in place and keeps a stroke's identity when the keyframe doesn't have it yet, so it animates from where it was copied.
 - **File > Save** writes the keyframe file below; **File > Export Robot
-  Frames** writes the input for `paint_frames.py`.
+  Frames** writes the input for `paint_frames.py`. **File > Export FRIDA
+  Plans** downloads a .zip with one FRIDA plan per frame (`frame_NNN.pkl`,
+  the format `paint.py --painting_path` uses), a preview PNG of each, and the
+  frames JSON. It reads the robot's materials file: start the editor with
+  `--materials_json <file>` if the default (`../materials_vae_sharpie.json`
+  for ink, `../materials_xarm_paint.json` for paint) is not the right one.
 
 ## Command line
 

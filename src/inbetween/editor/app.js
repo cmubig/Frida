@@ -606,19 +606,25 @@ const cmds = {
     toast("Saved keyframes (open again with File > Open, or use with inbetween.cli).");
   },
   exportFrames() {
-    const ks = keys();
-    if (ks.length < 2 || !Object.keys(S.gen.frames).length) return toast("Create in-betweens first.");
-    if (S.gen.stale) return toast("In-betweens are out of date. Create In-betweens again before exporting.");
-    const frames = [];
-    for (let f = ks[0].frame; f <= ks[ks.length - 1].frame; f++) {
-      const c = content(f), e = editAt(f);
-      frames.push({ frame: f, kind: c.mode === "key" ? "key" : "inbetween",
-                    locked: c.mode === "key" ? c.strokes.map((s) => s.id) : (e ? e.strokes.map((s) => s.id) : []),
-                    strokes: [...c.strokes].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)) });
-    }
-    const out = { format: "frida-inbetween-frames", version: 1, method: S.gen.method, cache_dir: S.cfg.cache_dir, frames };
+    const out = framesForExport();
+    if (!out) return;
     download(`frames_${S.gen.method}.json`, JSON.stringify(out, null, 1));
     toast("Exported. Paint with: python -m inbetween.paint_frames --frames <file> …");
+  },
+  async exportPlans() {
+    const out = framesForExport();
+    if (!out || S.ui.busy) return;
+    S.ui.busy = true; status(`Building FRIDA plans for ${out.frames.length} frames…`);
+    try {
+      const res = await fetch("/api/export_plans", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ frames: out }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+      downloadBlob(`frida_plans_${S.gen.method}.zip`, await res.blob());
+      toast(`Exported ${out.frames.length} FRIDA plans (frame_NNN.pkl + preview PNGs). To paint the animation exactly, use paint_frames with frames.json from the zip.`);
+    } catch (e) {
+      toast("Could not export FRIDA plans: " + e.message);
+    } finally { S.ui.busy = false; status(""); renderAll(); }
   },
   undo() { if (!S.hist.undo.length) return; S.hist.redo.push(JSON.stringify(S.doc)); S.doc = JSON.parse(S.hist.undo.pop()); afterHistory(); },
   redo() { if (!S.hist.redo.length) return; S.hist.undo.push(JSON.stringify(S.doc)); S.doc = JSON.parse(S.hist.redo.pop()); afterHistory(); },
@@ -724,10 +730,25 @@ function resetDoc(doc) {
   S.hist = { undo: [], redo: [] }; S.ui.sel.clear(); S.ui.frame = keys()[0]?.frame || 0;
   $("tl-fps").value = S.doc.editor.fps; renderAll();
 }
-function download(name, text) {
+function download(name, text) { downloadBlob(name, new Blob([text], { type: "application/json" })); }
+function downloadBlob(name, blob) {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  a.href = URL.createObjectURL(blob);
   a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+// Every frame from the first to the last keyframe, as the robot will paint it.
+function framesForExport() {
+  const ks = keys();
+  if (ks.length < 2 || !Object.keys(S.gen.frames).length) { toast("Create in-betweens first."); return null; }
+  if (S.gen.stale) { toast("In-betweens are out of date. Create In-betweens again before exporting."); return null; }
+  const frames = [];
+  for (let f = ks[0].frame; f <= ks[ks.length - 1].frame; f++) {
+    const c = content(f), e = editAt(f);
+    frames.push({ frame: f, kind: c.mode === "key" ? "key" : "inbetween",
+                  locked: c.mode === "key" ? c.strokes.map((s) => s.id) : (e ? e.strokes.map((s) => s.id) : []),
+                  strokes: [...c.strokes].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)) });
+  }
+  return { format: "frida-inbetween-frames", version: 1, method: S.gen.method, cache_dir: S.cfg.cache_dir, frames };
 }
 $("fileinput").addEventListener("change", async (e) => {
   const file = e.target.files[0]; e.target.value = "";

@@ -30,16 +30,27 @@ from .interpolate import interpolate
 from .metrics import popping
 from .refine import RefineConfig, refine
 from .render import RESPONSES, Renderer
-from .strokes import Stroke, frames_to_dict, sequence_from_dict
+from .strokes import Stroke, frames_from_dict, frames_to_dict, sequence_from_dict
 
 EDITOR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "editor")
 MAX_BODY = 20 * 1024 * 1024
 
 
+def default_materials(ink: bool) -> str:
+    """The materials JSON FRIDA would use for this setup, relative to src/."""
+    for name in (["../materials_vae_sharpie.json", "../materials_ink.json"] if ink else
+                 ["../materials_xarm_paint.json"]) + ["../materials.json"]:
+        if os.path.exists(name):
+            return name
+    return "../materials.json"
+
+
 class State:
-    def __init__(self, cache_dir: str, response: str, ink: bool):
+    def __init__(self, cache_dir: str, response: str, ink: bool, materials_json: str = None):
         self.cache_dir = cache_dir
         self.ink = ink
+        self.materials_json = materials_json or default_materials(ink)
+        self._frida_opt = None
         self.lock = threading.Lock()
         self.renderers = {}
         self.response = response
@@ -49,6 +60,16 @@ class State:
         if key not in self.renderers:
             self.renderers[key] = Renderer(self.cache_dir, render_height=height, response=key[0])
         return self.renderers[key]
+
+    def frida_opt(self):
+        """FRIDA Options for building plans (loaded on first use)."""
+        if self._frida_opt is None:
+            from .export_plans import frida_options
+            if not os.path.exists(self.materials_json):
+                raise FileNotFoundError(f"FRIDA materials file not found: {self.materials_json}. "
+                                        "Restart the editor with --materials_json <file>.")
+            self._frida_opt = frida_options(self.cache_dir, self.materials_json, self.ink)
+        return self._frida_opt
 
     def config(self) -> dict:
         r = self.renderer()
@@ -109,6 +130,12 @@ def make_handler(state: State):
                     out = self.route(req)
                 if out is None:
                     return self._json(404, {"error": "unknown endpoint"})
+                if isinstance(out, bytes):  # a file download (zip)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/zip")
+                    self.send_header("Content-Length", str(len(out)))
+                    self.end_headers()
+                    return self.wfile.write(out)
                 return self._json(200, out)
             except Exception as e:  # report errors to the editor instead of dropping the connection
                 traceback.print_exc()
@@ -133,6 +160,10 @@ def make_handler(state: State):
                     frames, _ = refine(seq, frames, r, RefineConfig(verbose=False), ink=state.ink)
                 summary = popping(seq, frames, r)["summary_mean_over_strokes"]
                 return {**frames_to_dict(frames, {"method": method}), "metrics": summary}
+            if self.path == "/api/export_plans":
+                from .export_plans import plans_zip
+                frames = frames_from_dict(req["frames"])
+                return plans_zip(frames, state.frida_opt(), json.dumps(req["frames"], indent=1))
             if self.path == "/api/render":
                 r = state.renderer(req.get("response"), int(req.get("height", 384)))
                 strokes = [Stroke.from_dict(d) for d in req.get("strokes", [])]
@@ -156,11 +187,14 @@ def main(argv=None):
     ap.add_argument("--cache_dir", default="caches/vae_sharpie_final")
     ap.add_argument("--response", choices=RESPONSES, default="model")
     ap.add_argument("--paint", action="store_true", help="paint setup instead of ink/marker")
+    ap.add_argument("--materials_json", default=None,
+                    help="FRIDA materials file for File > Export FRIDA Plans "
+                         "(default: ../materials_vae_sharpie.json for ink, ../materials_xarm_paint.json for paint)")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no_browser", action="store_true")
     args = ap.parse_args(argv)
 
-    state = State(args.cache_dir, args.response, ink=not args.paint)
+    state = State(args.cache_dir, args.response, ink=not args.paint, materials_json=args.materials_json)
     state.config()  # load the model once up front so errors show immediately
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(state))
     url = f"http://localhost:{args.port}/"
