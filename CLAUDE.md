@@ -41,6 +41,8 @@ Ours, `src/inbetween/` (see its README.md; run commands from `src/`):
 - `metrics.py`: width deviation from even change ("popping"), per stroke.
 - `cli.py`: `python -m inbetween.cli <keys.json> --out <dir> --compare`.
 - `paint_frames.py`: robot paints each frame exactly as planned, one sheet per frame.
+- `export_plans.py`: each frame -> FRIDA plan pickle `(Painting, palette)` + preview PNG (works
+  without a GPU by keeping the stroke model on the CPU).
 - `fit.py`: freehand mark + stylus pressure -> robot stroke (pressure mapped to visible width).
   `fit_mark` splits a mark one stroke can't follow within 1 mm at its sharpest turns (up to 8
   connected pieces); the editor links each traced piece to its nearest ghost.

@@ -54,6 +54,11 @@ python -m inbetween.paint_frames --frames ../out/bend/frames_refined.json \
     --photo_dir ../out/bend/photos --cache_dir caches/vae_sharpie_final \
     --materials_json ../materials_vae_sharpie.json --robot xarm --ink
 
+# 4. (optional) export each frame as a FRIDA plan, the pickle paint.py uses
+python -m inbetween.export_plans --frames ../out/bend/frames_refined.json \
+    --out ../out/bend/plans --cache_dir caches/vae_sharpie_final \
+    --materials_json ../materials_vae_sharpie.json --ink
+
 # tests
 python -m pytest -q inbetween/tests
 ```
@@ -61,6 +66,12 @@ python -m pytest -q inbetween/tests
 `--out` gets: `frames_<method>.json` (stroke plans for the robot),
 `<method>.gif` and per-frame PNGs, `compare.gif` (methods side by side),
 `width_plot.png` and `metrics.json`.
+
+`frames_<method>.json` is the plan for the whole animation and is what
+`paint_frames.py` paints. `export_plans.py` turns it into one FRIDA plan per
+frame for FRIDA's own tools. `paint.py --painting_path` can load one, but it
+re-optimizes strokes toward its objective between batches, which changes the
+frame; use `paint_frames.py` to paint frames exactly as planned.
 
 ## Pipeline
 
@@ -72,6 +83,7 @@ python -m pytest -q inbetween/tests
 | Refinement | `refine.py` | Adjusts pressure so painted width changes evenly between fixed frames |
 | Measurement | `metrics.py` | Width deviation from an even change ("popping"), per stroke |
 | Robot | `paint_frames.py` | Paints each frame exactly as planned, no re-planning |
+| FRIDA plans | `export_plans.py` | Writes each frame as `frame_NNN.pkl` = `(Painting, palette)`, FRIDA's own plan format, plus a preview PNG |
 | Drawing input | `fit.py` | Fits a freehand mark + stylus pressure to a robot stroke |
 | Editor | `app.py`, `editor/` | Local server + browser editor; `editor/geometry.js` mirrors FRIDA's stroke path math |
 

@@ -146,3 +146,29 @@ def test_complex_mark_is_split(r):
     for a, b in zip(ends, ends[1:]):
         gap = (a[-1] - b[0]).abs().max()
         assert float(gap) < 0.01  # proportions of the canvas
+
+
+def test_export_frida_plans(r, seq, tmp_path):
+    """Each frame becomes a FRIDA plan (Painting, palette) whose strokes pop in painting order."""
+    import pickle
+    import subprocess
+    import sys
+    from inbetween.strokes import save_frames
+    frames = interpolate(seq, "arc", r)
+    fjson = tmp_path / "frames.json"
+    save_frames(str(fjson), frames)
+    src = os.path.join(HERE, "..", "..")
+    res = subprocess.run([sys.executable, "-m", "inbetween.export_plans", "--frames", str(fjson),
+                          "--out", str(tmp_path / "plans"), "--only", "0,5",
+                          "--cache_dir", "caches/vae_sharpie_final",
+                          "--materials_json", "../materials_vae_sharpie.json", "--ink"],
+                         cwd=src, capture_output=True, text=True)
+    if res.returncode != 0 and "materials" in res.stderr.lower():
+        pytest.skip("FRIDA materials JSON not available")
+    assert res.returncode == 0, res.stderr[-2000:]
+    painting, palette = pickle.load(open(tmp_path / "plans" / "frame_005.pkl", "rb"))
+    planned = next(f for f in frames if f.frame == 5).ordered()
+    assert len(painting) == len(planned)
+    first = painting.pop()
+    assert abs(float(first.xt.detach()) - planned[0].xt) < 1e-5
+    assert (tmp_path / "plans" / "frame_000.png").exists()
