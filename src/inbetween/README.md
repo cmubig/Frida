@@ -59,6 +59,9 @@ python -m inbetween.export_plans --frames ../out/bend/frames_refined.json \
     --out ../out/bend/plans --cache_dir caches/vae_sharpie_final \
     --materials_json ../materials_vae_sharpie.json --ink
 
+# 5. (optional) convert an animator's finished PNG frames into robot strokes
+python -m inbetween.import_frames "path/to/Jump/*.png" --out ../out/jump
+
 # tests
 python -m pytest -q inbetween/tests
 ```
@@ -85,6 +88,7 @@ frame; use `paint_frames.py` to paint frames exactly as planned.
 | Robot | `paint_frames.py` | Paints each frame exactly as planned, no re-planning |
 | FRIDA plans | `export_plans.py` | Writes each frame as `frame_NNN.pkl` = `(Painting, palette)`, FRIDA's own plan format, plus a preview PNG |
 | Drawing input | `fit.py` | Fits a freehand mark + stylus pressure to a robot stroke |
+| Raster import | `import_frames.py` | Traces finished PNG frames (line centers -> polylines -> `fit_mark`); static lines become one background |
 | Editor | `app.py`, `editor/` | Local server + browser editor; `editor/geometry.js` mirrors FRIDA's stroke path math |
 
 ### How refinement works

@@ -25,7 +25,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import torch
 
-from .fit import fit_mark, fit_stroke, visible_z_min
+from .fit import fit_mark, fit_stroke, min_line_z, visible_z_min
 from .interpolate import interpolate
 from .metrics import popping
 from .refine import RefineConfig, refine
@@ -64,6 +64,7 @@ class State:
             "min_stroke_z": r.settings.MIN_STROKE_Z,
             "max_stroke_length_m": r.settings.MAX_STROKE_LENGTH,
             "visible_z_min": visible_z_min(r),
+            "line_z_min": min_line_z(r),
             "x_m": float(m.x_m), "y_m": float(m.y_m), "x_b": float(m.x_b), "y_b": float(m.y_b),
             "thick_mult": float(m.renderer.thick_mult), "thick_bias": float(m.renderer.thick_bias),
             "dark_exp": float(m.renderer.dark_exp),

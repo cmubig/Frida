@@ -6,10 +6,11 @@ roundness values and 4 pressure values, so the fit finds the stroke whose
 path is closest to the drawing. A mark too complex for one stroke (a loop, a
 zigzag, a long scribble) is split into several strokes by fit_mark.
 
-Pressure is mapped to *visible width*, not straight to the robot's z: light
-stylus pressure maps to the lightest pressure that still leaves a mark, so a
-light touch never silently paints nothing (the calibrated Sharpie model
-paints nothing below z ~ 0.23).
+Pressure is mapped to *visible width*, not straight to the robot's z: the
+lightest stylus touch maps to the lightest pressure that paints a clearly
+visible line (about 0.4 mm, measured from the stroke model), so a light touch
+never silently paints nothing. The calibrated Sharpie model paints nothing
+below z ~ 0.23 and only a hairline just above it.
 """
 
 from __future__ import annotations
@@ -56,6 +57,40 @@ def visible_z_min(r: Renderer) -> float:
         mid = (lo + hi) / 2
         lo, hi = (mid, hi) if thick(mid) <= 0 else (lo, mid)
     return hi + 0.01
+
+
+_LINE_Z_CACHE = {}
+
+
+def painted_width_mm(r: Renderer, z: float, height: int = 1024) -> float:
+    """Width of a straight stroke at pressure z, as the stroke model paints it (mm)."""
+    from .strokes import Stroke
+    key = (id(r), "rhi", height)
+    if key not in _LINE_Z_CACHE:
+        _LINE_Z_CACHE[key] = Renderer(r.cache_dir, render_height=height, response=r.response)
+    rh = _LINE_Z_CACHE[key]
+    s = Stroke(id="w", vertices=[[0, 0], [0.01, 0], [0.02, 0], [0.03, 0]], kappa=[0.5, 0.5],
+               z=[z] * 4, xt=0.4, yt=0.5, a=0.0, order=0, color=[0, 0, 0])
+    img = rh.render_frame([s]).mean(-1)
+    col = img[:, int(rh.W * 0.4) + int(0.015 / rh.settings.CANVAS_WIDTH_M * rh.W)]
+    return float((1 - col).sum()) * rh.settings.CANVAS_HEIGHT_M * 1000 / rh.H
+
+
+def min_line_z(r: Renderer, width_mm: float = 0.4) -> float:
+    """Lightest pressure that paints a clearly visible line (about width_mm wide).
+    visible_z_min is where the mark *starts*, which is a line of almost no width;
+    stylus pressure 0 maps here instead, so the lightest touch still shows."""
+    key = (id(r), "line", width_mm)
+    if key not in _LINE_Z_CACHE:
+        # Painted width is linear in z above the threshold: two measurements fix the line.
+        za, zb = 0.6, 0.95
+        wa, wb = painted_width_mm(r, za), painted_width_mm(r, zb)
+        if wb <= width_mm or wb <= wa:
+            z = zb
+        else:
+            z = za + (width_mm - wa) * (zb - za) / (wb - wa)
+        _LINE_Z_CACHE[key] = round(min(max(z, visible_z_min(r)), zb), 4)
+    return _LINE_Z_CACHE[key]
 
 
 def pressure_to_z(p: torch.Tensor, z_lo: float, z_hi: float = 0.95) -> torch.Tensor:
@@ -113,7 +148,7 @@ def fit_stroke(points: Sequence[Sequence[float]], pressure: Sequence[float], r: 
     # Pressure: 4 values sampled from the stylus pressure along the stroke.
     pres64 = _resample(torch.cat([local, pr.unsqueeze(1)], 1), 64)[0][:, 2]
     p4 = torch.stack([pres64[int(round(i * 63 / 3))] for i in range(4)])
-    z = pressure_to_z(p4, visible_z_min(r))
+    z = pressure_to_z(p4, min_line_z(r))
 
     s = Stroke(
         id="",

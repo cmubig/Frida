@@ -172,3 +172,27 @@ def test_export_frida_plans(r, seq, tmp_path):
     first = painting.pop()
     assert abs(float(first.xt.detach()) - planned[0].xt) < 1e-5
     assert (tmp_path / "plans" / "frame_000.png").exists()
+
+
+def test_import_raster_frames(tmp_path):
+    """Two drawings sharing a static ground line: the ground becomes one background
+    stroke set, each drawing's own line is traced and fitted closely."""
+    import json
+    from PIL import Image, ImageDraw
+    from inbetween.import_frames import main as import_main
+    for i, x in enumerate([200, 200, 260]):  # frames 0 and 1 identical (a hold)
+        im = Image.new("RGB", (640, 360), "white")
+        d = ImageDraw.Draw(im)
+        d.line([(20, 300), (620, 300)], fill="black", width=3)              # static ground
+        d.line([(x, 280), (x + 40, 200), (x + 80, 280)], fill="black", width=3)  # moving figure
+        im.save(tmp_path / f"f_{i:03d}.png")
+    out = tmp_path / "out"
+    import_main([str(tmp_path / "f_*.png"), "--out", str(out), "--cache_dir", CACHE])
+    rep = json.load(open(out / "report.json"))
+    assert [d["hold"] for d in rep["drawings"]] == [2, 1]
+    assert rep["background"]["strokes"] >= 1
+    assert all(1 <= d["strokes"] <= 4 for d in rep["drawings"])
+    assert rep["total"]["err_mm_max"] < 1.0
+    keys = json.load(open(out / "drawings.json"))["keys"]
+    assert [k["frame"] for k in keys] == [0, 2]
+    assert (out / "compare" / "drawing_02.png").exists()

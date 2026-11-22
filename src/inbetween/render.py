@@ -54,6 +54,7 @@ class Renderer:
         if response not in RESPONSES:
             raise ValueError(f"response must be one of {RESPONSES}")
         self.settings = load_settings(cache_dir)
+        self.cache_dir = cache_dir
         self.response = response
         self.device = device
         dims = (self.settings.CANVAS_HEIGHT_M, self.settings.CANVAS_WIDTH_M)
@@ -96,17 +97,21 @@ class Renderer:
         return self.model(paths, xts, yts, th, grid=grid)
 
     # -- convenience ----------------------------------------------------------
-    def render_frame(self, strokes: Iterable[Stroke]) -> torch.Tensor:
-        """Composite strokes over white paper in painting order -> (H, W, 3) in 0..1."""
+    def render_frame(self, strokes: Iterable[Stroke], chunk: int = 8) -> torch.Tensor:
+        """Composite strokes over white paper in painting order -> (H, W, 3) in 0..1.
+        Strokes are rendered `chunk` at a time, so memory stays flat for frames
+        with hundreds of strokes."""
         strokes = sorted(strokes, key=lambda s: (s.order, s.id))
         canvas = torch.ones(3, self.H, self.W, device=self.device)
         if not strokes:
             return canvas.permute(1, 2, 0)
         with torch.no_grad():
-            maps = self.render_params([stroke_tensors(s, self.device) for s in strokes])
-            for s, m in zip(strokes, maps):
-                c = torch.tensor(s.color, device=self.device)[:, None, None]
-                canvas = canvas * (1 - m) + m * c
+            for i in range(0, len(strokes), chunk):
+                part = strokes[i:i + chunk]
+                maps = self.render_params([stroke_tensors(s, self.device) for s in part])
+                for s, m in zip(part, maps):
+                    c = torch.tensor(s.color, device=self.device)[:, None, None]
+                    canvas = canvas * (1 - m) + m * c
         return canvas.permute(1, 2, 0).clamp(0, 1)
 
     def to_metric(self, prop_yx: torch.Tensor) -> torch.Tensor:

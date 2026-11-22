@@ -46,6 +46,11 @@ Ours, `src/inbetween/` (see its README.md; run commands from `src/`):
 - `fit.py`: freehand mark + stylus pressure -> robot stroke (pressure mapped to visible width).
   `fit_mark` splits a mark one stroke can't follow within 1 mm at its sharpest turns (up to 8
   connected pieces); the editor links each traced piece to its nearest ghost.
+  Stylus pressure 0 maps to `min_line_z` (lightest pressure painting a ~0.4 mm line, measured
+  from the stroke model), not `visible_z_min` (where the mark starts: a near-zero hairline).
+- `import_frames.py`: animator's raster frames (PNG) -> robot strokes: skeletonize lines, trace
+  polylines, `fit_mark`; lines in every drawing -> background; holds detected; gray fills only
+  reported. Strokes are not matched across drawings.
 - `app.py` + `editor/`: local server and Animate/Flare-style browser editor
   (`python -m inbetween.app`). F6 = copy keyframe and reshape; F7 = blank keyframe, trace over
   onion skin (traced stroke replaces its ghost; Alt+click picks the ghost). `editor/geometry.js`

@@ -321,7 +321,8 @@ function drawLive(pts, pending) {
   }
   ctx.restore();
 }
-const pressureToZ = (p) => S.cfg.visible_z_min + (0.95 - S.cfg.visible_z_min) * clamp(p, 0, 1);
+// Lightest touch = lightest clearly visible line (matches fit.py's pressure_to_z).
+const pressureToZ = (p) => (S.cfg.line_z_min ?? S.cfg.visible_z_min) + (0.95 - (S.cfg.line_z_min ?? S.cfg.visible_z_min)) * clamp(p, 0, 1);
 
 // Exact stroke-model render from the server, cached per drawing.
 let previewTimer = null;
