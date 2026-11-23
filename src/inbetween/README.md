@@ -9,6 +9,9 @@ All commands run from `src/`.
 
 ## Editor (for animators)
 
+**Illustrated guide for animators: [docs/guide.md](docs/guide.md)** (one page per
+workflow, screenshots from the real editor, shortcuts, robot limits).
+
 ```bash
 python -m inbetween.app        # opens the editor at http://localhost:8765
 ```
