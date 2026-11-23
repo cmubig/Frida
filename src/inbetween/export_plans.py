@@ -53,10 +53,13 @@ def main():
 
     from .strokes import load_frames, stroke_tensors
 
-    if not torch.cuda.is_available():
-        # FRIDA's Painting always puts its stroke model on the GPU; keep it on the CPU here.
-        _get = painting_module.get_param2img
-        painting_module.get_param2img = lambda o, device="cpu": _get(o, device="cpu")
+    # FRIDA's Painting puts its stroke model on the GPU when there is one, but the strokes
+    # below are built on the CPU (so the pickles load on any machine). Keep the model on the
+    # CPU too, with or without a GPU, or rendering the preview mixes devices.
+    # Painting.forward also makes its blank canvas on the module-level `device`.
+    _get = painting_module.get_param2img
+    painting_module.get_param2img = lambda o, device="cpu": _get(o, device="cpu")
+    painting_module.device = torch.device("cpu")
 
     opt = Options()
     opt.gather_options()
