@@ -460,6 +460,17 @@ function splitPathsAt(f) {
   }
   S.doc.paths = out;
 }
+// A new keyframe at f splits the span it lands in: the path splits where the anchor had
+// reached (using the old span's ease), then both new spans keep that ease, as in Animate.
+function splitSpanAt(f) {
+  splitPathsAt(f);
+  const p = prevKey(f), n = nextKey(f);
+  if (!p || !n || keyAt(f)) return;
+  const old = `${p.frame}-${n.frame}`, ease = S.doc.timing[old];
+  if (ease === undefined) return;
+  delete S.doc.timing[old];
+  S.doc.timing[`${p.frame}-${f}`] = ease; S.doc.timing[`${f}-${n.frame}`] = ease;
+}
 function dropPathsAt(f) { // a keyframe at either end was cleared
   const n = S.doc.paths.length;
   S.doc.paths = S.doc.paths.filter((p) => !spanOf(p).includes(f));
@@ -933,7 +944,7 @@ const cmds = {
   insertKeyframe() { // F6: copy what is on this frame (in-between included), ids preserved
     const f = S.ui.frame; if (keyAt(f)) return toast("Already a keyframe.");
     pushUndo(); const c = content(f);
-    splitPathsAt(f);
+    splitSpanAt(f);
     S.doc.keys.push({ frame: f, strokes: clone(c.strokes) });
     S.doc.edits = S.doc.edits.filter((e) => e.frame !== f);
     sortKeys(); grow(f); changed(); renderAll();
@@ -941,7 +952,7 @@ const cmds = {
   },
   insertBlankKeyframe() { // F7: empty keyframe, trace over the onion skin
     const f = S.ui.frame; if (keyAt(f)) return toast("Already a keyframe.");
-    pushUndo(); splitPathsAt(f); S.doc.keys.push({ frame: f, strokes: [] });
+    pushUndo(); splitSpanAt(f); S.doc.keys.push({ frame: f, strokes: [] });
     S.doc.edits = S.doc.edits.filter((e) => e.frame !== f);
     sortKeys(); grow(f); S.ui.onion = true; S.ui.tool = "brush"; changed(); renderAll();
     toast("Blank keyframe: redraw strokes over their ghosts. Each traced stroke replaces its ghost.");

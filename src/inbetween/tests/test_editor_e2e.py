@@ -450,3 +450,58 @@ def test_motion_path(server, tmp_path):
         assert "Removed 1 motion path" in pg.locator("#toast").inner_text()
         assert errors == []
         browser.close()
+
+
+def test_new_keyframe_keeps_span_ease(server):
+    """F6 / F7 inside a span split it; both halves keep its ease, for timing and motion paths."""
+    with playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg = browser.new_page(viewport={"width": 1440, "height": 900})
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(server)
+        pg.wait_for_function("S.cfg && S.doc")
+        st = pg.locator("#canvas").bounding_box()
+
+        def scr(px, py):
+            v = pg.evaluate("[S.view.ox, S.view.oy, S.view.scale, S.cfg.canvas_width_m/S.cfg.canvas_height_m]")
+            return st["x"] + v[0] + px * v[2] * v[3], st["y"] + v[1] + py * v[2]
+
+        def drag(pts):
+            pg.mouse.move(*scr(*pts[0]))
+            pg.mouse.down()
+            for q in pts[1:]:
+                pg.mouse.move(*scr(*q), steps=2)
+            pg.mouse.up()
+            pg.wait_for_function("!pendingFit", timeout=30000)
+
+        drag([(0.2 + 0.01 * i, 0.6) for i in range(11)])
+        pg.evaluate("goto(8)")
+        pg.keyboard.press("F6")
+        pg.evaluate("pushUndo(); keyAt(8).strokes[0].xt += 0.4; changed(); renderAll();")
+        pg.evaluate("goto(0)")
+        pg.keyboard.press("m")
+        pg.keyboard.press("Control+a")
+        drag([(0.25 + 0.4 * i / 20, 0.6 - 0.3 * (1 - (2 * i / 20 - 1) ** 2)) for i in range(21)])
+        pg.evaluate("goto(3)")  # set the ease in Properties, as the animator would
+        pg.select_option('[data-p="ease"]', "ease_in")
+        assert pg.evaluate("S.doc.timing") == {"0-8": "ease_in"}
+        reached = pg.evaluate("pointAt(fittedPath(S.doc.paths[0]), easedT(0, 8, 4))")
+        for key in ("F6", "F7"):
+            pg.evaluate("goto(4)")
+            pg.keyboard.press(key)
+            assert pg.evaluate("S.doc.timing") == {"0-4": "ease_in", "4-8": "ease_in"}, key
+            assert pg.evaluate("S.doc.paths.map(p => p.span)") == ["0-4", "4-8"]
+            end = pg.evaluate("S.doc.paths[0].points.at(-1)")  # split with the old span's ease
+            assert math.hypot(end[0] - reached[0], end[1] - reached[1]) < 1e-9
+            pg.keyboard.press("Control+z")
+            assert pg.evaluate("S.doc.timing") == {"0-8": "ease_in"}
+        pg.evaluate("delete S.doc.timing['0-8']")  # a span with the default ease stays default
+        pg.evaluate("goto(4)")
+        pg.keyboard.press("F6")
+        assert pg.evaluate("S.doc.timing") == {}
+        assert errors == []
+        browser.close()

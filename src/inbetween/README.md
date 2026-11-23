@@ -32,7 +32,8 @@ shortcuts (press `?` in the editor for the full list).
   in Properties fixes a wrong link.
 - **Create In-betweens (Ctrl+Enter)** runs the pipeline (Refined, Arc or
   Linear). **Ease** is set per span in Properties; **F5 / Shift+F5** add or
-  remove frames to change timing, as in Animate.
+  remove frames to change timing, as in Animate. A keyframe inserted inside a
+  span (F6 / F7) splits it, and both halves keep its ease.
 - Changing a stroke on an in-between **pins** it (orange diamond); the next
   Create In-betweens keeps it and re-flows the neighbors. Delete unpins.
 - **Motion Path (M)**, as in After Effects: click the strokes to move (Shift
