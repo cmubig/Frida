@@ -58,8 +58,13 @@ Ours, `src/inbetween/` (see its README.md; run commands from `src/`):
   renders on the CPU, GPU or not, so the pickles load anywhere). Also the editor's File > Export
   FRIDA Plans (`/api/export_plans`, a .zip; app.py's `--materials_json` picks the materials file).
 - `fit.py`: freehand mark + stylus pressure -> robot stroke (pressure mapped to visible width).
-  `fit_mark` splits a mark one stroke can't follow within 1 mm at its sharpest turns (up to 8
-  connected pieces); the editor links each traced piece to its nearest ghost.
+  Fit error (`fit_error_mm`, reported to the editor and used to split) = largest distance both
+  ways, mark -> stroke and stroke -> mark, to segments: a stroke that stops short is a bad fit
+  (the old one-way mean missed ends up to 73 mm short). Before giving up on one stroke, a short
+  soft-max "polish" pass runs (only when the error is over the limit). `fit_mark` first splits
+  any mark beyond one stroke's reach (`REACH_M` = 0.15 m from the start, the vertex clamp), then
+  any mark it can't fit within 1 mm, at its sharpest turns (up to 8 connected pieces); the
+  editor links each traced piece to its nearest ghost.
   Stylus pressure 0 maps to `min_line_z` (lightest pressure painting a ~0.4 mm line, measured
   from the stroke model), not `visible_z_min` (where the mark starts: a near-zero hairline).
 - `import_frames.py`: animator's raster frames (PNG) -> robot strokes: skeletonize lines, trace

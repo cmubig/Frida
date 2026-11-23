@@ -148,6 +148,54 @@ def test_complex_mark_is_split(r):
         assert float(gap) < 0.01  # proportions of the canvas
 
 
+def _coverage_mm(r, mark, strokes):
+    """Independent of fit.py: (mark -> nearest painted stroke point, worst stroke point ->
+    nearest mark point), largest distances in mm, measured to segments on the canvas."""
+    def metric(pts):  # canvas proportions (x, y) -> meters
+        t = torch.as_tensor(pts, dtype=torch.float32)
+        return torch.stack([t[:, 0] * r.settings.CANVAS_WIDTH_M, t[:, 1] * r.settings.CANVAS_HEIGHT_M], 1)
+
+    def dist(P, Q):
+        A, B = Q[:-1], Q[1:]
+        AB = B - A
+        t = (((P[:, None] - A) * AB).sum(-1) / (AB * AB).sum(-1).clamp_min(1e-18)).clamp(0, 1)
+        return (P[:, None] - (A + t[..., None] * AB)).norm(dim=-1).min(dim=1).values
+
+    M = metric(mark)
+    with torch.no_grad():
+        paths = [metric(r.path_canvas(stroke_tensors(s)).flip(-1)) for s in strokes]
+    to_strokes = torch.stack([dist(M, p) for p in paths]).min(0).values.max()
+    off_mark = max(float(dist(p, M).max()) for p in paths)
+    return float(to_strokes) * 1000, off_mark * 1000
+
+
+def test_fit_error_counts_a_stroke_that_stops_short():
+    from inbetween.fit import fit_error_mm
+    mark = torch.stack([torch.linspace(0, 0.1, 50), torch.zeros(50)], 1)  # 100 mm, meters
+    short = mark[:45]  # a "stroke" that stops 10.2 mm short (ends at 44/49 of 100 mm)
+    assert abs(fit_error_mm(short, mark) - 100 * 5 / 49) < 1e-3
+    assert fit_error_mm(mark, mark) < 1e-6
+
+
+def test_long_mark_is_split_and_covered(r):
+    """A 210 mm straight line is longer than one stroke can reach (15 cm): it is split,
+    and the strokes cover its whole length within 1 mm (it used to come out 73 mm short)."""
+    from inbetween.fit import fit_mark
+    w = r.settings.CANVAS_WIDTH_M
+    line = [[0.08 + 0.21 / w * i / 60, 0.6] for i in range(61)]
+    pieces = fit_mark(line, [0.5] * len(line), r)
+    assert len(pieces) >= 2
+    to_strokes, off_mark = _coverage_mm(r, line, [s for s, _ in pieces])
+    assert to_strokes < 1.0 and off_mark < 1.0, (to_strokes, off_mark)
+    assert max(e for _, e in pieces) < 1.0  # the reported error agrees
+    # short marks are still one stroke, and fit within 1 mm both ways
+    for mark in ([[0.3 + 0.16 * i / 30, 0.5] for i in range(31)],  # 40 mm line
+                 [[0.4 + 0.08 * math.cos(math.pi * i / 39), 0.5 - 0.1 * math.sin(math.pi * i / 39)] for i in range(40)]):
+        pieces = fit_mark(mark, [0.5] * len(mark), r)
+        assert len(pieces) == 1
+        assert max(_coverage_mm(r, mark, [pieces[0][0]])) < 1.0
+
+
 def test_export_frida_plans(r, seq, tmp_path):
     """Each frame becomes a FRIDA plan (Painting, palette) whose strokes pop in painting order."""
     import pickle

@@ -219,9 +219,11 @@ the IDs carry over.
   extra keyframe). Fitting the partial strokes takes about 0.25 s per stroke
   per frame in Create In-betweens.
 - `paint_frames.py` was only dry-run in `--simulate` mode, not on hardware.
-- A robot stroke has only 4 corners. A drawn mark that one stroke can't follow
-  within 1 mm (a loop, a zigzag, a long scribble) is split automatically into
-  up to 8 connected strokes, cut at its sharpest turns. When tracing, each
+- A robot stroke has only 4 corners and reaches at most 15 cm from its start
+  (in x and in y). A drawn mark that goes further is always split; a mark that
+  one stroke can't follow within 1 mm, measured both ways at the worst point (a
+  loop, a zigzag, a stroke that would stop short of the mark's end), is split
+  too, into up to 8 connected strokes cut at its sharpest turns. When tracing, each
   piece links to its nearest ghost. Pressure detail inside one piece is kept
   only at 4 points.
 - The editor was tested with a mouse in a browser, not yet with a real stylus.

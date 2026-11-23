@@ -37,6 +37,39 @@ def _resample(pts: torch.Tensor, n: int) -> Tuple[torch.Tensor, torch.Tensor]:
     return pts[idx - 1] * (1 - w) + pts[idx] * w, frac
 
 
+# A stroke's corner points stay within this distance of its start, in x and in y
+# (BrushStroke.make_valid clamps vertices to +-0.15 m), so a mark that goes further
+# can't be one stroke.
+REACH_M = 0.15
+REACH_MARGIN_M = 0.005
+
+
+def _point_to_polyline(P: torch.Tensor, Q: torch.Tensor) -> torch.Tensor:
+    """Distance from each point of P (N, 2) to the polyline Q (M, 2) (segments, not just vertices)."""
+    if len(Q) == 1:
+        return (P - Q[0]).norm(dim=1)
+    A, B = Q[:-1], Q[1:]
+    AB = B - A
+    t = (((P[:, None] - A) * AB).sum(-1) / (AB * AB).sum(-1).clamp_min(1e-18)).clamp(0, 1)
+    return (P[:, None] - (A + t[..., None] * AB)).norm(dim=-1).min(dim=1).values
+
+
+def fit_error_mm(path: torch.Tensor, mark: torch.Tensor) -> float:
+    """Fit error both ways, in mm: the worse of (mark -> nearest stroke point) and
+    (stroke -> nearest mark point), largest distance. A stroke that stops short of the
+    mark, or overshoots it, counts as a bad fit. Both in meters (M, 2)."""
+    with torch.no_grad():
+        return 1000 * max(float(_point_to_polyline(mark, path).max()), float(_point_to_polyline(path, mark).max()))
+
+
+def beyond_reach(points: Sequence[Sequence[float]], r: Renderer) -> bool:
+    """True if a drawn mark (canvas proportions) goes further from its start than one stroke can reach."""
+    P = torch.tensor(points, dtype=torch.float32).reshape(-1, 2)
+    m = r.model
+    d = torch.stack([(P[:, 0] - P[0, 0]) / float(m.x_m), (P[:, 1] - P[0, 1]) / float(m.y_m)], 1).abs()
+    return float(d.max()) > REACH_M - REACH_MARGIN_M
+
+
 def visible_z_min(r: Renderer) -> float:
     """Lightest pressure z that still leaves a mark under this stroke model."""
     mult = float(r.model.renderer.thick_mult)
@@ -99,8 +132,12 @@ def pressure_to_z(p: torch.Tensor, z_lo: float, z_hi: float = 0.95) -> torch.Ten
 
 
 def fit_stroke(points: Sequence[Sequence[float]], pressure: Sequence[float], r: Renderer,
-               iters: int = 80, color=(0.05, 0.05, 0.05)) -> Tuple[Stroke, float]:
-    """Return the fitted stroke (id left empty) and the mean fit error in mm."""
+               iters: int = 80, color=(0.05, 0.05, 0.05), polish_above_mm: float = 1.0,
+               polish_iters: int = 150) -> Tuple[Stroke, float]:
+    """Return the fitted stroke (id left empty) and its fit error in mm (fit_error_mm:
+    largest distance, both ways). If that error is above polish_above_mm after the
+    normal fit, a short extra pass works on the largest distances (ends included)
+    before giving up; simple marks don't need it and pay nothing extra."""
     P = torch.tensor(points, dtype=torch.float32).reshape(-1, 2)  # proportions (x, y)
     pr = torch.tensor(pressure, dtype=torch.float32).reshape(-1)
     if len(pr) != len(P):
@@ -138,12 +175,42 @@ def fit_stroke(points: Sequence[Sequence[float]], pressure: Sequence[float], r: 
         loss.backward()
         opt.step()
         with torch.no_grad():
-            vertices.clamp_(-0.15, 0.15)
+            vertices.clamp_(-REACH_M, REACH_M)
             radii.clamp_(-8, 8)
 
+    mark = local if length >= 1e-4 else target  # the drawn polyline, stroke-local meters
     with torch.no_grad():
         path = stroke_path(vertices, radii, zfix, r.settings.MIN_STROKE_Z)[:, :2]
-        err_mm = float(torch.cdist(path, target).min(dim=1).values.mean()) * 1000
+    err_mm = fit_error_mm(path, mark)
+
+    if err_mm > polish_above_mm and polish_iters > 0:
+        # Polish: a soft maximum of the distances both ways, so the worst points (often
+        # a stroke end that stops short) pull hardest. Small steps; stops as soon as the
+        # fit is good enough; keeps the best stroke seen.
+        best = (err_mm, vertices.detach().clone(), radii.detach().clone())
+        opt = torch.optim.Adam([{"params": [vertices], "lr": 1e-4}, {"params": [radii], "lr": 2e-2}])
+        dense = _resample(mark, 128)[0]
+        for i in range(polish_iters):
+            opt.zero_grad()
+            path = stroke_path(vertices, radii, zfix, r.settings.MIN_STROKE_Z)[:, :2]
+            d = torch.cdist(path, dense)
+            both = torch.cat([d.min(dim=1).values, d.min(dim=0).values]) * 1000  # mm
+            loss = torch.logsumexp(both * 4, 0) / 4
+            loss.backward()
+            opt.step()
+            with torch.no_grad():
+                vertices.clamp_(-REACH_M, REACH_M)
+                radii.clamp_(-8, 8)
+            if i % 10 == 9:
+                with torch.no_grad():
+                    e = fit_error_mm(stroke_path(vertices, radii, zfix, r.settings.MIN_STROKE_Z)[:, :2], mark)
+                if e < best[0]:
+                    best = (e, vertices.detach().clone(), radii.detach().clone())
+                if e <= polish_above_mm:
+                    break
+        err_mm = best[0]
+        with torch.no_grad():
+            vertices.copy_(best[1]); radii.copy_(best[2])
 
     # Pressure: 4 values sampled from the stylus pressure along the stroke.
     pres64 = _resample(torch.cat([local, pr.unsqueeze(1)], 1), 64)[0][:, 2]
@@ -197,6 +264,9 @@ def fit_mark(points: Sequence[Sequence[float]], pressure: Sequence[float], r: Re
     """Fit a drawn mark to one robot stroke, or split it into several when one
     stroke cannot follow it within max_err_mm (a loop, a zigzag, a long scribble).
 
+    The error is fit_error_mm: largest distance both ways, so a stroke that stops
+    short of the mark is a bad fit. A mark that goes further from its start than one
+    stroke can reach (REACH_M) is always split first, without trying to fit it.
     Splits happen at the sharpest turn (else mid-length), recursively, until every
     piece fits, a piece would be shorter than min_piece_mm, or max_pieces is reached.
     Neighboring pieces share the cut point, so the painted mark stays connected.
@@ -215,13 +285,15 @@ def fit_mark(points: Sequence[Sequence[float]], pressure: Sequence[float], r: Re
     out: List[Tuple[Stroke, float]] = []
 
     def rec(pts, prs, budget):
-        s, err = fit_stroke(pts, prs, r, iters=iters, color=color)
-        if err <= max_err_mm or budget <= 1 or len(pts) < 5 or length_mm(pts) < 2 * min_piece_mm:
-            out.append((s, err))
-            return 1
+        too_far = beyond_reach(pts, r) and budget > 1 and len(pts) >= 3
+        if not too_far:
+            s, err = fit_stroke(pts, prs, r, iters=iters, color=color, polish_above_mm=max_err_mm)
+            if err <= max_err_mm or budget <= 1 or len(pts) < 5 or length_mm(pts) < 2 * min_piece_mm:
+                out.append((s, err))
+                return 1
         k = _split_index(torch.tensor(pts, dtype=torch.float32), r)
         left, right = pts[: k + 1], pts[k:]
-        if min(length_mm(left), length_mm(right)) < min_piece_mm:
+        if not too_far and min(length_mm(left), length_mm(right)) < min_piece_mm:
             out.append((s, err))
             return 1
         used = rec(left, prs[: k + 1], budget - 1)

@@ -314,18 +314,17 @@ Press **?** in the editor for this list.
 with rounded corners (Subselection shows them, page 1, step 5). That is enough
 for an arc, an S-curve or a hook, not for a loop or a zigzag.
 
-**Marks are split automatically.** A mark one stroke can't follow within 1 mm
-is cut into up to 8 connected strokes at its sharpest turns (page 1, step 2).
+**Marks are split automatically.** A mark one stroke can't follow within 1 mm,
+anywhere along it and right to its ends, is cut into up to 8 connected
+strokes at its sharpest turns (page 1, step 2).
 When tracing, each piece links to its nearest ghost. Pressure is kept at only 4
 points per piece.
 
 **One stroke reaches at most 15 cm.** A stroke can't reach more than 15 cm
-from where it starts. A longer mark is usually split, like this 21 cm line:
+from where it starts, so a longer mark is always split, like this 21 cm line.
+Nothing to do on your side: it is still painted as one connected line.
 
 ![A 21 cm line, split into 2 strokes](img/30-long-mark.png)
-
-but it can also come out **shorter than you drew it**. Check long lines after
-drawing them, and draw them as two marks if needed.
 
 **The lightest visible line.** A marker leaves no mark below a certain
 pressure (24% for this one). The lightest stylus touch is mapped to the
