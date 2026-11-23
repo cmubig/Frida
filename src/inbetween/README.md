@@ -36,6 +36,12 @@ shortcuts (press `?` in the editor for the full list).
 - Changing a stroke on an in-between **pins** it (orange diamond); the next
   Create In-betweens keeps it and re-flows the neighbors. Delete unpins.
 - **Paint Preview (P)** shows the stroke model's predicted painting.
+- **File > Import Reference Frames** loads the animator's own frames (a PNG
+  sequence, sorted by number, or a video) under the drawing, one image per
+  timeline frame, to trace over. **R** toggles it; the slider next to the
+  Reference button sets its opacity, and Properties can move where it starts.
+  It is placed exactly as `import_frames.py` places strokes, so converted
+  strokes line up with it. It is never saved, exported or painted.
 - **Ctrl+C / X / V** copy, cut and paste strokes (pasted strokes are new); **Ctrl+D** duplicates. **Ctrl+Shift+V** pastes in place and keeps a stroke's identity when the keyframe doesn't have it yet, so it animates from where it was copied.
 - **File > Save** writes the keyframe file below; **File > Export Robot
   Frames** writes the input for `paint_frames.py`. **File > Export FRIDA

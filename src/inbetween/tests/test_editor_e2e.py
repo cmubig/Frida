@@ -291,3 +291,50 @@ def test_export_frida_plans_zip(server, tmp_path):
         assert len(painting) == 1
         assert errors == []
         browser.close()
+
+
+def test_reference_layer(server, tmp_path):
+    from PIL import Image, ImageDraw
+    files = []
+    for i in range(5):
+        im = Image.new("RGB", (320, 180), "white")
+        ImageDraw.Draw(im).ellipse([40 + 40 * i, 60, 80 + 40 * i, 100], outline="black", width=3)
+        fn = tmp_path / f"ref_{i + 1}.png"  # numeric order, not text order, decides frame order
+        im.save(fn)
+        files.append(str(fn))
+    with playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg = browser.new_page(viewport={"width": 1440, "height": 900})
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(server)
+        pg.wait_for_function("S.cfg && S.doc")
+        pg.set_input_files("#refinput", files[::-1])
+        pg.wait_for_function("S.ref.images.length === 5 && !S.ui.busy", timeout=30000)
+        assert pg.evaluate("lastFrame()") >= 4
+        assert pg.evaluate("S.ref.visible")
+        pg.keyboard.press("r")
+        assert not pg.evaluate("S.ref.visible")
+        pg.keyboard.press("r")
+        pg.locator("#tl-refop").fill("80")
+        assert abs(pg.evaluate("S.ref.opacity") - 0.8) < 1e-6
+        # the reference never enters the document or its exports
+        assert pg.evaluate("JSON.stringify(S.doc).includes('ref_')") is False
+        assert pg.evaluate("S.doc.keys.every(k => k.strokes.length === 0)")
+        # the frame shown follows the timeline: frame 3 shows the 3rd image (circle moved right)
+        pg.evaluate("goto(2)")
+        assert pg.evaluate("refImage(2) === S.ref.images[2]")
+        # moving the reference later grows the timeline to cover it
+        before = pg.evaluate("lastFrame()")
+        off = pg.locator('[data-ref="offset"]')
+        off.fill(str(before + 1))
+        off.dispatch_event("change")
+        assert pg.evaluate("lastFrame()") == before + 4
+        assert pg.evaluate(f"refImage({before}) === S.ref.images[0]")
+        pg.evaluate("cmds.removeReference()")
+        assert pg.evaluate("S.ref.images.length") == 0
+        assert errors == []
+        browser.close()

@@ -17,6 +17,8 @@
         <button data-cmd="open">Open…<kbd>Ctrl+O</kbd></button>
         <button data-cmd="save">Save<kbd>Ctrl+S</kbd></button>
         <hr>
+        <button data-cmd="importReference">Import Reference Frames…</button>
+        <hr>
         <button data-cmd="exportFrames">Export Robot Frames…</button>
         <button data-cmd="exportPlans">Export FRIDA Plans…</button>
       </div>
@@ -45,6 +47,7 @@
         <hr>
         <button data-cmd="toggleOnion">Onion Skin<kbd>O</kbd></button>
         <button data-cmd="togglePreview">Paint Preview<kbd>P</kbd></button>
+        <button data-cmd="toggleReference">Reference Layer<kbd>R</kbd></button>
       </div>
     </div>
     <div class="menu" data-menu="insert"><span>Insert</span>
@@ -121,6 +124,8 @@
       <span class="sep"></span>
       <button id="tl-onion" class="toggle" title="Onion Skin (O): show neighboring keyframes as ghosts">Onion Skin</button>
       <button id="tl-preview" class="toggle" title="Paint Preview (P): show the stroke model's predicted painting">Paint Preview</button>
+      <button id="tl-ref" class="toggle" title="Reference layer (R): the animator's frames under the drawing, for tracing. Never painted or exported.">Reference…</button>
+      <input id="tl-refop" type="range" min="0" max="100" step="1" value="35" title="Reference opacity" hidden>
       <span class="sep"></span>
       <label class="tlfield">In-betweens <select id="tl-method">
         <option value="refined">Refined (paint-aware)</option>
@@ -140,6 +145,7 @@
 <div id="ctxmenu" class="dropdown floating"></div>
 <div id="modal" hidden><div class="modalbox"><div id="modalbody"></div><button id="modalclose">Close</button></div></div>
 <input type="file" id="fileinput" accept=".json,application/json" hidden>
+<input type="file" id="refinput" accept="image/*,video/*" multiple hidden>
 
 <script src="geometry.js"></script>
 <script src="app.js"></script>

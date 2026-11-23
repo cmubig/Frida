@@ -56,6 +56,8 @@ Ours, `src/inbetween/` (see its README.md; run commands from `src/`):
   (`python -m inbetween.app`). F6 = copy keyframe and reshape; F7 = blank keyframe, trace over
   onion skin (traced stroke replaces its ghost; Alt+click picks the ghost). `editor/geometry.js`
   must stay identical in behavior to FRIDA's path math (tested by `test_editor_geometry.py`).
+  Reference layer (`S.ref`, File > Import Reference Frames, R): animator's PNGs or a video under
+  the drawing for tracing; never in the document, exports or paintings.
 - `tests/`: `python -m pytest -q inbetween/tests` (must pass before committing; the browser test
   needs Playwright, the geometry test needs Node).
 

@@ -23,6 +23,9 @@ const S = {
   view: { scale: 1, ox: 0, oy: 0, fit: true },
   hist: { undo: [], redo: [] },
   previewCache: new Map(),
+  // Reference layer: the animator's own frames (PNG sequence or video), shown under the
+  // drawing for tracing. Never painted, exported or saved in the keyframe file.
+  ref: { images: [], name: "", visible: true, opacity: 0.35, offset: 0 },
 };
 const $ = (id) => document.getElementById(id);
 const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
@@ -243,6 +246,7 @@ function render() {
   ctx.fillStyle = "#fff"; ctx.fillRect(S.view.ox, S.view.oy, paperW(), paperH()); ctx.restore();
 
   const f = S.ui.frame, c = content(f);
+  drawReference(f);
   // onion skin ghosts
   const candidates = new Set(traceCandidates(f).map((s) => s.id));
   for (const g of ghostSets(f)) {
@@ -281,6 +285,72 @@ function render() {
   if (pendingFit) drawLive(pendingFit, true);
   updateModeHint();
 }
+// --------------------------------------------------------- reference ---
+const refImage = (f) => S.ref.images[f - S.ref.offset] || null;
+// Fit the frame inside the paper, centered: the same placement inbetween.import_frames uses,
+// so imported strokes line up with their reference frames.
+function drawReference(f) {
+  const im = S.ref.visible && refImage(f);
+  if (!im) return;
+  const s = Math.min(paperW() / im.width, paperH() / im.height);
+  const w = im.width * s, h = im.height * s;
+  ctx.save(); ctx.globalAlpha = S.ref.opacity;
+  ctx.beginPath(); ctx.rect(S.view.ox, S.view.oy, paperW(), paperH()); ctx.clip();
+  ctx.drawImage(im, S.view.ox + (paperW() - w) / 2, S.view.oy + (paperH() - h) / 2, w, h);
+  ctx.restore();
+}
+const MAX_REF_W = 1600; // keep memory reasonable for long sequences
+async function bitmap(src) {
+  const w0 = src.videoWidth || src.naturalWidth || src.width, h0 = src.videoHeight || src.naturalHeight || src.height;
+  const k = Math.min(1, MAX_REF_W / w0);
+  return createImageBitmap(src, { resizeWidth: Math.round(w0 * k), resizeHeight: Math.round(h0 * k), resizeQuality: "high" });
+}
+async function imagesFromFiles(files) {
+  const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const out = [];
+  for (const [i, file] of sorted.entries()) {
+    status(`Loading reference ${i + 1} / ${sorted.length}…`);
+    out.push(await bitmap(await createImageBitmap(file)));
+  }
+  return out;
+}
+async function imagesFromVideo(file, fps) {
+  const v = document.createElement("video");
+  v.muted = true; v.preload = "auto"; v.src = URL.createObjectURL(file);
+  await new Promise((ok, bad) => { v.onloadeddata = ok; v.onerror = () => bad(new Error("this browser can't decode that video; export it as PNG frames instead")); });
+  const n = Math.max(1, Math.round(v.duration * fps));
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    status(`Reading video frame ${i + 1} / ${n}…`);
+    await new Promise((ok) => { v.onseeked = ok; v.currentTime = Math.min((i + 0.5) / fps, v.duration - 1e-3); });
+    out.push(await bitmap(v));
+  }
+  URL.revokeObjectURL(v.src);
+  return out;
+}
+async function importReference(files) {
+  if (!files.length) return;
+  const video = [...files].find((f) => f.type.startsWith("video/"));
+  try {
+    S.ui.busy = true;
+    let images;
+    if (video) {
+      const ans = prompt("Frames per second of this video? (One drawing per timeline frame.)", "24");
+      if (ans === null) return;
+      images = await imagesFromVideo(video, clamp(+ans || 24, 1, 120));
+    } else {
+      images = await imagesFromFiles([...files].filter((f) => f.type.startsWith("image/")));
+    }
+    if (!images.length) throw new Error("no image or video files selected");
+    S.ref.images.forEach((b) => b.close && b.close());
+    Object.assign(S.ref, { images, name: video ? video.name : `${images.length} images`, visible: true, offset: 0 });
+    grow(images.length - 1);
+    toast(`Reference: ${images.length} frames on frames 1–${images.length}. It is never painted or exported.`);
+  } catch (err) {
+    toast("Could not load reference: " + err.message);
+  } finally { S.ui.busy = false; status(""); renderAll(); }
+}
+
 function diamond(x, y, r) { ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.fill(); }
 
 function drawSelection(s) {
@@ -669,6 +739,15 @@ const cmds = {
   },
   zoomIn() { zoomAt(1.25); }, zoomOut() { zoomAt(0.8); }, zoomFit() { zoomFit(); render(); },
   toggleOnion() { S.ui.onion = !S.ui.onion; renderAll(); },
+  importReference() { $("refinput").click(); },
+  toggleReference() {
+    if (!S.ref.images.length) return cmds.importReference();
+    S.ref.visible = !S.ref.visible; renderAll();
+  },
+  removeReference() {
+    S.ref.images.forEach((b) => b.close && b.close());
+    Object.assign(S.ref, { images: [], name: "", offset: 0 }); renderAll(); toast("Reference removed.");
+  },
   togglePreview() { S.ui.preview = !S.ui.preview; renderAll(); },
   insertFrame() { // F5: add a frame here, pushing later frames right (adjusts timing)
     pushUndo(); const f = S.ui.frame;
@@ -816,6 +895,11 @@ function renderTimeline() {
     tctx.fillRect(x, HEAD, CW, ROW);
     tctx.strokeStyle = "#232323"; tctx.beginPath(); tctx.moveTo(x + 0.5, HEAD); tctx.lineTo(x + 0.5, HEAD + ROW); tctx.stroke();
   }
+  // frames covered by the reference layer: a thin teal line along the top of the row
+  if (S.ref.images.length) {
+    tctx.fillStyle = S.ref.visible ? "#3fa7a0" : "#2f5e5b";
+    tctx.fillRect(S.ref.offset * CW, HEAD, S.ref.images.length * CW, 2);
+  }
   // in-between spans
   const ks = keys();
   for (let j = 0; j < ks.length - 1; j++) {
@@ -927,6 +1011,7 @@ document.addEventListener("keydown", (e) => {
   if (k === "Escape") return run("deselect");
   if (k === "o" || k === "O") return run("toggleOnion");
   if (k === "p" || k === "P") return run("togglePreview");
+  if (k === "r" || k === "R") return run("toggleReference");
   if (k === "?") return run("shortcuts");
   if (k === " ") { e.preventDefault(); if (!S.ui.spaceHand) { S.ui.spaceHand = true; cv.style.cursor = "grab"; } return; }
   const t = TOOLKEYS[k.toLowerCase()];
@@ -947,6 +1032,12 @@ function renderProps() {
   else h = frameProps(c);
   body.innerHTML = h;
   bindProps(sel[0], c);
+  const op = body.querySelector('[data-ref="opacity"]');
+  if (op) op.addEventListener("input", () => { S.ref.opacity = +op.value / 100; S.ref.visible = true; render(); $("tl-refop").value = op.value; $("tl-ref").classList.add("on"); });
+  const off = body.querySelector('[data-ref="offset"]');
+  if (off) off.addEventListener("change", () => { S.ref.offset = Math.max(0, Math.round(+off.value || 1) - 1); grow(S.ref.offset + S.ref.images.length - 1); renderAll(); });
+  const rm = body.querySelector('[data-act="refremove"]');
+  if (rm) rm.addEventListener("click", (e) => { e.stopImmediatePropagation(); cmds.removeReference(); });
 }
 function slider(name, label, v, min, max, step, fmt) {
   return `<div class="prow"><label>${label}</label><input type="range" data-p="${name}" min="${min}" max="${max}" step="${step}" value="${v}"><span class="val" data-v="${name}">${fmt(v)}</span></div>`;
@@ -1003,6 +1094,14 @@ function frameProps(c) {
   } else {
     h += `<div class="psec"><h4>Frame ${f + 1}</h4><div class="pinfo">${pk ? `Holds keyframe ${pk.frame + 1}.` : "Empty."} Press F6 to copy the drawing into a new keyframe, or F7 for a blank keyframe to trace over.</div></div>`;
   }
+  if (S.ref.images.length) {
+    const i = f - S.ref.offset, n = S.ref.images.length;
+    h += `<div class="psec"><h4>Reference layer</h4>
+      <div class="pinfo">${S.ref.name}: ${i >= 0 && i < n ? `showing reference frame <b>${i + 1}</b> of ${n}` : `no reference frame here (it covers frames ${S.ref.offset + 1}–${S.ref.offset + n})`}. Never painted or exported.</div>
+      <div class="prow two"><label>Opacity</label><input type="range" data-ref="opacity" min="0" max="100" step="1" value="${Math.round(S.ref.opacity * 100)}"></div>
+      <div class="prow two"><label>Starts at frame</label><input type="number" data-ref="offset" min="1" step="1" value="${S.ref.offset + 1}"></div>
+      <button class="pbtn" data-act="refremove">Remove reference</button></div>`;
+  }
   h += `<div class="psec"><h4>Document</h4>
     <div class="pinfo">Paper <b>${(S.cfg.canvas_width_m * 1000).toFixed(0)} × ${(S.cfg.canvas_height_m * 1000).toFixed(0)} mm</b><br>
     Stroke model <b>${S.cfg.cache_dir.split("/").pop()}</b> ${S.cfg.calibrated ? "(calibrated on real strokes)" : '<span class="warn">(not calibrated)</span>'}<br>
@@ -1017,7 +1116,7 @@ function frameProps(c) {
 }
 function bindProps(s, c) {
   const body = $("propbody");
-  body.querySelectorAll("input[type=range]").forEach((inp) => {
+  body.querySelectorAll("input[type=range][data-p]").forEach((inp) => {
     let started = false;
     inp.addEventListener("input", () => {
       if (!canEdit()) { renderProps(); return; }
@@ -1074,7 +1173,7 @@ function showShortcuts() {
     ["Alt+click ghost", "Brush: choose which ghost the next stroke traces"], ["H / Space", "Hand tool / temporary pan"], ["Z", "Zoom tool (Alt+click zooms out)"],
     ["F5 / Shift+F5", "Insert / remove frame (timing)"], ["F6", "Insert keyframe (copy the drawing)"], ["F7", "Insert blank keyframe (trace over onion skin)"],
     ["Shift+F6", "Clear keyframe"], ["Ctrl+Enter", "Create in-betweens"], ["Enter", "Play / stop"], [", / .", "Previous / next frame"],
-    ["Shift+, / Shift+.", "Previous / next keyframe"], ["O", "Onion skin"], ["P", "Paint preview (stroke model)"], ["Del", "Delete stroke, or unpin on an in-between"],
+    ["Shift+, / Shift+.", "Previous / next keyframe"], ["O", "Onion skin"], ["R", "Reference layer on / off (File > Import Reference Frames)"], ["P", "Paint preview (stroke model)"], ["Del", "Delete stroke, or unpin on an in-between"],
     ["Ctrl+Z / Ctrl+Shift+Z", "Undo / redo"], ["Ctrl+C / Ctrl+X / Ctrl+V", "Copy / cut / paste (pasted strokes are new)"],
     ["Ctrl+Shift+V", "Paste in place (keeps stroke identity if the keyframe doesn't have it)"], ["Ctrl+D", "Duplicate"], ["Ctrl+S / Ctrl+O", "Save / open keyframes"], ["Ctrl+= / Ctrl+- / Ctrl+0", "Zoom in / out / fit"]];
   $("modalbody").innerHTML = `<h3>Keyboard Shortcuts</h3><table>${rows.map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("")}</table>`;
@@ -1086,6 +1185,11 @@ function renderAll() {
   document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b.dataset.tool === S.ui.tool));
   $("tl-onion").classList.toggle("on", S.ui.onion);
   $("tl-preview").classList.toggle("on", S.ui.preview);
+  const hasRef = S.ref.images.length > 0;
+  $("tl-ref").classList.toggle("on", hasRef && S.ref.visible);
+  $("tl-ref").textContent = hasRef ? "Reference" : "Reference…";
+  $("tl-refop").hidden = !hasRef;
+  $("tl-refop").value = Math.round(S.ref.opacity * 100);
   $("tl-frame").textContent = S.ui.frame + 1;
   $("docname").textContent = (S.doc.editor.name || "Untitled") + (S.gen.stale && Object.keys(S.gen.frames).length ? " · in-betweens out of date" : "");
   render(); renderTimeline(); renderProps();
@@ -1099,6 +1203,9 @@ $("tl-prevkey").onclick = () => cmds.prevKey();
 $("tl-nextkey").onclick = () => cmds.nextKey();
 $("tl-onion").onclick = () => cmds.toggleOnion();
 $("tl-preview").onclick = () => cmds.togglePreview();
+$("tl-ref").onclick = () => cmds.toggleReference();
+$("tl-refop").oninput = (e) => { S.ref.opacity = clamp(+e.target.value / 100, 0, 1); S.ref.visible = true; $("tl-ref").classList.add("on"); render(); };
+$("refinput").addEventListener("change", (e) => { const files = [...e.target.files]; e.target.value = ""; importReference(files); });
 $("tl-generate").onclick = () => generate();
 $("tl-fps").onchange = (e) => { S.doc.editor.fps = clamp(+e.target.value || 8, 1, 60); if (S.ui.playing) { stop(); play(); } };
 $("zoomsel").onchange = (e) => { if (e.target.value) zoomTo(e.target.value); };

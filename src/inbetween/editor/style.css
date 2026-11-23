@@ -95,6 +95,7 @@ select, input[type=number], input[type=text] { background: #1f1f1f; color: var(-
 .tlfield { color: var(--dim); }
 .tlfield b { color: var(--text); display: inline-block; min-width: 22px; }
 #tl-fps { width: 46px; }
+#tl-refop { width: 90px; accent-color: var(--accent); }
 .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
 #tl-status { color: var(--dim); margin-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #tlgrid { display: grid; grid-template-columns: 150px 1fr; min-height: 0; }
