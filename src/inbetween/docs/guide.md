@@ -113,6 +113,23 @@ then appears halfway instead of moving).
 
 ![Correspondence in Properties](img/10-correspondence.png)
 
+**Step 5. Link many strokes fast: Link mode (L).** With onion skin on, a
+keyframe shows in red every stroke that isn't linked to the previous key yet,
+and every ghost that has no partner. Properties > Links counts them
+("0 of 3 strokes linked"). This is what you'll see on drawings imported from
+finished frames, where nothing is linked.
+
+![Nothing linked yet: strokes and ghosts in red, "0 of 3" in Properties](img/10b-unlinked.png)
+
+Press **L**, click a stroke, then the ghost it continues; then the next pair,
+and so on, without going to Properties. A dashed line joins each linked pair,
+and the stroke and its ghost lose the red. If you click a ghost that another
+stroke already had, that stroke becomes unlinked (red again). **Ctrl+Z** undoes
+the last link; **Esc** leaves Link mode. Strokes you set to Draw on (page 7)
+are new on purpose and are not counted.
+
+![Link mode: two pairs linked (dashed line), the third stroke chosen, its ghost next](img/10c-link-mode.png)
+
 ---
 
 ## 3. The reference layer
@@ -282,6 +299,7 @@ Press **?** in the editor for this list.
 | **B** | Brush tool (pressure sets width) |
 | **Alt+click a ghost** | Brush: choose which ghost the next stroke replaces |
 | **M** | Motion Path tool: click strokes (Shift adds), then drag the path they travel |
+| **L** | Link mode: click a stroke, then the ghost it continues; repeat (Esc leaves) |
 | **H** / hold **Space** | Hand tool / pan |
 | **Z** | Zoom tool (Alt+click zooms out) |
 | **Ctrl+= / Ctrl+- / Ctrl+0** | Zoom in / out / fit |
@@ -297,7 +315,7 @@ Press **?** in the editor for this list.
 | **R** | Reference layer on / off |
 | **P** | Paint Preview on / off |
 | **Del** | Delete selected strokes (on an in-between: unpin) |
-| **Esc** | Deselect |
+| **Esc** | Deselect (in Link mode: leave it) |
 | **Ctrl+A** | Select all |
 | **Ctrl+C / Ctrl+X / Ctrl+V** | Copy / cut / paste (pasted strokes are new) |
 | **Ctrl+Shift+V** | Paste in place (keeps the stroke's identity if this key doesn't have it) |

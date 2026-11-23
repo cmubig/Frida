@@ -5,7 +5,7 @@ animator's artwork):
 
     python inbetween/docs/make_screenshots.py inbetween/docs/img /tmp/guide [section ...]
 
-sections: keys trace ref path limits trim (default: all). The draw-on
+sections: keys trace link ref path limits trim (default: all). The draw-on
 filmstrip (img/22-draw-on-filmstrip.png) is rendered from the frames this
 writes to <tmp>/trim_frames.json with Renderer.render_frame.
 """
@@ -179,6 +179,30 @@ with sync_playwright() as p:
         ed.move_stroke("s2", 0, -60)
         ed.click_stroke_mid("s2")
         ed.shot("14-pin.png")
+        assert not ed.errors, ed.errors
+
+    # ---------------------------------------------------------------- 2b. link mode
+    if want("link"):
+        ed = Ed(browser)
+        ed.drag(GROUND)
+        ball(ed, 0.22, 0.45)
+        ed.ev("goto(8)")
+        ed.key("F7")
+        ed.key("o")  # draw without auto-linking, as after importing drawings
+        ed.drag([(x, 0.82) for x, _ in GROUND])
+        ball(ed, 0.62, 0.3)
+        ed.key("o"); ed.key("Escape")
+        ed.shot("10b-unlinked.png")
+        old = ed.ev("keyAt(0).strokes.map(s => s.id)")
+        new = ed.ev("keyAt(8).strokes.map(s => s.id)")
+        ed.key("l")
+        def click(key_js, sid):
+            x, y = ed.ev(f"toScreen(Geo.canvasPath({key_js}.strokes.find(s => s.id === '{sid}'), S.cfg)[16])")
+            ed.pg.mouse.click(ed.st["x"] + x, ed.st["y"] + y)
+        click("keyAt(8)", new[0]); click("prevKey(8)", old[0])
+        click("keyAt(8)", new[1]); click("prevKey(8)", old[1])
+        click("keyAt(8)", new[2])  # third stroke chosen, its ghost not clicked yet
+        ed.shot("10c-link-mode.png")
         assert not ed.errors, ed.errors
 
     # ---------------------------------------------------------------- 3. reference layer

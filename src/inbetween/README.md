@@ -32,7 +32,11 @@ shortcuts (press `?` in the editor for the full list).
   over their ghosts. Each traced stroke replaces the ghost it was drawn over:
   the nearest ghost is suggested (orange), or **Alt+click** a ghost first to
   choose it, which is needed when something moved far. "Pick another ghost"
-  in Properties fixes a wrong link.
+  in Properties fixes a wrong link. **Link mode (L)** links many strokes
+  fast: click a stroke, then the ghost it continues, pair after pair (Ctrl+Z
+  undoes one link, Esc leaves). With onion skin on, strokes not linked to the
+  previous key and ghosts without a partner show in red, and Properties counts
+  "n of m linked" (strokes set to Draw on don't count).
 - **Create In-betweens (Ctrl+Enter)** runs the pipeline (Refined, Arc or
   Linear). **Ease** is set per span in Properties; **F5 / Shift+F5** add or
   remove frames to change timing, as in Animate. A keyframe inserted inside a

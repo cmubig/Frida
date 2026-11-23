@@ -18,7 +18,7 @@ const S = {
   ui: {
     frame: 0, tool: "brush", sel: new Set(), onion: true, preview: false,
     playing: false, color: "#0d0d0d", picking: null, linkTarget: null,
-    suggest: null, spaceHand: false, busy: false,
+    suggest: null, spaceHand: false, busy: false, linkFirst: null,
   },
   view: { scale: 1, ox: 0, oy: 0, fit: true },
   hist: { undo: [], redo: [] },
@@ -249,17 +249,20 @@ function render() {
   drawReference(f);
   // onion skin ghosts
   const candidates = new Set(traceCandidates(f).map((s) => s.id));
+  const links = linkState(f); // on a keyframe with onion skin: what is not linked to the previous key
   for (const g of ghostSets(f)) {
     for (const s of g.key.strokes) {
       const target = S.ui.linkTarget === s.id || (S.ui.suggest === s.id);
-      drawStroke(s, { color: target ? "rgb(255,150,40)" : `rgb(${g.rgb})`,
-                      alpha: target ? 0.8 : (candidates.has(s.id) ? 0.45 : 0.22), minWidth: 1.5 });
+      const lonely = links && g.key === links.pk && links.lonely.has(s.id);
+      drawStroke(s, { color: target ? "rgb(255,150,40)" : lonely ? WARN : `rgb(${g.rgb})`,
+                      alpha: target ? 0.8 : lonely ? 0.55 : (candidates.has(s.id) ? 0.45 : 0.22), minWidth: 1.5 });
     }
   }
   // drawing or paint preview
   const pv = S.ui.preview && previewFor(c.strokes);
   if (pv) ctx.drawImage(pv, S.view.ox, S.view.oy, paperW(), paperH());
-  else for (const s of c.strokes) drawStroke(s);
+  else for (const s of c.strokes) drawStroke(s, links && links.unlinked.has(s.id) ? { color: WARN } : {});
+  if (S.ui.tool === "link" && links) drawLinks(links);
   if (c.mode === "held") { // dim held frames like a static frame in Animate
     ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.fillRect(S.view.ox, S.view.oy, paperW(), paperH());
   }
@@ -354,6 +357,67 @@ async function importReference(files) {
   } catch (err) {
     toast("Could not load reference: " + err.message);
   } finally { S.ui.busy = false; status(""); renderAll(); }
+}
+
+// ------------------------------------------------------------- linking ---
+// A stroke on a keyframe is linked when the previous keyframe has a stroke with its id
+// (that is what in-betweening moves it from). Link mode (L): click a stroke, then its
+// ghost; each link is one undo step. Unlinked strokes and ghosts without a partner are
+// drawn in WARN while onion skin is on. Strokes set to Draw on are new on purpose.
+const WARN = "rgb(226,62,87)";
+function linkState(f, always = false) { // null unless onion skin shows the ghosts (or always)
+  const k = keyAt(f), pk = prevKey(f);
+  if (!k || !pk || (!always && (!S.ui.onion || S.ui.preview))) return null;
+  const span = `${pk.frame}-${f}`;
+  const prevIds = new Set(pk.strokes.map((s) => s.id)), mine = new Set(k.strokes.map((s) => s.id));
+  const intended = new Set(k.strokes.filter((s) => trimMode(span, s.id) === "draw_on").map((s) => s.id));
+  const unlinked = new Set(k.strokes.filter((s) => !prevIds.has(s.id) && !intended.has(s.id)).map((s) => s.id));
+  const lonely = new Set(pk.strokes.filter((s) => !mine.has(s.id)).map((s) => s.id));
+  const m = k.strokes.length - intended.size;
+  return { k, pk, unlinked, lonely, linked: m - unlinked.size, m, drawOn: intended.size };
+}
+function linkSummary(f) {
+  const k = keyAt(f), pk = prevKey(f);
+  if (!k || !pk) return "";
+  const st = linkState(f, true);
+  const done = st.linked === st.m && !st.lonely.size;
+  return `<div class="psec"><h4>Links to keyframe ${pk.frame + 1}</h4>
+    <div class="pinfo ${done ? "" : "warn"}" data-links><b>${st.linked} of ${st.m}</b> strokes linked${st.drawOn ? ` (+${st.drawOn} drawing on)` : ""};
+    ${st.lonely.size} ghost${st.lonely.size === 1 ? "" : "s"} without a partner.</div>
+    <div class="pinfo">${S.ui.tool === "link" ? (S.ui.linkFirst ? "Now click the ghost it continues." : "Click a stroke, then its ghost. Esc leaves Link mode.")
+      : `Unlinked strokes and ghosts show in red (onion skin on). <b>L</b> links them: click a stroke, then its ghost.`}</div></div>`;
+}
+function linkClick(x, y) {
+  const f = S.ui.frame, k = keyAt(f), pk = prevKey(f);
+  if (!k || !pk) return toast("Link mode works on a keyframe that has a keyframe before it.");
+  if (S.ui.linkFirst && k.strokes.some((s) => s.id === S.ui.linkFirst)) {
+    const g = hitStroke(x, y, pk.strokes);
+    if (g) {
+      pushUndo();
+      const mine = k.strokes.find((s) => s.id === S.ui.linkFirst), other = k.strokes.find((s) => s.id === g.id);
+      if (other && other !== mine) other.id = newId(); // that stroke loses the link
+      mine.id = g.id; mine.order = g.order;
+      S.ui.linkFirst = null; S.ui.sel.clear();
+      const st = linkState(f);
+      toast(other && other !== mine ? `Linked to ghost ${g.id}; the stroke that had it is now unlinked.`
+                                    : `Linked${st ? `: ${st.linked} of ${st.m}` : ""}.`);
+      changed(); renderAll(); return;
+    }
+  }
+  const hit = hitStroke(x, y, k.strokes); // (re)choose the stroke
+  S.ui.linkFirst = hit ? hit.id : null;
+  S.ui.sel = new Set(hit ? [hit.id] : []);
+  if (!hit) toast("Click a stroke on this keyframe, then the ghost it continues.");
+  renderAll();
+}
+function drawLinks(st) { // thin lines from each linked stroke to its ghost
+  ctx.save(); ctx.strokeStyle = "rgba(40,120,220,.55)"; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+  for (const s of st.k.strokes) {
+    const g = st.pk.strokes.find((x) => x.id === s.id); if (!g) continue;
+    const a = toScreen(center(s)), b = toScreen(center(g));
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // --------------------------------------------------------- motion paths ---
@@ -656,6 +720,7 @@ cv.addEventListener("pointerdown", (e) => {
     drag = { kind: "brush", pts: [] }; addBrushPoints(e); render(); return;
   }
 
+  if (t === "link") { linkClick(x, y); return; }
   if (t === "motion") { // select strokes (click, Shift adds), then drag the path they travel
     const hit = hitStroke(x, y, c.strokes);
     if (!S.ui.sel.size || e.shiftKey) {
@@ -709,7 +774,7 @@ cv.addEventListener("pointerdown", (e) => {
 cv.addEventListener("pointermove", (e) => {
   const x = e.offsetX, y = e.offsetY;
   if (!drag) {
-    cv.style.cursor = { hand: "grab", zoom: "zoom-in", brush: "crosshair", motion: "crosshair" }[tool()] || "default";
+    cv.style.cursor = { hand: "grab", zoom: "zoom-in", brush: "crosshair", motion: "crosshair", link: "pointer" }[tool()] || "default";
     return;
   }
   if (drag.kind === "pan") { S.view.ox = drag.ox + x - drag.x; S.view.oy = drag.oy + y - drag.y; S.view.fit = false; render(); return; }
@@ -933,6 +998,7 @@ const cmds = {
     pasteStrokes(sel); // the clipboard is left as it was, as in Animate
   },
   deselect() { S.ui.sel.clear(); S.ui.picking = null; S.ui.linkTarget = null; renderAll(); },
+  leaveLink() { S.ui.linkFirst = null; S.ui.sel.clear(); setTool("selection"); },
   delete() {
     const f = S.ui.frame, c = content(f);
     if (!S.ui.sel.size) return;
@@ -1019,7 +1085,7 @@ function shiftTiming(timing, f, d) {
   return out;
 }
 function grow(f) { S.doc.editor.length = Math.max(S.doc.editor.length, f + 1); }
-function afterHistory() { S.ui.sel.clear(); markStale(); S.ui.frame = Math.min(S.ui.frame, lastFrame()); renderAll(); }
+function afterHistory() { S.ui.sel.clear(); S.ui.linkFirst = null; markStale(); S.ui.frame = Math.min(S.ui.frame, lastFrame()); renderAll(); }
 function resetDoc(doc) {
   S.doc = doc; S.gen = { frames: {}, stale: true, method: null, metrics: null };
   S.hist = { undo: [], redo: [] }; S.ui.sel.clear(); S.ui.frame = keys()[0]?.frame || 0;
@@ -1204,7 +1270,7 @@ function showContext(x, y, items) {
 }
 
 // ------------------------------------------------------------ keyboard ---
-const TOOLKEYS = { v: "selection", a: "subselection", b: "brush", m: "motion", h: "hand", z: "zoom" };
+const TOOLKEYS = { v: "selection", a: "subselection", b: "brush", m: "motion", l: "link", h: "hand", z: "zoom" };
 document.addEventListener("keydown", (e) => {
   if (e.target.closest("input, select, textarea")) return;
   const k = e.key, mod = e.ctrlKey || e.metaKey;
@@ -1233,7 +1299,7 @@ document.addEventListener("keydown", (e) => {
   if (k === "," || k === "<") return run(e.shiftKey ? "prevKey" : "prevFrame");
   if (k === "." || k === ">") return run(e.shiftKey ? "nextKey" : "nextFrame");
   if (k === "Delete" || k === "Backspace") return run("delete");
-  if (k === "Escape") return run("deselect");
+  if (k === "Escape") return run(S.ui.tool === "link" ? "leaveLink" : "deselect");
   if (k === "o" || k === "O") return run("toggleOnion");
   if (k === "p" || k === "P") return run("togglePreview");
   if (k === "r" || k === "R") return run("toggleReference");
@@ -1243,7 +1309,14 @@ document.addEventListener("keydown", (e) => {
   if (t) { setTool(t); e.preventDefault(); }
 });
 document.addEventListener("keyup", (e) => { if (e.key === " ") S.ui.spaceHand = false; });
-function setTool(t) { S.ui.tool = t; S.ui.picking = null; renderAll(); }
+function setTool(t) {
+  S.ui.tool = t; S.ui.picking = null; S.ui.linkFirst = null;
+  if (t === "link") {
+    S.ui.onion = true; S.ui.preview = false; S.ui.sel.clear();
+    if (!keyAt(S.ui.frame) || !prevKey(S.ui.frame)) toast("Link mode: go to a keyframe that has a keyframe before it.");
+  }
+  renderAll();
+}
 document.querySelectorAll(".tool").forEach((b) => b.addEventListener("click", () => setTool(b.dataset.tool)));
 
 // ------------------------------------------------------------ properties ---
@@ -1256,6 +1329,7 @@ function renderProps() {
     With the Motion Path tool (M), drag the path they travel to the next keyframe.</div>
     <button class="pbtn" data-act="delete">Delete</button></div>` + trimProps(sel.map((s) => s.id)) + motionProps(pathsAt(f).filter((p) => p.ids.some((id) => S.ui.sel.has(id))));
   else h = frameProps(c);
+  if (S.ui.tool === "link" && sel.length) h = linkSummary(f) + h; // in Link mode the count comes first
   body.innerHTML = h;
   bindProps(sel[0], c);
   const op = body.querySelector('[data-ref="opacity"]');
@@ -1303,7 +1377,7 @@ function strokeProps(s, c) {
     ${slider("a", "Rotation", s.a, -Math.PI, Math.PI, 0.01, (v) => Math.round((-v * 180) / Math.PI) + "°")}</div>
   ${S.cfg.ink ? "" : `<div class="psec"><h4>Color</h4><div class="prow two"><label>Paint</label><input type="color" data-p="color" value="${rgbToHex(s.color)}"></div></div>`}
   ${motionProps(pathsAt(S.ui.frame).filter((p) => p.ids.includes(s.id)))}
-  ${link}${trimProps([s.id])}`;
+  ${link}${trimProps([s.id])}${c.mode === "key" && S.ui.tool !== "link" ? linkSummary(S.ui.frame) : ""}`;
 }
 function f1() { return S.ui.frame + 1; }
 function frameProps(c) {
@@ -1313,7 +1387,7 @@ function frameProps(c) {
     const missing = traceCandidates(f);
     h += `<div class="psec"><h4>Keyframe ${f + 1}</h4><div class="pinfo"><b>${k.strokes.length}</b> strokes.</div>
       ${missing.length ? `<div class="pinfo warn">${missing.length} stroke${missing.length > 1 ? "s" : ""} from keyframe ${pk.frame + 1} ${missing.length > 1 ? "are" : "is"} not in this keyframe yet, so ${missing.length > 1 ? "they disappear" : "it disappears"} halfway there. Trace ${missing.length > 1 ? "them" : "it"} with the Brush, or:</div>
-      <button class="pbtn" data-act="carry">Bring back unchanged</button>` : ""}</div>` + motionProps(pathsAt(f));
+      <button class="pbtn" data-act="carry">Bring back unchanged</button>` : ""}</div>` + linkSummary(f) + motionProps(pathsAt(f));
   } else if (pk && nk) {
     const span = `${pk.frame}-${nk.frame}`, ease = S.doc.timing[span] || "linear";
     h += `<div class="psec"><h4>In-betweens ${pk.frame + 1}–${nk.frame + 1}</h4>
@@ -1394,6 +1468,7 @@ function updateModeHint() {
   const f = S.ui.frame, c = content(f);
   let t = "";
   if (S.ui.picking) t = "Click the ghost stroke to link to";
+  else if (S.ui.tool === "link") t = S.ui.linkFirst ? "Link · click the ghost it continues (Esc leaves)" : "Link · click a stroke, then its ghost (Esc leaves)";
   else if (S.ui.tool === "motion") t = S.ui.sel.size ? "Motion Path · drag the path the selected strokes travel" : "Motion Path · click the strokes to move";
   else if (c.mode === "key" && traceCandidates(f).length && S.ui.onion) t = "Keyframe · tracing over onion skin";
   else if (c.mode === "key") t = "Keyframe";
@@ -1407,6 +1482,8 @@ function status(msg) { $("tl-status").textContent = msg; }
 function showShortcuts() {
   const rows = [["V", "Selection tool: click or drag a rectangle to select (Shift adds), drag to move; round handle rotates"], ["A", "Subselection tool: drag corner points"], ["B", "Brush tool (stylus pressure sets width)"],
     ["M", "Motion Path tool: click strokes (Shift adds), then drag the path they travel to the next keyframe"],
+    ["L", "Link mode: click a stroke, then the ghost it continues; repeat. Esc leaves"],
+    ["Esc", "Deselect (in Link mode: leave it)"], ["Ctrl+A", "Select all"],
     ["Alt+click ghost", "Brush: choose which ghost the next stroke traces"], ["H / Space", "Hand tool / temporary pan"], ["Z", "Zoom tool (Alt+click zooms out)"],
     ["F5 / Shift+F5", "Insert / remove frame (timing)"], ["F6", "Insert keyframe (copy the drawing)"], ["F7", "Insert blank keyframe (trace over onion skin)"],
     ["Shift+F6", "Clear keyframe"], ["Ctrl+Enter", "Create in-betweens"], ["Enter", "Play / stop"], [", / .", "Previous / next frame"],

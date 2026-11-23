@@ -600,3 +600,102 @@ def test_draw_on(server, tmp_path):
         assert pg.evaluate("S.doc.trims") == []
         assert errors == []
         browser.close()
+
+
+def test_link_mode(server):
+    """Link mode (L): click a stroke, then its ghost, pair after pair; unlinked strokes and
+    ghosts without a partner show in the warning color; Properties counts 'n of m linked';
+    Ctrl+Z undoes one link; Esc leaves the mode."""
+    with playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg = browser.new_page(viewport={"width": 1440, "height": 900})
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(server)
+        pg.wait_for_function("S.cfg && S.doc")
+        st = pg.locator("#canvas").bounding_box()
+
+        def scr(px, py):
+            v = pg.evaluate("[S.view.ox, S.view.oy, S.view.scale, S.cfg.canvas_width_m/S.cfg.canvas_height_m]")
+            return st["x"] + v[0] + px * v[2] * v[3], st["y"] + v[1] + py * v[2]
+
+        def drag(pts):
+            pg.mouse.move(*scr(*pts[0]))
+            pg.mouse.down()
+            for q in pts[1:]:
+                pg.mouse.move(*scr(*q), steps=2)
+            pg.mouse.up()
+            pg.wait_for_function("!pendingFit", timeout=30000)
+
+        def arc(cx, cy, r, a0, a1, n=16):
+            return [(cx + r / 1.25 * math.cos(a0 + (a1 - a0) * i / n), cy + r * math.sin(a0 + (a1 - a0) * i / n))
+                    for i in range(n + 1)]
+
+        def click_on(key_js, sid):  # middle of a stroke of keyAt(..) / prevKey(..)
+            x, y = pg.evaluate(f"toScreen(Geo.canvasPath({key_js}.strokes.find(s => s.id === '{sid}'), S.cfg)[16])")
+            pg.mouse.click(st["x"] + x, st["y"] + y)
+
+        def red_at(key_js, sid):  # is the stroke drawn in the warning color on the stage?
+            return pg.evaluate(f"""(() => {{ render(); const d = devicePixelRatio || 1;
+                const p = toScreen(Geo.canvasPath({key_js}.strokes.find(s => s.id === '{sid}'), S.cfg)[16]);
+                const px = ctx.getImageData(Math.round(p[0] * d) - 2, Math.round(p[1] * d) - 2, 5, 5).data; let best = 0;
+                for (let i = 0; i < px.length; i += 4) best = Math.max(best, px[i] - Math.max(px[i+1], px[i+2]));
+                return best > 60; }})()""")
+
+        def summary():
+            return pg.locator("[data-links]").inner_text()
+
+        drag([(0.2 + 0.4 * i / 20, 0.8) for i in range(21)])          # ground
+        drag(arc(0.25, 0.4, 0.07, math.pi, 2 * math.pi))               # ball top
+        drag(arc(0.25, 0.4, 0.07, 0, math.pi))                         # ball bottom
+        old = pg.evaluate("keyAt(0).strokes.map(s => s.id)")
+        pg.evaluate("goto(8)")
+        pg.keyboard.press("F7")
+        pg.keyboard.press("o")  # onion off: nothing links by itself while drawing
+        drag([(0.2 + 0.4 * i / 20, 0.8) for i in range(21)])
+        drag(arc(0.7, 0.3, 0.07, math.pi, 2 * math.pi))
+        drag(arc(0.7, 0.3, 0.07, 0, math.pi))
+        new = pg.evaluate("keyAt(8).strokes.map(s => s.id)")
+        assert not set(new) & set(old)
+        pg.keyboard.press("o")
+        pg.keyboard.press("Escape")
+        assert "0 of 3" in summary() and "3 ghosts without a partner" in summary()
+        assert red_at("keyAt(8)", new[1]) and red_at("prevKey(8)", old[1])  # warning color
+
+        pg.keyboard.press("l")
+        assert pg.evaluate("S.ui.tool") == "link"
+        click_on("keyAt(8)", new[0])      # the new ground...
+        assert pg.evaluate("S.ui.linkFirst") == new[0]
+        click_on("prevKey(8)", old[0])    # ...then its ghost, right underneath it
+        assert pg.evaluate("keyAt(8).strokes[0].id") == old[0]
+        assert "1 of 3" in summary()
+        click_on("keyAt(8)", new[1])
+        click_on("prevKey(8)", old[1])    # ball top
+        assert "2 of 3" in summary()
+        assert not red_at("keyAt(8)", old[1])
+        # a wrong link takes the ghost from the stroke that had it; Ctrl+Z puts it back
+        click_on("keyAt(8)", new[2])
+        click_on("prevKey(8)", old[1])
+        assert pg.evaluate("keyAt(8).strokes[2].id") == old[1]
+        assert "now unlinked" in pg.locator("#toast").inner_text()
+        assert "2 of 3" in summary() and "1 ghost without" in summary()  # the ball top lost its link
+        assert pg.evaluate("keyAt(8).strokes[1].id") not in old
+        pg.keyboard.press("Control+z")
+        assert pg.evaluate("keyAt(8).strokes.map(s => s.id)") == [old[0], old[1], new[2]]
+        assert pg.evaluate("S.ui.tool") == "link"
+        click_on("keyAt(8)", new[2])
+        click_on("prevKey(8)", old[2])    # ball bottom
+        assert "3 of 3" in summary() and "0 ghosts without a partner" in summary()
+        assert not red_at("keyAt(8)", old[2]) and not red_at("prevKey(8)", old[2])
+        pg.keyboard.press("Escape")
+        assert pg.evaluate("S.ui.tool") == "selection"
+
+        pg.select_option("#tl-method", "linear")  # linked strokes now move instead of popping
+        pg.keyboard.press("Control+Enter")
+        pg.wait_for_function("!S.ui.busy && Object.keys(S.gen.frames).length === 7", timeout=120000)
+        assert pg.evaluate("S.gen.frames[4].strokes.length") == 3
+        assert errors == []
+        browser.close()
