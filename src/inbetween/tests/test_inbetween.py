@@ -196,3 +196,138 @@ def test_import_raster_frames(tmp_path):
     keys = json.load(open(out / "drawings.json"))["keys"]
     assert [k["frame"] for k in keys] == [0, 2]
     assert (out / "compare" / "drawing_02.png").exists()
+
+
+# --------------------------------------------------------------------------
+# Motion paths
+# --------------------------------------------------------------------------
+
+def _bow(a, b, lift, n=21):
+    """Polyline from a to b bowed upward by `lift` (canvas proportions)."""
+    return [[a[0] + (b[0] - a[0]) * i / (n - 1),
+             a[1] + (b[1] - a[1]) * i / (n - 1) - lift * (1 - (2 * i / (n - 1) - 1) ** 2)] for i in range(n)]
+
+
+def _with_path(name, ids, points, timing="ease_in_out"):
+    import json
+    from inbetween.strokes import sequence_from_dict
+    d = json.load(open(os.path.join(EX, name)))
+    d["version"] = 2
+    d["timing"] = {"0-10": timing}
+    d["paths"] = [{"span": "0-10", "ids": ids, "points": points}]
+    return sequence_from_dict(d), d
+
+
+@pytest.mark.parametrize("method", ["linear", "arc"])
+def test_motion_path_keys_unchanged_and_anchor_follows_path(r, method):
+    from inbetween.interpolate import eased_time
+    from inbetween.motion_path import anchor, fit_path, point_at
+    ids = ["swell", "swing"]
+    seq, d = _with_path("bend.json", ids, _bow((0.55, 0.45), (0.62, 0.35), 0.2))
+    from inbetween.strokes import sequence_from_dict
+    plain = interpolate(sequence_from_dict({**d, "paths": []}), method, r)  # same timing, no path
+    warnings = []
+    frames = interpolate(seq, method, r, warnings)
+    assert warnings == []
+    for k in seq.keys:  # keys come out exactly as drawn
+        out = next(f for f in frames if f.frame == k.frame)
+        assert {s: x.to_dict() for s, x in out.strokes.items()} == {s: x.to_dict() for s, x in k.strokes.items()}
+    aspect = r.settings.CANVAS_WIDTH_M / r.settings.CANVAS_HEIGHT_M
+    ka, kb = seq.keys
+    q = fit_path(seq.paths[0].points, anchor([ka.strokes[i] for i in ids], r),
+                 anchor([kb.strokes[i] for i in ids], r), aspect)
+    te = eased_time(seq)
+    for f in frames[1:-1]:
+        want = point_at(q, te[f.frame], aspect)  # span 0-10 is the first segment: t = te
+        got = anchor([f.strokes[i] for i in ids], r)
+        assert math.hypot(want[0] - got[0], want[1] - got[1]) < 1e-5, f.frame
+    mid, base = frames[5], plain[5]
+    assert anchor([mid.strokes[i] for i in ids], r)[1] < anchor([base.strokes[i] for i in ids], r)[1] - 0.05
+    for f, g in zip(frames, plain):  # only the pathed group moves; order, ids and shape are kept
+        assert f.strokes["stem"].to_dict() == g.strokes["stem"].to_dict()
+        for i in ids:
+            a, b = f.strokes[i], g.strokes[i]
+            assert (a.id, a.order, a.vertices, a.z, a.a) == (b.id, b.order, b.vertices, b.z, b.a)
+
+
+def test_motion_path_pinned_stroke_kept_and_anchor_steady(r):
+    """swell is pinned on frame 5: it keeps its pin, and the anchor is swing's alone on every frame."""
+    from inbetween.interpolate import eased_time
+    from inbetween.motion_path import anchor, fit_path, point_at
+    seq, _ = _with_path("bend_with_edit.json", ["swell", "swing"], _bow((0.55, 0.45), (0.62, 0.35), 0.2))
+    edit = seq.edits[0]
+    assert "swell" in edit.strokes
+    warnings = []
+    frames = interpolate(seq, "arc", r, warnings)
+    assert any("pinned" in w for w in warnings)
+    f5 = next(f for f in frames if f.frame == edit.frame)
+    assert f5.strokes["swell"].to_dict() == edit.strokes["swell"].to_dict()
+    aspect = r.settings.CANVAS_WIDTH_M / r.settings.CANVAS_HEIGHT_M
+    ka, kb = seq.keys
+    q = fit_path(seq.paths[0].points, anchor([ka.strokes["swing"]], r), anchor([kb.strokes["swing"]], r), aspect)
+    te = eased_time(seq)
+    for f in frames[1:-1]:
+        want, got = point_at(q, te[f.frame], aspect), anchor([f.strokes["swing"]], r)
+        assert math.hypot(want[0] - got[0], want[1] - got[1]) < 1e-5, f.frame
+    refined, _ = refine(seq, frames, r, RefineConfig(iters=5, verbose=False))
+    f5 = next(f for f in refined if f.frame == edit.frame)
+    assert f5.strokes["swell"].to_dict() == edit.strokes["swell"].to_dict()
+    for a, b in zip(frames, refined):  # refinement changes pressure only, so the path motion survives
+        assert (a.strokes["swing"].xt, a.strokes["swing"].yt) == (b.strokes["swing"].xt, b.strokes["swing"].yt)
+
+
+def test_motion_path_off_paper_keeps_strokes_on_paper(r):
+    seq, _ = _with_path("bend.json", ["swing"], _bow((0.7, 0.3), (0.69, 0.12), 0.9))
+    warnings = []
+    frames = interpolate(seq, "arc", r, warnings)
+    assert any("leaves the paper" in w for w in warnings)
+    assert any("edge of the paper" in w for w in warnings)
+    for f in frames:
+        s = f.strokes["swing"]
+        assert 0 <= s.xt <= 1 and 0 <= s.yt <= 1
+    assert min(f.strokes["swing"].yt for f in frames) == 0.0  # stopped at the top edge
+
+
+def test_motion_path_file_versions(r, tmp_path):
+    import json
+    from inbetween.strokes import FORMAT_VERSION, sequence_from_dict
+    d = json.load(open(os.path.join(EX, "bend.json")))
+    assert d["version"] == 1 and "paths" not in d
+    seq = sequence_from_dict(d)  # a version 1 file still loads and interpolates as before
+    assert seq.paths == []
+    assert len(interpolate(seq, "arc", r)) == 11
+    assert FORMAT_VERSION == 2
+    with pytest.raises(ValueError, match="unsupported version"):
+        sequence_from_dict({**d, "version": 3})
+    bad = {**d, "version": 2, "paths": [{"span": "0-5", "ids": ["swell"], "points": [[0, 0], [1, 1]]}]}
+    with pytest.raises(ValueError, match="not neighboring keyframes"):
+        interpolate(sequence_from_dict(bad), "arc", r)
+
+
+def test_motion_path_through_cli_and_exports(r, tmp_path):
+    """The CLI reads the same file; its frames load the way paint_frames.py loads them and
+    export as FRIDA plans with the moved positions."""
+    import json
+    import subprocess
+    import sys
+    from inbetween.export_plans import build_plans, frida_options
+    from inbetween.strokes import load_frames
+    _, d = _with_path("bend.json", ["swell", "swing"], _bow((0.55, 0.45), (0.62, 0.35), 0.2))
+    kf = tmp_path / "keys.json"
+    kf.write_text(json.dumps(d))
+    src = os.path.join(HERE, "..", "..")
+    res = subprocess.run([sys.executable, "-m", "inbetween.cli", str(kf), "--out", str(tmp_path / "out"),
+                          "--method", "arc"], cwd=src, capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr[-2000:]
+    frames = load_frames(str(tmp_path / "out" / "frames_arc.json"))
+    assert [f.frame for f in frames] == list(range(11))
+    expected = interpolate(_with_path("bend.json", ["swell", "swing"], _bow((0.55, 0.45), (0.62, 0.35), 0.2))[0], "arc", r)
+    assert abs(frames[5].strokes["swing"].yt - expected[5].strokes["swing"].yt) < 1e-5
+    try:
+        opt = frida_options("caches/vae_sharpie_final", os.path.join(src, "..", "materials_vae_sharpie.json"), True)
+    except Exception as e:
+        pytest.skip(f"FRIDA options not available: {e}")
+    painting, _ = build_plans([frames[5]], opt)[5]
+    planned = frames[5].ordered()
+    xts = sorted(float(b.xt.detach()) for b in painting.brush_strokes)
+    assert xts == pytest.approx(sorted(min(max(s.xt, 0), 1) for s in planned), abs=1e-6)

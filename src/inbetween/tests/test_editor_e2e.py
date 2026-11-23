@@ -338,3 +338,115 @@ def test_reference_layer(server, tmp_path):
         assert pg.evaluate("S.ref.images.length") == 0
         assert errors == []
         browser.close()
+
+
+def test_motion_path(server, tmp_path):
+    """Draw a motion path with the Motion Path tool (M): the group travels along it in the
+    created in-betweens (same positions the stage's per-frame dots show), through Paint
+    Preview and both exports; F5 / Shift+F5 shift it, F6 inside the span splits it, deleting
+    a stroke removes it from the path, clearing an end keyframe drops it."""
+    import pickle
+    import zipfile
+    with playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg = browser.new_page(viewport={"width": 1440, "height": 900}, accept_downloads=True)
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(server)
+        pg.wait_for_function("S.cfg && S.doc")
+        st = pg.locator("#canvas").bounding_box()
+
+        def scr(px, py):
+            v = pg.evaluate("[S.view.ox, S.view.oy, S.view.scale, S.cfg.canvas_width_m/S.cfg.canvas_height_m]")
+            return st["x"] + v[0] + px * v[2] * v[3], st["y"] + v[1] + py * v[2]
+
+        def drag(pts, wait_fit=False):
+            pg.mouse.move(*scr(*pts[0]))
+            pg.mouse.down()
+            for q in pts[1:]:
+                pg.mouse.move(*scr(*q), steps=2)
+            pg.mouse.up()
+            if wait_fit:
+                pg.wait_for_function("!pendingFit", timeout=30000)
+
+        drag([(0.2 + 0.01 * i, 0.6) for i in range(11)], True)  # two short strokes on keyframe 1
+        drag([(0.2 + 0.01 * i, 0.66) for i in range(11)], True)
+        pg.evaluate("goto(8)")
+        pg.keyboard.press("F6")  # keyframe 9: the group moved right
+        pg.evaluate("pushUndo(); keyAt(8).strokes.forEach(s => { s.xt += 0.45; }); changed(); renderAll();")
+        pg.evaluate("goto(0)")
+        pg.keyboard.press("m")
+        assert pg.evaluate("S.ui.tool") == "motion"
+        pg.keyboard.press("Control+a")
+        ids = sorted(pg.evaluate("[...S.ui.sel]"))
+        assert len(ids) == 2
+        # the arc: from the group up and over to where it lands
+        drag([(0.25 + 0.45 * i / 20, 0.63 - 0.3 * (1 - (2 * i / 20 - 1) ** 2)) for i in range(21)])
+        assert pg.evaluate("S.doc.paths.length") == 1
+        assert pg.evaluate("S.doc.paths[0].span") == "0-8"
+        assert sorted(pg.evaluate("S.doc.paths[0].ids")) == ids
+        assert pg.evaluate("S.doc.version") == 2
+
+        pg.evaluate("S.doc.timing['0-8'] = 'ease_in_out'")
+        pg.select_option("#tl-method", "arc")
+        pg.keyboard.press("Control+Enter")
+        pg.wait_for_function("!S.ui.busy && Object.keys(S.gen.frames).length === 7", timeout=120000)
+        # the server's in-betweens put the anchor exactly where the editor's dots are
+        dev = pg.evaluate("""(() => { const p = S.doc.paths[0], q = fittedPath(p); let worst = 0;
+            for (let f = 1; f < 8; f++) { const g = S.gen.frames[f].strokes.filter(s => p.ids.includes(s.id));
+              const a = groupAnchor(g), w = pointAt(q, easedT(0, 8, f)); worst = Math.max(worst, Math.hypot(a[0] - w[0], a[1] - w[1])); }
+            return worst; })()""")
+        assert dev < 1e-4
+        lift = pg.evaluate("0.63 - groupAnchor(S.gen.frames[4].strokes)[1]")
+        assert lift > 0.15  # it went up the arc, not along the straight line
+        assert pg.evaluate("S.doc.keys.map(k => k.strokes.length)") == [2, 2]
+
+        pg.evaluate("goto(4)")  # Paint Preview renders the moved group
+        pg.keyboard.press("p")
+        pg.wait_for_function("[...S.previewCache.values()].some(v => v instanceof Image && v.complete)", timeout=60000)
+        pg.keyboard.press("p")
+        frames = pg.evaluate("framesForExport()")  # Export Robot Frames
+        f4 = {s["id"]: s for s in frames["frames"][4]["strokes"]}
+        gen4 = {s["id"]: s for s in pg.evaluate("S.gen.frames[4].strokes")}
+        assert all(abs(f4[i]["yt"] - gen4[i]["yt"]) < 1e-9 for i in ids)
+        with pg.expect_download(timeout=180000) as dl:  # Export FRIDA Plans
+            pg.evaluate("cmds.exportPlans()")
+        zpath = tmp_path / "plans.zip"
+        dl.value.save_as(zpath)
+        with zipfile.ZipFile(zpath) as z:
+            painting, _ = pickle.loads(z.read("frame_004.pkl"))
+        yts = sorted(float(b.yt.detach()) for b in painting.brush_strokes)
+        assert yts == pytest.approx(sorted(gen4[i]["yt"] for i in ids), abs=1e-5)
+
+        pg.evaluate("goto(2)")  # F5 / Shift+F5 move the span's end, the path goes with it
+        pg.keyboard.press("F5")
+        assert pg.evaluate("S.doc.paths[0].span") == "0-9"
+        pg.keyboard.press("Shift+F5")
+        assert pg.evaluate("S.doc.paths[0].span") == "0-8"
+
+        reached = pg.evaluate("pointAt(fittedPath(S.doc.paths[0]), easedT(0, 8, 4))")
+        pg.evaluate("goto(4)")  # F6 inside the span splits the path where the anchor had reached
+        pg.keyboard.press("F6")
+        spans = pg.evaluate("S.doc.paths.map(p => p.span)")
+        assert spans == ["0-4", "4-8"]
+        ends = pg.evaluate("[S.doc.paths[0].points.at(-1), S.doc.paths[1].points[0]]")
+        assert ends[0] == ends[1]
+        assert math.hypot(ends[0][0] - reached[0], ends[0][1] - reached[1]) < 1e-9
+        pg.keyboard.press("Control+z")
+        assert pg.evaluate("S.doc.paths.map(p => p.span)") == ["0-8"]
+
+        pg.evaluate("goto(0)")  # deleting a stroke from a key removes it from the path
+        pg.evaluate(f"S.ui.sel = new Set(['{ids[0]}'])")
+        pg.keyboard.press("Delete")
+        assert pg.evaluate("S.doc.paths[0].ids") == [ids[1]]
+        pg.keyboard.press("Control+z")
+
+        pg.evaluate("goto(8)")  # clearing an end keyframe drops the path, with a toast
+        pg.keyboard.press("Shift+F6")
+        assert pg.evaluate("S.doc.paths.length") == 0
+        assert "Removed 1 motion path" in pg.locator("#toast").inner_text()
+        assert errors == []
+        browser.close()

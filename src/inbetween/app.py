@@ -155,11 +155,12 @@ def make_handler(state: State):
                 seq = sequence_from_dict(req["doc"])
                 r = state.renderer(req.get("response"))
                 method = req.get("method", "refined")
-                frames = interpolate(seq, "linear" if method == "linear" else "arc", r)
+                warnings = []
+                frames = interpolate(seq, "linear" if method == "linear" else "arc", r, warnings)
                 if method == "refined":
                     frames, _ = refine(seq, frames, r, RefineConfig(verbose=False), ink=state.ink)
                 summary = popping(seq, frames, r)["summary_mean_over_strokes"]
-                return {**frames_to_dict(frames, {"method": method}), "metrics": summary}
+                return {**frames_to_dict(frames, {"method": method}), "metrics": summary, "warnings": warnings}
             if self.path == "/api/export_plans":
                 from .export_plans import plans_zip
                 frames = frames_from_dict(req["frames"])

@@ -45,8 +45,8 @@ async function api(path, body) {
 // ------------------------------------------------------------- document ---
 function newDoc() {
   return {
-    format: "frida-inbetween", version: 1, cache_dir: S.cfg.cache_dir,
-    keys: [{ frame: 0, strokes: [] }], edits: [], timing: {},
+    format: "frida-inbetween", version: 2, cache_dir: S.cfg.cache_dir,
+    keys: [{ frame: 0, strokes: [] }], edits: [], timing: {}, paths: [],
     editor: { fps: 8, length: 24, next_id: 1, name: "Untitled" },
   };
 }
@@ -271,6 +271,7 @@ function render() {
   // selection
   for (const s of c.strokes) if (S.ui.sel.has(s.id)) drawSelection(s);
   if (S.ui.sel.size && (S.ui.tool === "selection")) drawRotateHandle(c.strokes.filter((s) => S.ui.sel.has(s.id)));
+  drawMotionPaths(f);
   // selection rectangle
   if (drag && drag.kind === "marquee") {
     const x = Math.min(drag.x0, drag.x1), y = Math.min(drag.y0, drag.y1);
@@ -282,6 +283,10 @@ function render() {
   }
   // live brush
   if (drag && drag.kind === "brush") drawLive(drag.pts);
+  if (drag && drag.kind === "mpath") {
+    ctx.save(); ctx.strokeStyle = "#c440d6"; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+    ctx.beginPath(); drag.pts.forEach((pt, i) => { const [x, y] = toScreen(pt); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.restore();
+  }
   if (pendingFit) drawLive(pendingFit, true);
   updateModeHint();
 }
@@ -349,6 +354,144 @@ async function importReference(files) {
   } catch (err) {
     toast("Could not load reference: " + err.message);
   } finally { S.ui.busy = false; status(""); renderAll(); }
+}
+
+// --------------------------------------------------------- motion paths ---
+// The animator draws the path a group of strokes travels between two neighboring keys
+// (Motion Path tool, M). Stored in S.doc.paths as {span: "a-b", ids, points: [[x, y], ...]}.
+// fitPath / pointAt / pathMembers mirror inbetween/motion_path.py, so the dots drawn on the
+// path are where Create In-betweens puts the group's anchor on each frame.
+const MP_MIN_CHORD = 0.01, MP_SCALE_LIMIT = 4;
+const EASE_FN = { linear: (t) => t, ease_in: (t) => t * t, ease_out: (t) => 1 - (1 - t) * (1 - t),
+                  ease_in_out: (t) => 3 * t * t - 2 * t * t * t };
+const spanOf = (p) => p.span.split("-").map(Number);
+const easedT = (a, b, f) => (EASE_FN[S.doc.timing[`${a}-${b}`]] || EASE_FN.linear)((f - a) / (b - a));
+function groupAnchor(strokes) {
+  const cs = strokes.map(center);
+  return [cs.reduce((t, c) => t + c[0], 0) / cs.length, cs.reduce((t, c) => t + c[1], 0) / cs.length];
+}
+function cumLen(q) { const L = [0]; for (let i = 1; i < q.length; i++) L.push(L[i - 1] + Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1])); return L; }
+function fitPath(points, a0, a1) {
+  const k = aspect(), P = points.map((p) => [p[0] * k, p[1]]), A0 = [a0[0] * k, a0[1]], A1 = [a1[0] * k, a1[1]];
+  const n = P.length - 1, cd = [P[n][0] - P[0][0], P[n][1] - P[0][1]], ca = [A1[0] - A0[0], A1[1] - A0[1]];
+  const ld = Math.hypot(...cd), la = Math.hypot(...ca);
+  let out;
+  if (ld >= MP_MIN_CHORD && la >= MP_MIN_CHORD && la / ld >= 1 / MP_SCALE_LIMIT && la / ld <= MP_SCALE_LIMIT) {
+    // rotation + uniform scale taking the drawn chord onto the keys' chord (complex ca / cd)
+    const den = cd[0] * cd[0] + cd[1] * cd[1];
+    const re = (ca[0] * cd[0] + ca[1] * cd[1]) / den, im = (ca[1] * cd[0] - ca[0] * cd[1]) / den;
+    out = P.map(([x, y]) => { const dx = x - P[0][0], dy = y - P[0][1]; return [A0[0] + dx * re - dy * im, A0[1] + dx * im + dy * re]; });
+  } else { // shift, blending the two end offsets along the path
+    const L = cumLen(P), tot = L[n] || 1, d0 = [A0[0] - P[0][0], A0[1] - P[0][1]], d1 = [A1[0] - P[n][0], A1[1] - P[n][1]];
+    out = P.map(([x, y], i) => [x + d0[0] + (d1[0] - d0[0]) * L[i] / tot, y + d0[1] + (d1[1] - d0[1]) * L[i] / tot]);
+  }
+  out[0] = A0; out[n] = A1;
+  return out.map(([x, y]) => [x / k, y]);
+}
+function pathLocate(q, u) { // segment index and blend weight at fraction u of the length on paper
+  const k = aspect(), L = cumLen(q.map((p) => [p[0] * k, p[1]])), n = q.length - 1;
+  if (L[n] <= 0) return [1, 0];
+  const s = clamp(u, 0, 1) * L[n];
+  for (let i = 1; i <= n; i++) if (L[i] >= s) { const seg = L[i] - L[i - 1]; return [i, seg > 0 ? (s - L[i - 1]) / seg : 0]; }
+  return [n, 1];
+}
+function pointAt(q, u) {
+  const [i, w] = pathLocate(q, u);
+  return [q[i - 1][0] + (q[i][0] - q[i - 1][0]) * w, q[i - 1][1] + (q[i][1] - q[i - 1][1]) * w];
+}
+function splitPath(q, u) { const [i] = pathLocate(q, u), pt = pointAt(q, u); return [[...q.slice(0, i), pt], [pt, ...q.slice(i)]]; }
+// The path's two keyframes, if they exist and are neighbors.
+function pathKeys(p) {
+  const [a, b] = spanOf(p), ka = keyAt(a), kb = keyAt(b);
+  return ka && kb && nextKey(a) === kb ? [ka, kb] : null;
+}
+const inKey = (k, id) => k.strokes.some((s) => s.id === id);
+// Strokes that follow the path: in both keys and not pinned anywhere in the span (a pinned
+// stroke keeps its pin, and leaving it out on every frame keeps the anchor steady).
+function pathMembers(p) {
+  const ks = pathKeys(p); if (!ks) return [];
+  const [a, b] = spanOf(p);
+  const pinned = new Set(S.doc.edits.filter((e) => e.frame > a && e.frame < b).flatMap((e) => e.strokes.map((s) => s.id)));
+  return p.ids.filter((id) => inKey(ks[0], id) && inKey(ks[1], id) && !pinned.has(id));
+}
+function fittedPath(p) {
+  const ks = pathKeys(p), ids = pathMembers(p);
+  if (!ks || !ids.length) return null;
+  const pick = (k) => k.strokes.filter((s) => ids.includes(s.id));
+  return fitPath(p.points, groupAnchor(pick(ks[0])), groupAnchor(pick(ks[1])));
+}
+const offPaper = (q) => q.some(([x, y]) => x < 0 || x > 1 || y < 0 || y > 1);
+const pathsAt = (f) => S.doc.paths.filter((p) => { const [a, b] = spanOf(p); return a <= f && f <= b; });
+// The span a path drawn on frame f belongs to: from this keyframe to the next (or from the
+// previous one, on the last keyframe), or the span this in-between is in.
+function spanHere(f) {
+  if (keyAt(f)) { const n = nextKey(f), p = prevKey(f); return n ? [f, n.frame] : p ? [p.frame, f] : null; }
+  return isBetween(f) ? [prevKey(f).frame, nextKey(f).frame] : null;
+}
+function commitPath(pts) {
+  const sp = spanHere(S.ui.frame);
+  if (!sp) return toast("A motion path goes from one keyframe to the next. Add a second keyframe first (F6 / F7).");
+  const [a, b] = sp, ka = keyAt(a), kb = keyAt(b), sel = [...S.ui.sel];
+  const ids = sel.filter((id) => inKey(ka, id) && inKey(kb, id));
+  if (!ids.length) return toast(`To travel along a path, the selected strokes must be in both keyframe ${a + 1} and keyframe ${b + 1}.`);
+  pushUndo();
+  const span = `${a}-${b}`;
+  for (const p of S.doc.paths) if (p.span === span) p.ids = p.ids.filter((id) => !ids.includes(id)); // one path per stroke and span
+  const path = { span, ids, points: pts.map((p) => [+p[0].toFixed(5), +p[1].toFixed(5)]) };
+  S.doc.paths = S.doc.paths.filter((p) => p.ids.length).concat([path]);
+  const q = fittedPath(path), left = sel.length - ids.length;
+  if (q && offPaper(q)) toast("This path leaves the paper. The robot can't paint there, so the strokes will stop at the edge.");
+  else toast(`Motion path: ${ids.length} stroke${ids.length > 1 ? "s" : ""} travel along it from keyframe ${a + 1} to ${b + 1}. Create In-betweens (Ctrl+Enter) to apply it.` +
+             (left ? ` ${left} selected stroke${left > 1 ? "s" : ""} not in both keyframes ${left > 1 ? "were" : "was"} left out.` : ""));
+  changed(); renderAll();
+}
+// Timing changes (F5 / Shift+F5) shift span names, as shiftTiming does.
+function shiftPaths(f, d) {
+  for (const p of S.doc.paths) { let [a, b] = spanOf(p); if (a > f) a += d; if (b > f) b += d; p.span = `${a}-${b}`; }
+}
+// A new keyframe inside a pathed span splits the path where the anchor had reached on that frame.
+function splitPathsAt(f) {
+  const out = [];
+  for (const p of S.doc.paths) {
+    const [a, b] = spanOf(p);
+    if (!(a < f && f < b)) { out.push(p); continue; }
+    const [q1, q2] = splitPath(fittedPath(p) || p.points, easedT(a, b, f));
+    out.push({ span: `${a}-${f}`, ids: [...p.ids], points: q1 }, { span: `${f}-${b}`, ids: [...p.ids], points: q2 });
+  }
+  S.doc.paths = out;
+}
+function dropPathsAt(f) { // a keyframe at either end was cleared
+  const n = S.doc.paths.length;
+  S.doc.paths = S.doc.paths.filter((p) => !spanOf(p).includes(f));
+  return n - S.doc.paths.length;
+}
+function removeFromPaths(f, ids) { // strokes deleted from keyframe f
+  for (const p of S.doc.paths) if (spanOf(p).includes(f)) p.ids = p.ids.filter((id) => !ids.has(id));
+  S.doc.paths = S.doc.paths.filter((p) => p.ids.length);
+}
+function drawMotionPaths(f) {
+  for (const p of pathsAt(f)) {
+    const q = fittedPath(p); if (!q) continue;
+    const [a, b] = spanOf(p), on = p.ids.some((id) => S.ui.sel.has(id)) || S.ui.tool === "motion";
+    ctx.save(); ctx.strokeStyle = on ? "rgba(196,64,214,.95)" : "rgba(196,64,214,.45)"; ctx.lineWidth = 1.3; ctx.setLineDash([5, 4]);
+    ctx.beginPath(); q.forEach((pt, i) => { const [x, y] = toScreen(pt); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
+    ctx.setLineDash([]); ctx.strokeStyle = "#c440d6";
+    for (let g = a; g <= b; g++) { // one dot per frame, as in After Effects: spacing shows the ease
+      const [x, y] = toScreen(pointAt(q, easedT(a, b, g)));
+      ctx.fillStyle = g === f ? "#c440d6" : "#fff";
+      ctx.beginPath(); ctx.arc(x, y, g === f ? 3.6 : (g === a || g === b ? 3 : 2.2), 0, 7); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+function motionProps(paths) {
+  if (!paths.length) return "";
+  return `<div class="psec"><h4>Motion Path</h4>${paths.map((p) => {
+    const [a, b] = spanOf(p), off = p.ids.length - pathMembers(p).length;
+    return `<div class="pinfo">Keyframe ${a + 1} → ${b + 1}: <b>${p.ids.join(", ")}</b> travel${p.ids.length > 1 ? "" : "s"} along the drawn path.` +
+      (off ? ` <span class="warn">${off} pinned or not in both keyframes: ${off > 1 ? "they don't" : "it doesn't"} follow it.</span>` : "") +
+      `</div><button class="pbtn" data-act="rmpath" data-idx="${S.doc.paths.indexOf(p)}">Remove path</button>`;
+  }).join("")}</div>`;
 }
 
 function diamond(x, y, r) { ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.fill(); }
@@ -464,6 +607,16 @@ cv.addEventListener("pointerdown", (e) => {
     drag = { kind: "brush", pts: [] }; addBrushPoints(e); render(); return;
   }
 
+  if (t === "motion") { // select strokes (click, Shift adds), then drag the path they travel
+    const hit = hitStroke(x, y, c.strokes);
+    if (!S.ui.sel.size || e.shiftKey) {
+      if (hit) { if (e.shiftKey && S.ui.sel.has(hit.id)) S.ui.sel.delete(hit.id); else S.ui.sel.add(hit.id); }
+      else if (!e.shiftKey) toast("Motion Path: click the strokes to move (Shift adds), then drag the path they travel to the next keyframe.");
+      renderAll(); return;
+    }
+    drag = { kind: "mpath", pts: [toProp(x, y)], x0: x, y0: y }; render(); return;
+  }
+
   // selection / subselection
   if (t === "subselection" && S.ui.sel.size) {
     for (const s of c.strokes) if (S.ui.sel.has(s.id)) {
@@ -507,7 +660,7 @@ cv.addEventListener("pointerdown", (e) => {
 cv.addEventListener("pointermove", (e) => {
   const x = e.offsetX, y = e.offsetY;
   if (!drag) {
-    cv.style.cursor = { hand: "grab", zoom: "zoom-in", brush: "crosshair" }[tool()] || "default";
+    cv.style.cursor = { hand: "grab", zoom: "zoom-in", brush: "crosshair", motion: "crosshair" }[tool()] || "default";
     return;
   }
   if (drag.kind === "pan") { S.view.ox = drag.ox + x - drag.x; S.view.oy = drag.oy + y - drag.y; S.view.fit = false; render(); return; }
@@ -516,6 +669,11 @@ cv.addEventListener("pointermove", (e) => {
     const cand = traceCandidates(S.ui.frame);
     S.ui.suggest = S.ui.linkTarget ? null : (S.ui.onion && cand.length ? nearestGhost(drag.pts, cand) : null);
     render(); return;
+  }
+  if (drag.kind === "mpath") {
+    const last = toScreen(drag.pts[drag.pts.length - 1]);
+    if (Math.hypot(x - last[0], y - last[1]) > 2) { drag.pts.push(toProp(x, y)); render(); }
+    return;
   }
   if (drag.kind === "marquee") {
     drag.x1 = x; drag.y1 = y;
@@ -549,10 +707,14 @@ cv.addEventListener("pointermove", (e) => {
   }
 });
 
-cv.addEventListener("pointerup", async () => {
+cv.addEventListener("pointerup", async (e) => {
   const d = drag; drag = null;
   if (!d) return;
   if (d.kind === "brush") await finishBrush(d.pts);
+  if (d.kind === "mpath") {
+    if (d.pts.length >= 4) commitPath(d.pts); // points are >2 px apart, so this is a drag, not a click
+    else { const hit = hitStroke(d.x0, d.y0, content(S.ui.frame).strokes); S.ui.sel = new Set(hit ? [hit.id] : []); } // a click selects
+  }
   renderAll();
 });
 
@@ -735,7 +897,8 @@ const cmds = {
       return toast("Delete strokes on a keyframe; in-betweens follow the keyframes.");
     }
     if (c.mode !== "key") return canEdit();
-    pushUndo(); const k = keyAt(f); k.strokes = k.strokes.filter((s) => !S.ui.sel.has(s.id)); S.ui.sel.clear(); changed(); renderAll();
+    pushUndo(); const k = keyAt(f); k.strokes = k.strokes.filter((s) => !S.ui.sel.has(s.id));
+    removeFromPaths(f, S.ui.sel); S.ui.sel.clear(); changed(); renderAll();
   },
   zoomIn() { zoomAt(1.25); }, zoomOut() { zoomAt(0.8); }, zoomFit() { zoomFit(); render(); },
   toggleOnion() { S.ui.onion = !S.ui.onion; renderAll(); },
@@ -753,7 +916,7 @@ const cmds = {
     pushUndo(); const f = S.ui.frame;
     for (const k of keys()) if (k.frame > f) k.frame++;
     for (const e of S.doc.edits) if (e.frame > f) e.frame++;
-    S.doc.timing = shiftTiming(S.doc.timing, f, +1);
+    S.doc.timing = shiftTiming(S.doc.timing, f, +1); shiftPaths(f, +1);
     S.doc.editor.length++; S.gen.frames = {}; S.gen.stale = true; renderAll();
   },
   removeFrame() { // Shift+F5
@@ -764,12 +927,13 @@ const cmds = {
     S.doc.edits = S.doc.edits.filter((e) => e.frame !== f);
     for (const k of keys()) if (k.frame > f) k.frame--;
     for (const e of S.doc.edits) if (e.frame > f) e.frame--;
-    S.doc.timing = shiftTiming(S.doc.timing, f, -1);
+    S.doc.timing = shiftTiming(S.doc.timing, f, -1); shiftPaths(f, -1);
     S.doc.editor.length--; S.gen.frames = {}; S.gen.stale = true; S.ui.frame = Math.min(f, lastFrame()); renderAll();
   },
   insertKeyframe() { // F6: copy what is on this frame (in-between included), ids preserved
     const f = S.ui.frame; if (keyAt(f)) return toast("Already a keyframe.");
     pushUndo(); const c = content(f);
+    splitPathsAt(f);
     S.doc.keys.push({ frame: f, strokes: clone(c.strokes) });
     S.doc.edits = S.doc.edits.filter((e) => e.frame !== f);
     sortKeys(); grow(f); changed(); renderAll();
@@ -777,7 +941,7 @@ const cmds = {
   },
   insertBlankKeyframe() { // F7: empty keyframe, trace over the onion skin
     const f = S.ui.frame; if (keyAt(f)) return toast("Already a keyframe.");
-    pushUndo(); S.doc.keys.push({ frame: f, strokes: [] });
+    pushUndo(); splitPathsAt(f); S.doc.keys.push({ frame: f, strokes: [] });
     S.doc.edits = S.doc.edits.filter((e) => e.frame !== f);
     sortKeys(); grow(f); S.ui.onion = true; S.ui.tool = "brush"; changed(); renderAll();
     toast("Blank keyframe: redraw strokes over their ghosts. Each traced stroke replaces its ghost.");
@@ -785,7 +949,10 @@ const cmds = {
   clearKeyframe() {
     const f = S.ui.frame, k = keyAt(f);
     if (!k) return; if (keys().length <= 1) return toast("Keep at least one keyframe.");
-    pushUndo(); S.doc.keys = keys().filter((x) => x !== k); changed(); renderAll();
+    pushUndo(); S.doc.keys = keys().filter((x) => x !== k);
+    const n = dropPathsAt(f);
+    if (n) toast(`Removed ${n} motion path${n > 1 ? "s" : ""} that started or ended at this keyframe.`);
+    changed(); renderAll();
   },
   generate, play: () => (S.ui.playing ? stop() : play()),
   prevFrame() { goto(S.ui.frame - 1); }, nextFrame() { goto(S.ui.frame + 1); },
@@ -835,7 +1002,8 @@ $("fileinput").addEventListener("change", async (e) => {
   try {
     const d = JSON.parse(await file.text());
     if (d.format !== "frida-inbetween") throw new Error("not a keyframe file");
-    d.edits = d.edits || []; d.timing = d.timing || {};
+    d.edits = d.edits || []; d.timing = d.timing || {}; d.paths = d.paths || [];
+    d.version = 2; // version 1 files open unchanged and are saved as version 2
     let maxId = 0;
     for (const k of d.keys) for (const s of k.strokes) { const m = /^s(\d+)$/.exec(s.id); if (m) maxId = Math.max(maxId, +m[1]); }
     d.editor = Object.assign({ fps: 8, length: 1, next_id: maxId + 1, name: file.name.replace(/\.json$/, "") }, d.editor || {});
@@ -853,6 +1021,10 @@ async function generate() {
   const method = $("tl-method").value;
   const doc = clone(S.doc);
   doc.edits = doc.edits.filter((e) => e.frame > ks[0].frame && e.frame < ks[ks.length - 1].frame && !keyAt(e.frame) && e.strokes.length);
+  // Send only paths that still join two neighboring keys, with strokes that are in both
+  // (strokes not traced yet after F7 rejoin their path once traced).
+  doc.paths = doc.paths.map((p) => { const k = pathKeys(p); return k ? { ...p, ids: p.ids.filter((id) => inKey(k[0], id) && inKey(k[1], id)) } : null; })
+                       .filter((p) => p && p.ids.length);
   S.ui.busy = true; $("tl-generate").disabled = true;
   status(method === "refined" ? "Creating in-betweens and refining for the painted look…" : "Creating in-betweens…");
   try {
@@ -861,6 +1033,7 @@ async function generate() {
     for (const fr of res.frames) if (fr.kind !== "key") frames[fr.frame] = fr;
     S.gen = { frames, stale: false, method, metrics: res.metrics };
     status(`${res.frames.length} frames · ${method} · width deviation max ${res.metrics.width_dev_max_mm.toFixed(2)} mm, mean ${res.metrics.width_dev_mean_mm.toFixed(2)} mm`);
+    if (res.warnings && res.warnings.length) toast([...new Set(res.warnings)].join(" "));
   } catch (e) { status(""); toast("Could not create in-betweens: " + e.message); }
   finally { S.ui.busy = false; $("tl-generate").disabled = false; renderAll(); }
 }
@@ -979,7 +1152,7 @@ function showContext(x, y, items) {
 }
 
 // ------------------------------------------------------------ keyboard ---
-const TOOLKEYS = { v: "selection", a: "subselection", b: "brush", h: "hand", z: "zoom" };
+const TOOLKEYS = { v: "selection", a: "subselection", b: "brush", m: "motion", h: "hand", z: "zoom" };
 document.addEventListener("keydown", (e) => {
   if (e.target.closest("input, select, textarea")) return;
   const k = e.key, mod = e.ctrlKey || e.metaKey;
@@ -1027,8 +1200,9 @@ function renderProps() {
   const sel = c.strokes.filter((s) => S.ui.sel.has(s.id));
   let h = "";
   if (sel.length === 1) h = strokeProps(sel[0], c);
-  else if (sel.length > 1) h = `<div class="psec"><h4>Selection</h4><div class="pinfo"><b>${sel.length}</b> strokes selected. Drag to move together, or use the round handle to rotate.</div>
-    <button class="pbtn" data-act="delete">Delete</button></div>`;
+  else if (sel.length > 1) h = `<div class="psec"><h4>Selection</h4><div class="pinfo"><b>${sel.length}</b> strokes selected. Drag to move together, or use the round handle to rotate.
+    With the Motion Path tool (M), drag the path they travel to the next keyframe.</div>
+    <button class="pbtn" data-act="delete">Delete</button></div>` + motionProps(pathsAt(f).filter((p) => p.ids.some((id) => S.ui.sel.has(id))));
   else h = frameProps(c);
   body.innerHTML = h;
   bindProps(sel[0], c);
@@ -1074,6 +1248,7 @@ function strokeProps(s, c) {
     ${slider("x", "X (mm)", s.xt, 0, 1, 0.001, (v) => mm(v * W))}${slider("y", "Y (mm)", s.yt, 0, 1, 0.001, (v) => mm(v * H))}
     ${slider("a", "Rotation", s.a, -Math.PI, Math.PI, 0.01, (v) => Math.round((-v * 180) / Math.PI) + "°")}</div>
   ${S.cfg.ink ? "" : `<div class="psec"><h4>Color</h4><div class="prow two"><label>Paint</label><input type="color" data-p="color" value="${rgbToHex(s.color)}"></div></div>`}
+  ${motionProps(pathsAt(S.ui.frame).filter((p) => p.ids.includes(s.id)))}
   ${link}`;
 }
 function f1() { return S.ui.frame + 1; }
@@ -1084,13 +1259,13 @@ function frameProps(c) {
     const missing = traceCandidates(f);
     h += `<div class="psec"><h4>Keyframe ${f + 1}</h4><div class="pinfo"><b>${k.strokes.length}</b> strokes.</div>
       ${missing.length ? `<div class="pinfo warn">${missing.length} stroke${missing.length > 1 ? "s" : ""} from keyframe ${pk.frame + 1} ${missing.length > 1 ? "are" : "is"} not in this keyframe yet, so ${missing.length > 1 ? "they disappear" : "it disappears"} halfway there. Trace ${missing.length > 1 ? "them" : "it"} with the Brush, or:</div>
-      <button class="pbtn" data-act="carry">Bring back unchanged</button>` : ""}</div>`;
+      <button class="pbtn" data-act="carry">Bring back unchanged</button>` : ""}</div>` + motionProps(pathsAt(f));
   } else if (pk && nk) {
     const span = `${pk.frame}-${nk.frame}`, ease = S.doc.timing[span] || "linear";
     h += `<div class="psec"><h4>In-betweens ${pk.frame + 1}–${nk.frame + 1}</h4>
       <div class="prow two"><label>Ease</label><select data-p="ease">${EASES.map(([v, l]) => `<option value="${v}" ${v === ease ? "selected" : ""}>${l}</option>`).join("")}</select></div>
       <div class="pinfo">${nk.frame - pk.frame - 1} in-between frames. Add or remove frames (F5 / Shift+F5) to change timing.</div>
-      <div class="pinfo">${S.gen.frames[f] ? (S.gen.stale ? `<span class="warn">Out of date.</span> Create In-betweens again.` : `Created (${S.gen.method}). Adjust a stroke here to pin it.`) : "Not created yet: Create In-betweens (Ctrl+Enter)."}</div></div>`;
+      <div class="pinfo">${S.gen.frames[f] ? (S.gen.stale ? `<span class="warn">Out of date.</span> Create In-betweens again.` : `Created (${S.gen.method}). Adjust a stroke here to pin it.`) : "Not created yet: Create In-betweens (Ctrl+Enter)."}</div></div>` + motionProps(pathsAt(f));
   } else {
     h += `<div class="psec"><h4>Frame ${f + 1}</h4><div class="pinfo">${pk ? `Holds keyframe ${pk.frame + 1}.` : "Empty."} Press F6 to copy the drawing into a new keyframe, or F7 for a blank keyframe to trace over.</div></div>`;
   }
@@ -1150,6 +1325,7 @@ function bindProps(s, c) {
     if (act === "pick") { S.ui.picking = s.id; toast("Click the ghost stroke this stroke should replace."); renderAll(); }
     if (act === "unlink") { pushUndo(); const st = keyAt(f).strokes.find((x) => x.id === s.id); st.id = newId(); S.ui.sel = new Set([st.id]); changed(); renderAll(); }
     if (act === "unpin") { pushUndo(); const e = editAt(f); e.strokes = e.strokes.filter((x) => x.id !== s.id); if (!e.strokes.length) S.doc.edits = S.doc.edits.filter((x) => x !== e); changed(); renderAll(); }
+    if (act === "rmpath") { pushUndo(); S.doc.paths.splice(+b.dataset.idx, 1); toast("Motion path removed."); changed(); renderAll(); }
     if (act === "carry") { pushUndo(); keyAt(f).strokes.push(...clone(traceCandidates(f))); changed(); renderAll(); }
   }));
 }
@@ -1159,6 +1335,7 @@ function updateModeHint() {
   const f = S.ui.frame, c = content(f);
   let t = "";
   if (S.ui.picking) t = "Click the ghost stroke to link to";
+  else if (S.ui.tool === "motion") t = S.ui.sel.size ? "Motion Path · drag the path the selected strokes travel" : "Motion Path · click the strokes to move";
   else if (c.mode === "key" && traceCandidates(f).length && S.ui.onion) t = "Keyframe · tracing over onion skin";
   else if (c.mode === "key") t = "Keyframe";
   else if (c.mode === "between") t = S.gen.stale ? "In-between (out of date)" : "In-between · adjust a stroke to pin it";
@@ -1170,6 +1347,7 @@ function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add
 function status(msg) { $("tl-status").textContent = msg; }
 function showShortcuts() {
   const rows = [["V", "Selection tool: click or drag a rectangle to select (Shift adds), drag to move; round handle rotates"], ["A", "Subselection tool: drag corner points"], ["B", "Brush tool (stylus pressure sets width)"],
+    ["M", "Motion Path tool: click strokes (Shift adds), then drag the path they travel to the next keyframe"],
     ["Alt+click ghost", "Brush: choose which ghost the next stroke traces"], ["H / Space", "Hand tool / temporary pan"], ["Z", "Zoom tool (Alt+click zooms out)"],
     ["F5 / Shift+F5", "Insert / remove frame (timing)"], ["F6", "Insert keyframe (copy the drawing)"], ["F7", "Insert blank keyframe (trace over onion skin)"],
     ["Shift+F6", "Clear keyframe"], ["Ctrl+Enter", "Create in-betweens"], ["Enter", "Play / stop"], [", / .", "Previous / next frame"],

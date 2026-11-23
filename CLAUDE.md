@@ -36,6 +36,12 @@ Ours, `src/inbetween/` (see its README.md; run commands from `src/`):
   `"placeholder_sigmoid"`. Swapping stroke models must only touch this file.
 - `interpolate.py`: `linear` and `arc` (BetweenIT-style log-spiral motion + intrinsic shape),
   eased timing, strokes popping in/out, artist edits as extra per-stroke keys.
+- `motion_path.py`: motion paths (keyframe file version 2, `"paths"`): a group's anchor (mean
+  of its strokes' centres) follows a drawn polyline, fitted so its ends land on the anchor at
+  the two keys, at eased t by arc length. Only in-between `xt`/`yt` change; members exclude
+  strokes pinned in the span (on every frame, so the anchor stays steady); the shift keeps the
+  group on the paper (`xt`, `yt` in [0, 1] as `make_valid`). `editor/app.js` mirrors
+  `fit_path` / `point_at` (the per-frame dots); the browser test checks they agree.
 - `refine.py`: pressure-only refinement toward evenly changing rendered width profiles
   between fixed frames (keys + artist edits); coarse search then gradient descent.
 - `metrics.py`: width deviation from even change ("popping"), per stroke.
@@ -59,7 +65,9 @@ Ours, `src/inbetween/` (see its README.md; run commands from `src/`):
   Reference layer (`S.ref`, File > Import Reference Frames, R): animator's PNGs or a video under
   the drawing for tracing; never in the document, exports or paintings.
 - `tests/`: `python -m pytest -q inbetween/tests` (must pass before committing; the browser test
-  needs Playwright, the geometry test needs Node).
+  needs Playwright, the geometry test needs Node). On the lab machine (no sudo), Node is in
+  `~/.local/bin` and Chromium's missing `libasound.so.2` in `~/.local/lib/chromium-extra`:
+  `PATH=$HOME/.local/bin:$PATH LD_LIBRARY_PATH=$HOME/.local/lib/chromium-extra uv run --with pytest --with playwright python -m pytest -q inbetween/tests`
 
 FRIDA change: `src/filleted_stroke.py` treats corners within 0.02 rad of straight as straight
 (`FLAT_ANGLE`). The old 1e-3 threshold sat below a clamp floor, so near-straight corners could

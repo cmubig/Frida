@@ -35,6 +35,18 @@ shortcuts (press `?` in the editor for the full list).
   remove frames to change timing, as in Animate.
 - Changing a stroke on an in-between **pins** it (orange diamond); the next
   Create In-betweens keeps it and re-flows the neighbors. Delete unpins.
+- **Motion Path (M)**, as in After Effects: click the strokes to move (Shift
+  adds, or select them first with V), then drag the path they travel to the
+  next keyframe ("draw the arc"). The group's centre follows the path instead
+  of the arc method's own motion; its rotation and shape still change as
+  between the keys. The ends of the path snap to where the group is on the two
+  keyframes, and editing a key bends the path with it. One dot per frame on the
+  path shows the spacing, so the ease is visible. A stroke pinned on an
+  in-between keeps its pin and doesn't follow the path. A path that leaves the
+  paper stops the strokes at the edge (with a warning). F5 / Shift+F5 move the
+  path with its keyframes, F6 / F7 inside the span split it in two, and
+  clearing a keyframe at either end removes it. Properties > Motion Path >
+  Remove path.
 - **Paint Preview (P)** shows the stroke model's predicted painting.
 - **File > Import Reference Frames** loads the animator's own frames (a PNG
   sequence, sorted by number, or a video) under the drawing, one image per
@@ -94,6 +106,7 @@ frame; use `paint_frames.py` to paint frames exactly as planned.
 | Keyframes | `strokes.py` | JSON keyframes using FRIDA's own stroke parameters, with stable stroke IDs |
 | Rendering | `render.py` | One `Renderer` around the calibrated stroke model; optional placeholder pressure response |
 | Interpolation | `interpolate.py` | `linear` baseline and `arc` (BetweenIT-style: log-spiral motion + intrinsic shape) |
+| Motion paths | `motion_path.py` | Moves a group of strokes along a path the animator drew, between two keys |
 | Refinement | `refine.py` | Adjusts pressure so painted width changes evenly between fixed frames |
 | Measurement | `metrics.py` | Width deviation from an even change ("popping"), per stroke |
 | Robot | `paint_frames.py` | Paints each frame exactly as planned, no re-planning |
@@ -140,16 +153,24 @@ To use a better stroke model later, change `render.py` only.
 
 ```json
 {
-  "format": "frida-inbetween", "version": 1,
+  "format": "frida-inbetween", "version": 2,
   "cache_dir": "caches/vae_sharpie_final",
   "keys": [
     {"frame": 0,  "strokes": [ STROKE, ... ]},
     {"frame": 10, "strokes": [ STROKE, ... ]}
   ],
   "edits":  [ {"frame": 5, "strokes": [ STROKE ]} ],
-  "timing": { "0-10": "ease_in_out" }
+  "timing": { "0-10": "ease_in_out" },
+  "paths":  [ {"span": "0-10", "ids": ["s3", "s4"], "points": [[0.2, 0.6], [0.4, 0.3], ...]} ]
 }
 ```
+
+`paths` (version 2; version 1 files without it still load) are motion paths:
+the strokes in `ids` travel as a group along `points` (the drawn polyline, in
+canvas proportions like `xt`, `yt`) between the neighboring keyframes in
+`span`, at the span's eased time. Only `xt`, `yt` of the in-betweens change;
+keys, `id` and `order` don't. Paths are never painted. The frames file that
+`paint_frames.py` reads is unchanged (still version 1).
 
 `STROKE`:
 

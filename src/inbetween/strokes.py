@@ -27,7 +27,7 @@ import json
 import math
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import torch
 
@@ -36,7 +36,11 @@ from filleted_stroke import radii_from_kappa, sample_filleted_polyline
 N_VERTICES = 4
 N_PATH_POINTS = 32
 FORMAT_NAME = "frida-inbetween"
-FORMAT_VERSION = 1
+# Keyframe file version. 2 added "paths" (motion paths); version 1 files still load.
+FORMAT_VERSION = 2
+SUPPORTED_VERSIONS = (1, 2)
+# The frames file (what paint_frames.py reads) did not change; it keeps its own version.
+FRAMES_VERSION = 1
 
 
 @dataclass
@@ -105,11 +109,22 @@ class Frame:
 
 
 @dataclass
+class MotionPath:
+    """A path drawn by the animator: the strokes in `ids` travel along it, as a group,
+    from keyframe span[0] to keyframe span[1] (neighboring keys). `points` is the drawn
+    polyline in canvas proportions [x, y]. It is never painted; see motion_path.py."""
+    span: Tuple[int, int]
+    ids: List[str]
+    points: List[List[float]]
+
+
+@dataclass
 class Sequence:
     keys: List[Frame]
     edits: List[Frame] = field(default_factory=list)  # artist fixes on in-between frames
     timing: Dict[str, str] = field(default_factory=dict)  # "fromFrame-toFrame" -> easing
     meta: dict = field(default_factory=dict)
+    paths: List[MotionPath] = field(default_factory=list)  # motion paths (version 2)
 
 
 def load_sequence(path: str) -> Sequence:
@@ -120,7 +135,7 @@ def load_sequence(path: str) -> Sequence:
 def sequence_from_dict(d: dict, name: str = "document") -> Sequence:
     if d.get("format") != FORMAT_NAME:
         raise ValueError(f"{name}: not a {FORMAT_NAME} file")
-    if int(d.get("version", 0)) != FORMAT_VERSION:
+    if int(d.get("version", 0)) not in SUPPORTED_VERSIONS:
         raise ValueError(f"{name}: unsupported version {d.get('version')}")
 
     def frames(items, kind):
@@ -147,14 +162,29 @@ def sequence_from_dict(d: dict, name: str = "document") -> Sequence:
             raise ValueError(f"edit on frame {e.frame} collides with a keyframe; edit the key instead")
         if not keys[0].frame < e.frame < keys[-1].frame:
             raise ValueError(f"edit on frame {e.frame} is outside the keyframe range")
-    meta = {k: v for k, v in d.items() if k not in ("keys", "edits", "timing", "format", "version")}
-    return Sequence(keys=keys, edits=edits, timing=d.get("timing", {}), meta=meta)
+    paths = [_motion_path(p, name) for p in d.get("paths", [])]
+    meta = {k: v for k, v in d.items() if k not in ("keys", "edits", "timing", "format", "version", "paths")}
+    return Sequence(keys=keys, edits=edits, timing=d.get("timing", {}), meta=meta, paths=paths)
+
+
+def _motion_path(p: dict, name: str) -> MotionPath:
+    try:
+        a, b = (int(x) for x in str(p["span"]).split("-"))
+        points = [[float(x), float(y)] for x, y in p["points"]]
+        ids = [str(i) for i in p["ids"]]
+    except (KeyError, ValueError, TypeError) as e:
+        raise ValueError(f"{name}: bad motion path {p.get('span')!r}: {e}") from None
+    if not a < b:
+        raise ValueError(f"{name}: motion path {a}-{b} must go forward in time")
+    if len(points) < 2:
+        raise ValueError(f"{name}: motion path {a}-{b} needs at least 2 points")
+    return MotionPath(span=(a, b), ids=ids, points=points)
 
 
 def frames_to_dict(frames: List[Frame], meta: Optional[dict] = None) -> dict:
     return {
         "format": FORMAT_NAME + "-frames",
-        "version": FORMAT_VERSION,
+        "version": FRAMES_VERSION,
         **(meta or {}),
         "frames": [
             {

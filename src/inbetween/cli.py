@@ -97,14 +97,17 @@ def main(argv=None):
     arc = None
     for m in methods:
         t0 = time.time()
+        warnings = []
         if m == "linear":
-            frames = interpolate(seq, "linear", r)
+            frames = interpolate(seq, "linear", r, warnings)
         else:
-            arc = arc or interpolate(seq, "arc", r)
+            arc = arc or interpolate(seq, "arc", r, warnings)
             frames = arc
             if m == "refined":
                 print("[inbetween] refining in-betweens through the stroke model...")
                 frames, _ = refine(seq, arc, r, RefineConfig(), ink=not args.paint)
+        for w in dict.fromkeys(warnings):
+            print(f"[inbetween] {m}: {w}")
         results[m] = frames
         metrics[m] = popping(seq, frames, r)
         save_frames(os.path.join(args.out, f"frames_{m}.json"), frames, {**meta, "method": m})

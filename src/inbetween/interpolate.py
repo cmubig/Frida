@@ -12,12 +12,15 @@ Two methods:
 Correspondence comes from stable stroke IDs. Artist edits on in-between frames
 act as extra per-stroke keys: a stroke locked on frame f is interpolated
 key -> f -> key, so neighbors re-flow around the edit.
+
+Motion paths drawn by the animator (motion_path.py) are applied last: they move a
+group of strokes along the drawn path instead of the method's own motion.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 
@@ -180,12 +183,14 @@ def _present(seq: Sequence, sid: str, f: int) -> bool:
     return False
 
 
-def interpolate(seq: Sequence, method: str = "arc", r: Renderer = None) -> List[Frame]:
-    """Produce every frame from the first to the last key."""
+def interpolate(seq: Sequence, method: str = "arc", r: Renderer = None,
+                warnings: Optional[List[str]] = None) -> List[Frame]:
+    """Produce every frame from the first to the last key. Messages for the animator
+    (for example a motion path leaving the paper) are appended to `warnings`."""
     if method not in ("linear", "arc"):
         raise ValueError("method must be 'linear' or 'arc'")
-    if method == "arc" and r is None:
-        raise ValueError("arc interpolation needs a Renderer (for canvas geometry)")
+    if r is None and (method == "arc" or seq.paths):
+        raise ValueError("arc interpolation and motion paths need a Renderer (for canvas geometry)")
     te = eased_time(seq)
     anchors = _anchors(seq)
     key_frames = {k.frame: k for k in seq.keys}
@@ -215,4 +220,7 @@ def interpolate(seq: Sequence, method: str = "arc", r: Renderer = None) -> List[
             t = (te[f] - te[fa]) / (te[fb] - te[fa])
             strokes[sid] = interp_linear(A, B, t) if method == "linear" else interp_arc(A, B, t, r)
         frames.append(Frame(frame=f, kind="inbetween", strokes=strokes, locked=locked))
+    if seq.paths:
+        from .motion_path import apply_paths
+        apply_paths(seq, frames, r, te, warnings)
     return frames
