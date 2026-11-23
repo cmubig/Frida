@@ -36,9 +36,11 @@ from filleted_stroke import radii_from_kappa, sample_filleted_polyline
 N_VERTICES = 4
 N_PATH_POINTS = 32
 FORMAT_NAME = "frida-inbetween"
-# Keyframe file version. 2 added "paths" (motion paths); version 1 files still load.
-FORMAT_VERSION = 2
-SUPPORTED_VERSIONS = (1, 2)
+# Keyframe file version. 2 added "paths" (motion paths), 3 added "trims" (draw on / off);
+# older files still load.
+FORMAT_VERSION = 3
+SUPPORTED_VERSIONS = (1, 2, 3)
+TRIM_MODES = ("draw_on", "draw_off")
 # The frames file (what paint_frames.py reads) did not change; it keeps its own version.
 FRAMES_VERSION = 1
 
@@ -119,12 +121,22 @@ class MotionPath:
 
 
 @dataclass
+class Trim:
+    """Strokes that draw on (in keyframe span[1] only) or draw off (in span[0] only) over
+    the span instead of popping in or out at its middle. See trim.py."""
+    span: Tuple[int, int]
+    ids: List[str]
+    mode: str  # "draw_on" | "draw_off"
+
+
+@dataclass
 class Sequence:
     keys: List[Frame]
     edits: List[Frame] = field(default_factory=list)  # artist fixes on in-between frames
     timing: Dict[str, str] = field(default_factory=dict)  # "fromFrame-toFrame" -> easing
     meta: dict = field(default_factory=dict)
     paths: List[MotionPath] = field(default_factory=list)  # motion paths (version 2)
+    trims: List[Trim] = field(default_factory=list)  # draw on / off (version 3)
 
 
 def load_sequence(path: str) -> Sequence:
@@ -163,8 +175,24 @@ def sequence_from_dict(d: dict, name: str = "document") -> Sequence:
         if not keys[0].frame < e.frame < keys[-1].frame:
             raise ValueError(f"edit on frame {e.frame} is outside the keyframe range")
     paths = [_motion_path(p, name) for p in d.get("paths", [])]
-    meta = {k: v for k, v in d.items() if k not in ("keys", "edits", "timing", "format", "version", "paths")}
-    return Sequence(keys=keys, edits=edits, timing=d.get("timing", {}), meta=meta, paths=paths)
+    trims = [_trim(t, name) for t in d.get("trims", [])]
+    meta = {k: v for k, v in d.items()
+            if k not in ("keys", "edits", "timing", "format", "version", "paths", "trims")}
+    return Sequence(keys=keys, edits=edits, timing=d.get("timing", {}), meta=meta, paths=paths, trims=trims)
+
+
+def _trim(t: dict, name: str) -> Trim:
+    try:
+        a, b = (int(x) for x in str(t["span"]).split("-"))
+        ids = [str(i) for i in t["ids"]]
+        mode = str(t["mode"])
+    except (KeyError, ValueError, TypeError) as e:
+        raise ValueError(f"{name}: bad trim {t.get('span')!r}: {e}") from None
+    if mode not in TRIM_MODES:
+        raise ValueError(f"{name}: trim {a}-{b}: mode must be one of {TRIM_MODES}")
+    if not a < b:
+        raise ValueError(f"{name}: trim {a}-{b} must go forward in time")
+    return Trim(span=(a, b), ids=ids, mode=mode)
 
 
 def _motion_path(p: dict, name: str) -> MotionPath:

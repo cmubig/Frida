@@ -145,6 +145,10 @@ def apply_paths(seq: Sequence, frames: List[Frame], r: Renderer, te: Dict[int, f
     for mp in seq.paths:
         a, b = mp.span
         ids, missing, pinned = members(seq, mp)
+        if seq.trims:  # strokes drawing on / off in this span follow the group (trim.py)
+            from .trim import trimmed
+            tr = trimmed(seq)
+            missing = [i for i in missing if (i, mp.span) not in tr]
         if missing:
             warnings.append(f"Motion path {_span_name(mp)}: {', '.join(missing)} not in both keyframes, so "
                             f"{'it does' if len(missing) == 1 else 'they do'} not follow the path.")

@@ -45,8 +45,8 @@ async function api(path, body) {
 // ------------------------------------------------------------- document ---
 function newDoc() {
   return {
-    format: "frida-inbetween", version: 2, cache_dir: S.cfg.cache_dir,
-    keys: [{ frame: 0, strokes: [] }], edits: [], timing: {}, paths: [],
+    format: "frida-inbetween", version: 3, cache_dir: S.cfg.cache_dir,
+    keys: [{ frame: 0, strokes: [] }], edits: [], timing: {}, paths: [], trims: [],
     editor: { fps: 8, length: 24, next_id: 1, name: "Untitled" },
   };
 }
@@ -432,8 +432,11 @@ function commitPath(pts) {
   const sp = spanHere(S.ui.frame);
   if (!sp) return toast("A motion path goes from one keyframe to the next. Add a second keyframe first (F6 / F7).");
   const [a, b] = sp, ka = keyAt(a), kb = keyAt(b), sel = [...S.ui.sel];
-  const ids = sel.filter((id) => inKey(ka, id) && inKey(kb, id));
-  if (!ids.length) return toast(`To travel along a path, the selected strokes must be in both keyframe ${a + 1} and keyframe ${b + 1}.`);
+  // Strokes in both keys travel along the path; a stroke in only one of them follows the
+  // group while it draws on / off (Properties > Appears / Disappears).
+  const ids = sel.filter((id) => inKey(ka, id) || inKey(kb, id));
+  if (!ids.some((id) => inKey(ka, id) && inKey(kb, id)))
+    return toast(`To travel along a path, select strokes that are in both keyframe ${a + 1} and keyframe ${b + 1}.`);
   pushUndo();
   const span = `${a}-${b}`;
   for (const p of S.doc.paths) if (p.span === span) p.ids = p.ids.filter((id) => !ids.includes(id)); // one path per stroke and span
@@ -446,8 +449,8 @@ function commitPath(pts) {
   changed(); renderAll();
 }
 // Timing changes (F5 / Shift+F5) shift span names, as shiftTiming does.
-function shiftPaths(f, d) {
-  for (const p of S.doc.paths) { let [a, b] = spanOf(p); if (a > f) a += d; if (b > f) b += d; p.span = `${a}-${b}`; }
+function shiftPaths(f, d) { // motion paths and trims
+  for (const p of [...S.doc.paths, ...S.doc.trims]) { let [a, b] = spanOf(p); if (a > f) a += d; if (b > f) b += d; p.span = `${a}-${b}`; }
 }
 // A new keyframe inside a pathed span splits the path where the anchor had reached on that frame.
 function splitPathsAt(f) {
@@ -459,6 +462,9 @@ function splitPathsAt(f) {
     out.push({ span: `${a}-${f}`, ids: [...p.ids], points: q1 }, { span: `${f}-${b}`, ids: [...p.ids], points: q2 });
   }
   S.doc.paths = out;
+  // Trims go to both halves; each is used only where the stroke still enters / leaves.
+  S.doc.trims = S.doc.trims.flatMap((t) => { const [a, b] = spanOf(t);
+    return a < f && f < b ? [{ ...t, span: `${a}-${f}`, ids: [...t.ids] }, { ...t, span: `${f}-${b}`, ids: [...t.ids] }] : [t]; });
 }
 // A new keyframe at f splits the span it lands in: the path splits where the anchor had
 // reached (using the old span's ease), then both new spans keep that ease, as in Animate.
@@ -471,14 +477,46 @@ function splitSpanAt(f) {
   delete S.doc.timing[old];
   S.doc.timing[`${p.frame}-${f}`] = ease; S.doc.timing[`${f}-${n.frame}`] = ease;
 }
-function dropPathsAt(f) { // a keyframe at either end was cleared
+function dropPathsAt(f) { // a keyframe at either end was cleared (trims there go too)
   const n = S.doc.paths.length;
   S.doc.paths = S.doc.paths.filter((p) => !spanOf(p).includes(f));
+  S.doc.trims = S.doc.trims.filter((t) => !spanOf(t).includes(f));
   return n - S.doc.paths.length;
 }
 function removeFromPaths(f, ids) { // strokes deleted from keyframe f
-  for (const p of S.doc.paths) if (spanOf(p).includes(f)) p.ids = p.ids.filter((id) => !ids.has(id));
+  for (const p of [...S.doc.paths, ...S.doc.trims]) if (spanOf(p).includes(f)) p.ids = p.ids.filter((id) => !ids.has(id));
   S.doc.paths = S.doc.paths.filter((p) => p.ids.length);
+  S.doc.trims = S.doc.trims.filter((t) => t.ids.length);
+}
+// ------------------------------------------------------------ trims ---
+// Draw on / draw off (After Effects' Trim Paths): a stroke that is only in the later key
+// of a span draws on over it, one only in the earlier key draws off, instead of popping at
+// the middle. Stored in S.doc.trims as {span: "a-b", ids, mode}; see inbetween/trim.py.
+const trimMode = (span, id) => (S.doc.trims.find((t) => t.span === span && t.ids.includes(id)) || {}).mode || "";
+function setTrim(span, ids, mode) {
+  for (const t of S.doc.trims) if (t.span === span) t.ids = t.ids.filter((i) => !ids.includes(i));
+  S.doc.trims = S.doc.trims.filter((t) => t.ids.length);
+  if (mode) S.doc.trims.push({ span, ids: [...ids], mode });
+}
+const trimValid = (ka, kb, id, mode) => (mode === "draw_on" ? !inKey(ka, id) && inKey(kb, id) : inKey(ka, id) && !inKey(kb, id));
+// Properties: how the selected strokes appear (new since the previous key) or disappear
+// (gone in the next key).
+function trimProps(ids) {
+  const f = S.ui.frame, k = keyAt(f); if (!k) return "";
+  const pk = prevKey(f), nk = nextKey(f), out = [];
+  const row = (label, span, sel, mode, other) => {
+    const cur = sel.every((id) => trimMode(span, id) === mode) ? mode : "";
+    return `<div class="prow two"><label>${label}</label><select data-trim="${span}" data-mode="${mode}" data-ids="${sel.join(",")}">
+      <option value="" ${cur ? "" : "selected"}>${other}</option><option value="${mode}" ${cur ? "selected" : ""}>${mode === "draw_on" ? "Draw on" : "Draw off"}</option></select></div>`;
+  };
+  const enter = pk ? ids.filter((id) => !inKey(pk, id)) : [];
+  if (enter.length) out.push(row("Appears", `${pk.frame}-${f}`, enter, "draw_on", "Pop at midpoint"));
+  const leave = nk ? ids.filter((id) => !inKey(nk, id)) : [];
+  if (leave.length) out.push(row("Disappears", `${f}-${nk.frame}`, leave, "draw_off", "Pop at midpoint"));
+  if (!out.length) return "";
+  return `<div class="psec"><h4>Appear / Disappear</h4>${out.join("")}<div class="pinfo">Draw on: the stroke is drawn
+    progressively over the in-betweens, as the robot would draw it, and moves with its motion-path group or its
+    nearest stroke. Each partial stroke is a real robot stroke.</div></div>`;
 }
 function drawMotionPaths(f) {
   for (const p of pathsAt(f)) {
@@ -1013,8 +1051,8 @@ $("fileinput").addEventListener("change", async (e) => {
   try {
     const d = JSON.parse(await file.text());
     if (d.format !== "frida-inbetween") throw new Error("not a keyframe file");
-    d.edits = d.edits || []; d.timing = d.timing || {}; d.paths = d.paths || [];
-    d.version = 2; // version 1 files open unchanged and are saved as version 2
+    d.edits = d.edits || []; d.timing = d.timing || {}; d.paths = d.paths || []; d.trims = d.trims || [];
+    d.version = 3; // older files open unchanged and are saved as version 3
     let maxId = 0;
     for (const k of d.keys) for (const s of k.strokes) { const m = /^s(\d+)$/.exec(s.id); if (m) maxId = Math.max(maxId, +m[1]); }
     d.editor = Object.assign({ fps: 8, length: 1, next_id: maxId + 1, name: file.name.replace(/\.json$/, "") }, d.editor || {});
@@ -1034,8 +1072,11 @@ async function generate() {
   doc.edits = doc.edits.filter((e) => e.frame > ks[0].frame && e.frame < ks[ks.length - 1].frame && !keyAt(e.frame) && e.strokes.length);
   // Send only paths that still join two neighboring keys, with strokes that are in both
   // (strokes not traced yet after F7 rejoin their path once traced).
-  doc.paths = doc.paths.map((p) => { const k = pathKeys(p); return k ? { ...p, ids: p.ids.filter((id) => inKey(k[0], id) && inKey(k[1], id)) } : null; })
-                       .filter((p) => p && p.ids.length);
+  doc.trims = doc.trims.map((t) => { const k = pathKeys(t); return k ? { ...t, ids: t.ids.filter((id) => trimValid(k[0], k[1], id, t.mode)) } : null; })
+                       .filter((t) => t && t.ids.length);
+  const trimmedIn = (span, id) => doc.trims.some((t) => t.span === span && t.ids.includes(id));
+  doc.paths = doc.paths.map((p) => { const k = pathKeys(p); return k ? { ...p, ids: p.ids.filter((id) => (inKey(k[0], id) && inKey(k[1], id)) || trimmedIn(p.span, id)) } : null; })
+                       .filter((p) => p && p.ids.some((id) => inKey(pathKeys(p)[0], id) && inKey(pathKeys(p)[1], id)));
   S.ui.busy = true; $("tl-generate").disabled = true;
   status(method === "refined" ? "Creating in-betweens and refining for the painted look…" : "Creating in-betweens…");
   try {
@@ -1213,7 +1254,7 @@ function renderProps() {
   if (sel.length === 1) h = strokeProps(sel[0], c);
   else if (sel.length > 1) h = `<div class="psec"><h4>Selection</h4><div class="pinfo"><b>${sel.length}</b> strokes selected. Drag to move together, or use the round handle to rotate.
     With the Motion Path tool (M), drag the path they travel to the next keyframe.</div>
-    <button class="pbtn" data-act="delete">Delete</button></div>` + motionProps(pathsAt(f).filter((p) => p.ids.some((id) => S.ui.sel.has(id))));
+    <button class="pbtn" data-act="delete">Delete</button></div>` + trimProps(sel.map((s) => s.id)) + motionProps(pathsAt(f).filter((p) => p.ids.some((id) => S.ui.sel.has(id))));
   else h = frameProps(c);
   body.innerHTML = h;
   bindProps(sel[0], c);
@@ -1244,7 +1285,9 @@ function strokeProps(s, c) {
     const g = pk.strokes.find((x) => x.id === s.id);
     link = `<div class="psec"><h4>Correspondence</h4><div class="pinfo">${g
       ? `In-betweens move this stroke from <b>${s.id}</b> in keyframe ${pk.frame + 1}.`
-      : `New stroke: it appears halfway between keyframe ${pk.frame + 1} and this one.`}</div>
+      : trimMode(`${pk.frame}-${S.ui.frame}`, s.id) === "draw_on"
+        ? `New stroke: it draws on over the in-betweens from keyframe ${pk.frame + 1} to this one.`
+        : `New stroke: it appears halfway between keyframe ${pk.frame + 1} and this one.`}</div>
       <button class="pbtn ${S.ui.picking ? "on" : ""}" data-act="pick">Pick another ghost</button>
       ${g ? `<button class="pbtn" data-act="unlink">Make it a new stroke</button>` : ""}</div>`;
   }
@@ -1260,7 +1303,7 @@ function strokeProps(s, c) {
     ${slider("a", "Rotation", s.a, -Math.PI, Math.PI, 0.01, (v) => Math.round((-v * 180) / Math.PI) + "°")}</div>
   ${S.cfg.ink ? "" : `<div class="psec"><h4>Color</h4><div class="prow two"><label>Paint</label><input type="color" data-p="color" value="${rgbToHex(s.color)}"></div></div>`}
   ${motionProps(pathsAt(S.ui.frame).filter((p) => p.ids.includes(s.id)))}
-  ${link}`;
+  ${link}${trimProps([s.id])}`;
 }
 function f1() { return S.ui.frame + 1; }
 function frameProps(c) {
@@ -1325,6 +1368,11 @@ function bindProps(s, c) {
   if (col) col.addEventListener("change", () => { if (!canEdit()) return; pushUndo(); mutateStroke(s.id, (x) => { x.color = hexToRgb(col.value); }); changed(); renderAll(); });
   const bc = body.querySelector('[data-p="brushcolor"]');
   if (bc) bc.addEventListener("change", () => { S.ui.color = bc.value; });
+  body.querySelectorAll("select[data-trim]").forEach((sel) => sel.addEventListener("change", () => {
+    pushUndo(); setTrim(sel.dataset.trim, sel.dataset.ids.split(","), sel.value);
+    if (sel.value) toast(`${sel.value === "draw_on" ? "Draws on" : "Draws off"} over the in-betweens. Create In-betweens (Ctrl+Enter) to see it.`);
+    changed(); renderAll();
+  }));
   const ease = body.querySelector('[data-p="ease"]');
   if (ease) ease.addEventListener("change", () => {
     const pk = prevKey(S.ui.frame), nk = nextKey(S.ui.frame);

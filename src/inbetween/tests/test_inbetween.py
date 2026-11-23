@@ -296,9 +296,9 @@ def test_motion_path_file_versions(r, tmp_path):
     seq = sequence_from_dict(d)  # a version 1 file still loads and interpolates as before
     assert seq.paths == []
     assert len(interpolate(seq, "arc", r)) == 11
-    assert FORMAT_VERSION == 2
+    assert FORMAT_VERSION == 3
     with pytest.raises(ValueError, match="unsupported version"):
-        sequence_from_dict({**d, "version": 3})
+        sequence_from_dict({**d, "version": 4})
     bad = {**d, "version": 2, "paths": [{"span": "0-5", "ids": ["swell"], "points": [[0, 0], [1, 1]]}]}
     with pytest.raises(ValueError, match="not neighboring keyframes"):
         interpolate(sequence_from_dict(bad), "arc", r)
@@ -331,3 +331,159 @@ def test_motion_path_through_cli_and_exports(r, tmp_path):
     planned = frames[5].ordered()
     xts = sorted(float(b.xt.detach()) for b in painting.brush_strokes)
     assert xts == pytest.approx(sorted(min(max(s.xt, 0), 1) for s in planned), abs=1e-6)
+
+
+# --------------------------------------------------------------------------
+# Trim paths (draw on / off)
+# --------------------------------------------------------------------------
+
+def _trim_doc(mode="draw_on", path=False):
+    """A curved 'body' that moves right and rotates between keys 0 and 8, and a tapered
+    'line' beside it that is only in key 8 (draw on) or only in key 0 (draw off)."""
+    body = {"id": "body", "order": 0, "color": [0, 0, 0], "vertices": [[0, 0], [0.012, 0.008], [0.026, 0.008], [0.036, 0]],
+            "kappa": [0.6, 0.6], "z": [0.6, 0.7, 0.7, 0.6], "xt": 0.3, "yt": 0.5, "a": 0.0}
+    line = {"id": "line", "order": 1, "color": [0, 0, 0], "vertices": [[0, 0], [0.01, -0.004], [0.02, -0.004], [0.03, 0.002]],
+            "kappa": [0.5, 0.5], "z": [0.55, 0.8, 0.8, 0.3], "xt": 0.31, "yt": 0.42, "a": 0.0}
+    moved = lambda s, dx, da: {**s, "xt": s["xt"] + dx, "a": s["a"] + da}
+    k0 = [body] + ([line] if mode == "draw_off" else [])
+    k8 = [moved(body, 0.25, 0.6)] + ([moved(line, 0.25, 0.6)] if mode == "draw_on" else [])
+    if mode == "draw_on":  # put the line beside the moved body: rotate its offset with the body
+        from inbetween.strokes import Stroke as S_
+        r = Renderer(CACHE)
+        b0, b8 = Stroke.from_dict(body), Stroke.from_dict(k8[0])
+        l0 = Stroke.from_dict(line)
+        from inbetween.trim import follow
+        piece = l0.copy()
+        follow(piece, l0, b0, b8, r)  # the line placed as if it had moved with the body
+        k8[1] = piece.to_dict()
+    d = {"format": "frida-inbetween", "version": 3, "keys": [{"frame": 0, "strokes": k0}, {"frame": 8, "strokes": k8}],
+         "timing": {"0-8": "ease_in_out"}, "trims": [{"span": "0-8", "ids": ["line"], "mode": mode}]}
+    if path:
+        d["paths"] = [{"span": "0-8", "ids": ["body", "line"], "points": [[0.32, 0.5], [0.45, 0.3], [0.57, 0.5]]}]
+    return d
+
+
+def _procrustes(P, Q):
+    """Rigid transform (R, t) with R @ p + t ~ q for matched point sets (N, 2)."""
+    pc, qc = P.mean(0), Q.mean(0)
+    U, _, Vt = torch.linalg.svd((P - pc).T @ (Q - qc))
+    R = (U @ Vt).T
+    if torch.det(R) < 0:
+        Vt[-1] *= -1
+        R = (U @ Vt).T
+    return R, qc - R @ pc
+
+
+def _xy(s, r):
+    m = r.to_metric(r.path_canvas(stroke_tensors(s)))
+    return torch.stack([m[:, 1], m[:, 0]], 1)
+
+
+@pytest.mark.parametrize("mode", ["draw_on", "draw_off"])
+def test_trim_stays_attached_to_moving_neighbour_and_cut_pressure(r, mode):
+    from inbetween.interpolate import eased_time
+    from inbetween.strokes import sequence_from_dict
+    from inbetween.trim import complete_profile, pressure_at
+    seq = sequence_from_dict(_trim_doc(mode))
+    warnings = []
+    frames = interpolate(seq, "arc", r, warnings)
+    assert warnings == []
+    for k in seq.keys:  # keys unchanged
+        out = next(f for f in frames if f.frame == k.frame)
+        assert {i: s.to_dict() for i, s in out.strokes.items()} == {i: s.to_dict() for i, s in k.strokes.items()}
+    ref = 8 if mode == "draw_on" else 0
+    complete, body_ref = frames[ref].strokes["line"], frames[ref].strokes["body"]
+    L = float(complete_profile(complete, r)[2][-1])
+    te = eased_time(seq)
+    lengths = []
+    with torch.no_grad():
+        for f in frames[1:-1]:
+            u = te[f.frame] if mode == "draw_on" else 1 - te[f.frame]
+            # on every in-between (no pop at the middle), except where it is still shorter than
+            # FRIDA's minimum stroke length, so it is never painted
+            assert ("line" in f.strokes) == (u * L >= r.settings.MIN_STROKE_LENGTH), f.frame
+            if "line" not in f.strokes:
+                continue
+            piece = f.strokes["line"]
+            # a valid FRIDA stroke: BrushStroke builds the same path from it
+            p = stroke_tensors(piece)
+            opt = SimpleNamespace(MAX_STROKE_LENGTH=0.05, MIN_STROKE_Z=0.1, max_length_before_new_paint=1, ink=True)
+            bs = BrushStroke(opt, vertices=p["vertices"], radii=p["radii"], z=p["z"], xt=p["xt"], yt=p["yt"], a=p["a"],
+                             ink=True, device="cpu")
+            assert torch.allclose(bs.get_path(), r.path(p), atol=1e-6)
+            assert all(abs(v) <= 0.15 for q in piece.vertices for v in q) and all(0.02 <= z <= 0.98 for z in piece.z)
+            # length u of the complete stroke
+            n = float(complete_profile(piece, r)[2][-1])
+            assert abs(n - u * L) < 0.5e-3, (f.frame, n, u * L)
+            lengths.append(n)
+            # pressure at the cut is the complete stroke's pressure there, not its tapered end
+            assert abs(piece.z[3] - pressure_at(complete, r, u)) < 1e-4
+            assert abs(piece.z[0] - complete.z[0]) < 1e-4
+            # attached: the body's rigid motion since the complete frame, applied to the complete
+            # line, contains the piece
+            Rm, t = _procrustes(_xy(body_ref, r), _xy(f.strokes["body"], r))
+            moved = _xy(complete, r) @ Rm.T + t
+            moved = torch.nn.functional.interpolate(moved.T[None], size=1000, mode="linear", align_corners=True)[0].T
+            pts = _xy(piece, r)
+            assert (pts[0] - moved[0]).norm() < 0.2e-3, f.frame
+            assert torch.cdist(pts, moved).min(dim=1).values.max() < 0.3e-3, f.frame
+    assert len(lengths) >= 5 and lengths == sorted(lengths, reverse=(mode == "draw_off"))
+    first = next(f for f in (frames if mode == "draw_on" else frames[::-1]) if "line" in f.strokes)
+    assert abs(first.strokes["line"].z[3] - complete.z[3]) > 0.1  # the cut is not the taper
+
+
+def test_trim_follows_motion_path_group(r):
+    from inbetween.motion_path import anchor
+    from inbetween.strokes import sequence_from_dict
+    seq = sequence_from_dict(_trim_doc("draw_off", path=True))
+    warnings = []
+    frames = interpolate(seq, "arc", r, warnings)
+    assert not any("not follow" in w for w in warnings)
+    complete = frames[0].strokes["line"]
+    a0 = anchor([frames[0].strokes["body"]], r)
+    for f in frames[1:-1]:
+        if "line" not in f.strokes:
+            continue  # shorter than FRIDA's minimum stroke length near the end
+        af, piece = anchor([f.strokes["body"]], r), f.strokes["line"]
+        assert abs((piece.xt - complete.xt) - (af[0] - a0[0])) < 1e-6
+        assert abs((piece.yt - complete.yt) - (af[1] - a0[1])) < 1e-6
+    assert anchor([frames[4].strokes["body"]], r)[1] < 0.45  # the group went up the path
+
+
+def test_trim_pin_refine_versions_and_export(r, tmp_path):
+    import json
+    from inbetween.export_plans import build_plans, frida_options
+    from inbetween.strokes import sequence_from_dict
+    from inbetween.trim import complete_profile
+    d = _trim_doc("draw_on")
+    frames = interpolate(sequence_from_dict(d), "arc", r)
+    pin = frames[5].strokes["line"].to_dict()  # pin a partial state, moved a little
+    pin["yt"] += 0.02
+    d["edits"] = [{"frame": 5, "strokes": [pin]}]
+    seq = sequence_from_dict(d)
+    frames = interpolate(seq, "arc", r)
+    assert frames[5].strokes["line"].to_dict() == Stroke.from_dict(pin).to_dict()  # the pin stays
+    Lpin = float(complete_profile(frames[5].strokes["line"], r)[2][-1])
+    before = [float(complete_profile(f.strokes["line"], r)[2][-1]) for f in frames[1:5] if "line" in f.strokes]
+    assert len(before) >= 2
+    assert before == sorted(before) and before[-1] < Lpin  # draws on toward the pinned state
+    refined, _ = refine(seq, frames, r, RefineConfig(iters=5, verbose=False))
+    for a, b in zip(frames[1:5], refined[1:5]):  # partial pieces keep their pressure and shape
+        if "line" in a.strokes:
+            assert a.strokes["line"].to_dict() == b.strokes["line"].to_dict()
+    assert refined[5].strokes["line"].to_dict() == frames[5].strokes["line"].to_dict()
+    # versions: 3 loads, 2 still loads, a bad mode is refused
+    assert sequence_from_dict({**d, "version": 2, "trims": []}).trims == []
+    with pytest.raises(ValueError, match="mode"):
+        sequence_from_dict({**d, "trims": [{"span": "0-8", "ids": ["line"], "mode": "wipe"}]})
+    # a trim on a stroke that is in both keys is ignored with a warning
+    w = []
+    interpolate(sequence_from_dict({**d, "trims": [{"span": "0-8", "ids": ["body"], "mode": "draw_on"}]}), "arc", r, w)
+    assert any("ignored" in x for x in w)
+    try:
+        opt = frida_options("caches/vae_sharpie_final", os.path.join(HERE, "..", "..", "..", "materials_vae_sharpie.json"), True)
+    except Exception as e:
+        pytest.skip(f"FRIDA options not available: {e}")
+    painting, _ = build_plans([frames[3]], opt)[3]
+    assert "line" in frames[3].strokes
+    assert len(painting.brush_strokes) == 2

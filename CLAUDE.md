@@ -42,6 +42,13 @@ Ours, `src/inbetween/` (see its README.md; run commands from `src/`):
   strokes pinned in the span (on every frame, so the anchor stays steady); the shift keeps the
   group on the paper (`xt`, `yt` in [0, 1] as `make_valid`). `editor/app.js` mirrors
   `fit_path` / `point_at` (the per-frame dots); the browser test checks they agree.
+- `trim.py`: draw on / off (version 3, `"trims"`): a stroke entering (leaving) a span is, on each
+  in-between, a refitted FRIDA stroke for the first fraction u of its complete state (the key
+  or a pin), u at eased t; ordered by-length fit loss (a chamfer loss lets pieces fold back),
+  warm-started; pressure read off the complete stroke, last value = pressure at the cut. It
+  follows its motion-path group's anchor, else the nearest stroke in both keys (position and
+  rotation change since the complete frame). Pieces under MIN_STROKE_LENGTH are omitted.
+  Runs after motion paths; refinement leaves the pieces alone (no fixed frame on one side).
 - `refine.py`: pressure-only refinement toward evenly changing rendered width profiles
   between fixed frames (keys + artist edits); coarse search then gradient descent.
 - `metrics.py`: width deviation from even change ("popping"), per stroke.

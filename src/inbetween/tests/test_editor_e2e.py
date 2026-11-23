@@ -388,7 +388,7 @@ def test_motion_path(server, tmp_path):
         assert pg.evaluate("S.doc.paths.length") == 1
         assert pg.evaluate("S.doc.paths[0].span") == "0-8"
         assert sorted(pg.evaluate("S.doc.paths[0].ids")) == ids
-        assert pg.evaluate("S.doc.version") == 2
+        assert pg.evaluate("S.doc.version") == 3
 
         pg.evaluate("S.doc.timing['0-8'] = 'ease_in_out'")
         pg.select_option("#tl-method", "arc")
@@ -503,5 +503,100 @@ def test_new_keyframe_keeps_span_ease(server):
         pg.evaluate("goto(4)")
         pg.keyboard.press("F6")
         assert pg.evaluate("S.doc.timing") == {}
+        assert errors == []
+        browser.close()
+
+
+def test_draw_on(server, tmp_path):
+    """A new stroke set to Draw on (Properties > Appears) is drawn progressively on the
+    in-betweens, moving with its motion-path group, through Paint Preview and both exports;
+    its trim follows F5, F6 splits and clearing / deleting like motion paths."""
+    import pickle
+    import zipfile
+    with playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg = browser.new_page(viewport={"width": 1440, "height": 900}, accept_downloads=True)
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(server)
+        pg.wait_for_function("S.cfg && S.doc")
+        st = pg.locator("#canvas").bounding_box()
+
+        def scr(px, py):
+            v = pg.evaluate("[S.view.ox, S.view.oy, S.view.scale, S.cfg.canvas_width_m/S.cfg.canvas_height_m]")
+            return st["x"] + v[0] + px * v[2] * v[3], st["y"] + v[1] + py * v[2]
+
+        def drag(pts, fit=True):
+            pg.mouse.move(*scr(*pts[0]))
+            pg.mouse.down()
+            for q in pts[1:]:
+                pg.mouse.move(*scr(*q), steps=2)
+            pg.mouse.up()
+            if fit:
+                pg.wait_for_function("!pendingFit", timeout=30000)
+
+        drag([(0.2 + 0.01 * i, 0.6 - 0.02 * math.sin(i / 3)) for i in range(11)])  # the body
+        pg.evaluate("goto(8)")
+        pg.keyboard.press("F6")
+        pg.evaluate("pushUndo(); keyAt(8).strokes[0].xt += 0.4; changed(); renderAll();")
+        drag([(0.6 + 0.012 * i, 0.55 - 0.004 * i) for i in range(11)])  # a new line beside it
+        line = pg.evaluate("[...S.ui.sel][0]")
+        body = pg.evaluate(f"keyAt(8).strokes.find(s => s.id !== '{line}').id")
+        assert "appears halfway" in pg.locator("#propbody").inner_text()
+        pg.select_option('select[data-trim]', "draw_on")
+        assert pg.evaluate("S.doc.trims") == [{"span": "0-8", "ids": [line], "mode": "draw_on"}]
+        assert "draws on over the in-betweens" in pg.locator("#propbody").inner_text()
+        # motion path for the body; the drawing-on line follows the group
+        pg.keyboard.press("m")
+        pg.keyboard.press("Control+a")
+        drag([(0.25 + 0.4 * i / 20, 0.6 - 0.25 * (1 - (2 * i / 20 - 1) ** 2)) for i in range(21)], fit=False)
+        assert sorted(pg.evaluate("S.doc.paths[0].ids")) == sorted([line, body])
+
+        pg.select_option("#tl-method", "arc")
+        pg.keyboard.press("Control+Enter")
+        pg.wait_for_function("!S.ui.busy && Object.keys(S.gen.frames).length === 7", timeout=180000)
+        lengths = pg.evaluate(f"""[1,2,3,4,5,6,7].map(f => {{ const s = S.gen.frames[f].strokes.find(x => x.id === '{line}');
+            if (!s) return null; const p = Geo.canvasPath(s, S.cfg); let L = 0;
+            for (let i = 1; i < p.length; i++) L += Math.hypot((p[i][0]-p[i-1][0]) * aspect(), p[i][1]-p[i-1][1]); return L; }})""")
+        drawn = [x for x in lengths if x is not None]
+        assert len(drawn) >= 5 and drawn == sorted(drawn), lengths
+        assert lengths[-1] is not None
+        # it moved with the group: its start keeps the same offset from the group's anchor
+        off = pg.evaluate(f"""(() => {{ const at = (st) => {{ const b = st.find(s => s.id === '{body}'), l = st.find(s => s.id === '{line}');
+            const c = center(b), p0 = Geo.canvasPath(l, S.cfg)[0]; return [p0[0] - c[0], p0[1] - c[1]]; }};
+            return [at(keyAt(8).strokes), at(S.gen.frames[6].strokes)]; }})()""")
+        assert math.hypot(off[0][0] - off[1][0], off[0][1] - off[1][1]) < 0.01
+
+        pg.evaluate("goto(5)")  # Paint Preview renders the partial stroke
+        pg.keyboard.press("p")
+        pg.wait_for_function("[...S.previewCache.values()].some(v => v instanceof Image && v.complete)", timeout=60000)
+        pg.keyboard.press("p")
+        frames = pg.evaluate("framesForExport()")  # Export Robot Frames
+        assert line in [s["id"] for s in frames["frames"][5]["strokes"]]
+        with pg.expect_download(timeout=180000) as dl:  # Export FRIDA Plans
+            pg.evaluate("cmds.exportPlans()")
+        zpath = tmp_path / "plans.zip"
+        dl.value.save_as(zpath)
+        with zipfile.ZipFile(zpath) as z:
+            painting, _ = pickle.loads(z.read("frame_005.pkl"))
+        assert len(painting.brush_strokes) == 2
+
+        pg.evaluate("goto(2)")  # F5 / Shift+F5 move the trim's span like timing
+        pg.keyboard.press("F5")
+        assert pg.evaluate("S.doc.trims[0].span") == "0-9"
+        pg.keyboard.press("Shift+F5")
+        pg.evaluate("goto(4)")  # F7 inside the span: the trim moves to where the stroke enters
+        pg.keyboard.press("F7")
+        assert pg.evaluate("S.doc.trims.map(t => t.span)") == ["0-4", "4-8"]
+        pg.keyboard.press("Control+z")
+        pg.evaluate(f"goto(8); S.ui.sel = new Set(['{line}']); renderAll()")  # delete: leaves the trim
+        pg.keyboard.press("Delete")
+        assert pg.evaluate("S.doc.trims") == []
+        pg.keyboard.press("Control+z")
+        pg.keyboard.press("Shift+F6")  # clear the keyframe: the trim goes too
+        assert pg.evaluate("S.doc.trims") == []
         assert errors == []
         browser.close()

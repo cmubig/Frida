@@ -48,6 +48,17 @@ shortcuts (press `?` in the editor for the full list).
   path with its keyframes, F6 / F7 inside the span split it in two, and
   clearing a keyframe at either end removes it. Properties > Motion Path >
   Remove path.
+- **Draw on / draw off** (After Effects' Trim Paths): a stroke that is new in
+  a keyframe normally pops in halfway; select it and set **Appears: Draw on**
+  in Properties, and it is drawn progressively over the in-betweens instead
+  (on the earlier keyframe, **Disappears: Draw off** for a stroke that is gone
+  in the next one). Several selected strokes can be set at once. Each partial
+  stroke is a real robot stroke, fitted to the first part of the complete
+  stroke, with the complete stroke's pressure up to the cut (so a tapered end
+  only shows when the stroke is complete). It moves with its motion-path group
+  if it is in one, otherwise with the nearest stroke that is in both
+  keyframes. Pieces shorter than FRIDA's minimum stroke length (2.5 mm) are
+  left out.
 - **Paint Preview (P)** shows the stroke model's predicted painting.
 - **File > Import Reference Frames** loads the animator's own frames (a PNG
   sequence, sorted by number, or a video) under the drawing, one image per
@@ -108,6 +119,7 @@ frame; use `paint_frames.py` to paint frames exactly as planned.
 | Rendering | `render.py` | One `Renderer` around the calibrated stroke model; optional placeholder pressure response |
 | Interpolation | `interpolate.py` | `linear` baseline and `arc` (BetweenIT-style: log-spiral motion + intrinsic shape) |
 | Motion paths | `motion_path.py` | Moves a group of strokes along a path the animator drew, between two keys |
+| Draw on / off | `trim.py` | A stroke entering or leaving a span is drawn progressively, each frame a refitted partial FRIDA stroke |
 | Refinement | `refine.py` | Adjusts pressure so painted width changes evenly between fixed frames |
 | Measurement | `metrics.py` | Width deviation from an even change ("popping"), per stroke |
 | Robot | `paint_frames.py` | Paints each frame exactly as planned, no re-planning |
@@ -154,7 +166,7 @@ To use a better stroke model later, change `render.py` only.
 
 ```json
 {
-  "format": "frida-inbetween", "version": 2,
+  "format": "frida-inbetween", "version": 3,
   "cache_dir": "caches/vae_sharpie_final",
   "keys": [
     {"frame": 0,  "strokes": [ STROKE, ... ]},
@@ -162,7 +174,8 @@ To use a better stroke model later, change `render.py` only.
   ],
   "edits":  [ {"frame": 5, "strokes": [ STROKE ]} ],
   "timing": { "0-10": "ease_in_out" },
-  "paths":  [ {"span": "0-10", "ids": ["s3", "s4"], "points": [[0.2, 0.6], [0.4, 0.3], ...]} ]
+  "paths":  [ {"span": "0-10", "ids": ["s3", "s4"], "points": [[0.2, 0.6], [0.4, 0.3], ...]} ],
+  "trims":  [ {"span": "0-10", "ids": ["s7"], "mode": "draw_on"} ]
 }
 ```
 
@@ -172,6 +185,10 @@ canvas proportions like `xt`, `yt`) between the neighboring keyframes in
 `span`, at the span's eased time. Only `xt`, `yt` of the in-betweens change;
 keys, `id` and `order` don't. Paths are never painted. The frames file that
 `paint_frames.py` reads is unchanged (still version 1).
+
+`trims` (version 3) make strokes draw on (`draw_on`: the stroke is only in the
+later key of `span`) or draw off (`draw_off`: only in the earlier key) over the
+span instead of popping at its middle; see `trim.py`.
 
 `STROKE`:
 
@@ -194,7 +211,10 @@ the IDs carry over.
 ## Known limitations
 
 - Pose (`xt`, `yt`, `a`) is not refined; refinement only changes pressure.
-- Strokes popping in or out appear all at once; there is no grow or fade yet.
+- Strokes popping in or out appear all at once unless set to draw on / off;
+  there is no fade. Draw on runs over the whole span (start it later with an
+  extra keyframe). Fitting the partial strokes takes about 0.25 s per stroke
+  per frame in Create In-betweens.
 - `paint_frames.py` was only dry-run in `--simulate` mode, not on hardware.
 - A robot stroke has only 4 corners. A drawn mark that one stroke can't follow
   within 1 mm (a loop, a zigzag, a long scribble) is split automatically into

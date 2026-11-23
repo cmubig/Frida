@@ -13,8 +13,9 @@ Correspondence comes from stable stroke IDs. Artist edits on in-between frames
 act as extra per-stroke keys: a stroke locked on frame f is interpolated
 key -> f -> key, so neighbors re-flow around the edit.
 
-Motion paths drawn by the animator (motion_path.py) are applied last: they move a
-group of strokes along the drawn path instead of the method's own motion.
+Motion paths drawn by the animator (motion_path.py) are applied next: they move a
+group of strokes along the drawn path instead of the method's own motion. Last,
+trimmed strokes (trim.py) draw on or off over their span instead of popping.
 """
 
 from __future__ import annotations
@@ -163,9 +164,10 @@ def _anchors(seq: Sequence) -> Dict[str, List[Tuple[int, Stroke]]]:
     return anchors
 
 
-def _present(seq: Sequence, sid: str, f: int) -> bool:
+def _present(seq: Sequence, sid: str, f: int, trims=None) -> bool:
     """Is stroke sid drawn on frame f? Strokes missing from a neighboring key pop
-    in or out at the middle of that key segment."""
+    in or out at the middle of that key segment, unless they draw on / off over it
+    (trims: {(id, span): mode}, see trim.py)."""
     keys = seq.keys
     if f <= keys[0].frame:
         return sid in keys[0].strokes
@@ -175,6 +177,8 @@ def _present(seq: Sequence, sid: str, f: int) -> bool:
         if ka.frame <= f <= kb.frame:
             ina, inb = sid in ka.strokes, sid in kb.strokes
             if ina and inb:
+                return True
+            if trims and (sid, (ka.frame, kb.frame)) in trims and ka.frame < f < kb.frame:
                 return True
             if not ina and not inb:
                 return any(e.frame == f and sid in e.strokes for e in seq.edits)
@@ -189,10 +193,14 @@ def interpolate(seq: Sequence, method: str = "arc", r: Renderer = None,
     (for example a motion path leaving the paper) are appended to `warnings`."""
     if method not in ("linear", "arc"):
         raise ValueError("method must be 'linear' or 'arc'")
-    if r is None and (method == "arc" or seq.paths):
+    if r is None and (method == "arc" or seq.paths or seq.trims):
         raise ValueError("arc interpolation and motion paths need a Renderer (for canvas geometry)")
     te = eased_time(seq)
     anchors = _anchors(seq)
+    trims = None
+    if seq.trims:
+        from .trim import trimmed
+        trims = trimmed(seq)
     key_frames = {k.frame: k for k in seq.keys}
     edit_frames = {e.frame: e for e in seq.edits}
 
@@ -205,7 +213,7 @@ def interpolate(seq: Sequence, method: str = "arc", r: Renderer = None,
             continue
         strokes, locked = {}, []
         for sid, anc in anchors.items():
-            if not _present(seq, sid, f):
+            if not _present(seq, sid, f, trims):
                 continue
             if f in edit_frames and sid in edit_frames[f].strokes:
                 strokes[sid] = edit_frames[f].strokes[sid].copy()
@@ -223,4 +231,7 @@ def interpolate(seq: Sequence, method: str = "arc", r: Renderer = None,
     if seq.paths:
         from .motion_path import apply_paths
         apply_paths(seq, frames, r, te, warnings)
+    if seq.trims:  # after the paths: a drawing-on stroke follows its group
+        from .trim import apply_trims
+        apply_trims(seq, frames, r, te, warnings)
     return frames
