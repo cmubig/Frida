@@ -137,8 +137,11 @@ are new on purpose and are not counted.
 Your own rough animation (a PNG sequence or a video) under the drawing, one
 image per frame, to trace over. It is **never** saved, painted or exported.
 
-**Step 1.** **File > Import Reference Frames…** and pick the PNGs (all of them;
-they are put in number order) or one video (it asks for the frame rate). The
+**Step 1.** Drag the PNGs (all of them, or the folder they're in) or one video
+from your file browser and drop them anywhere on the editor. A box shows where
+they'll go. You can also click the **Reference layer** box in Properties, or use
+**File > Import Reference Frames…**. Frames are put in number order; a video
+asks for its frame rate. (Dropping a `.json` keyframe file opens it instead.) The
 teal line on the timeline shows which frames have a reference image. **R**
 turns it on and off; the slider next to the Reference button sets its opacity.
 In Properties (click empty paper) you can change the frame where it starts.

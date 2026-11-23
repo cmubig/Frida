@@ -699,3 +699,52 @@ def test_link_mode(server):
         assert pg.evaluate("S.gen.frames[4].strokes.length") == 3
         assert errors == []
         browser.close()
+
+
+def test_drag_and_drop_reference_and_keyframe_file(server, tmp_path):
+    import base64
+    import json as _json
+    from PIL import Image, ImageDraw
+    pngs = []
+    for i in range(4):
+        im = Image.new("RGB", (320, 180), "white")
+        ImageDraw.Draw(im).ellipse([40 + 40 * i, 60, 80 + 40 * i, 100], outline="black", width=3)
+        fn = tmp_path / f"drop_{i + 1}.png"
+        im.save(fn)
+        pngs.append({"name": fn.name, "type": "image/png", "b64": base64.b64encode(fn.read_bytes()).decode()})
+    doc = {"format": "frida-inbetween", "version": 1, "keys": [{"frame": 0, "strokes": []}, {"frame": 6, "strokes": []}],
+           "edits": [], "timing": {}}
+    jsonfile = {"name": "keys.json", "type": "application/json",
+                "b64": base64.b64encode(_json.dumps(doc).encode()).decode()}
+    drop_js = """async (files) => {
+        const dt = new DataTransfer();
+        for (const f of files) {
+            const bytes = Uint8Array.from(atob(f.b64), c => c.charCodeAt(0));
+            dt.items.add(new File([bytes], f.name, {type: f.type}));
+        }
+        const stage = document.getElementById('stage');
+        stage.dispatchEvent(new DragEvent('dragenter', {dataTransfer: dt, bubbles: true}));
+        const shown = !document.getElementById('dropzone').hidden;
+        stage.dispatchEvent(new DragEvent('dragover', {dataTransfer: dt, bubbles: true}));
+        stage.dispatchEvent(new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true}));
+        return shown && document.getElementById('dropzone').hidden;
+    }"""
+    with playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg = browser.new_page(viewport={"width": 1440, "height": 900})
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(server)
+        pg.wait_for_function("S.cfg && S.doc")
+        assert pg.locator(".refbox").count() == 1          # the import box shows while there's no reference
+        assert pg.evaluate(drop_js, pngs[::-1])             # overlay appears on drag, hides on drop
+        pg.wait_for_function("S.ref.images.length === 4 && !S.ui.busy", timeout=30000)
+        assert pg.locator(".refbox").count() == 0           # replaced by the reference controls
+        assert pg.evaluate(drop_js, [jsonfile])             # a keyframe file opens instead
+        pg.wait_for_function("S.doc.keys.length === 2", timeout=10000)
+        assert pg.evaluate("S.doc.keys[1].frame") == 6
+        assert errors == []
+        browser.close()

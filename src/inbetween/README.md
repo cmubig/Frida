@@ -67,7 +67,9 @@ shortcuts (press `?` in the editor for the full list).
   keyframes. Pieces shorter than FRIDA's minimum stroke length (2.5 mm) are
   left out.
 - **Paint Preview (P)** shows the stroke model's predicted painting.
-- **File > Import Reference Frames** loads the animator's own frames (a PNG
+- **Drag and drop** the animator's frames (PNGs, a folder of them, or a video)
+  onto the editor, or click the Reference layer box in Properties, or use
+  **File > Import Reference Frames**. This loads the animator's own frames (a PNG
   sequence, sorted by number, or a video) under the drawing, one image per
   timeline frame, to trace over. **R** toggles it; the slider next to the
   Reference button sets its opacity, and Properties can move where it starts.

@@ -115,3 +115,13 @@ select, input[type=number], input[type=text] { background: #1f1f1f; color: var(-
 .modalbox td:first-child { color: #fff; white-space: nowrap; }
 .modalbox h3 { margin: 0 0 10px; }
 #modalclose { background: var(--accent2); border: 0; color: #fff; border-radius: 3px; padding: 5px 14px; }
+
+/* drag and drop: reference frames */
+#dropzone { position: fixed; inset: 0; z-index: 50; background: rgba(20, 24, 28, 0.55); display: flex; align-items: center; justify-content: center; pointer-events: none; }
+#dropzone[hidden] { display: none; }
+#dropzone .dropbox { border: 2px dashed #3fa7a0; border-radius: 12px; background: rgba(30, 36, 40, 0.95); color: #e8eef0; padding: 32px 48px; text-align: center; max-width: 520px; line-height: 1.5; }
+#dropzone .dropbox b { display: block; font-size: 16px; margin-bottom: 6px; }
+#dropzone .dropbox span { font-size: 13px; color: #a9b6bb; }
+.refbox { border: 1.5px dashed #3fa7a0; border-radius: 8px; padding: 14px 10px; text-align: center; font-size: 12px; color: #d6e2e5; cursor: pointer; line-height: 1.45; }
+.refbox span { color: #8fa0a6; font-size: 11px; }
+.refbox:hover, .refbox:focus { background: rgba(63, 167, 160, 0.12); outline: none; }

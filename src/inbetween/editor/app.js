@@ -1111,9 +1111,11 @@ function framesForExport() {
   }
   return { format: "frida-inbetween-frames", version: 1, method: S.gen.method, cache_dir: S.cfg.cache_dir, frames };
 }
-$("fileinput").addEventListener("change", async (e) => {
+$("fileinput").addEventListener("change", (e) => {
   const file = e.target.files[0]; e.target.value = "";
-  if (!file) return;
+  if (file) openDocFile(file);
+});
+async function openDocFile(file) {
   try {
     const d = JSON.parse(await file.text());
     if (d.format !== "frida-inbetween") throw new Error("not a keyframe file");
@@ -1127,6 +1129,52 @@ $("fileinput").addEventListener("change", async (e) => {
     d.keys.sort((a, b) => a.frame - b.frame);
     resetDoc(d); toast(`Opened ${file.name}`);
   } catch (err) { toast("Could not open: " + err.message); }
+}
+
+// ----------------------------------------------------- drag and drop ---
+// Drop the animator's frames (PNGs, a folder of them, or a video) anywhere on the
+// window: they become the reference layer. A keyframe file (.json) opens instead.
+// Without this, the browser would open a dropped file in the tab and lose the work.
+const isRefFile = (f) => f.type.startsWith("image/") || f.type.startsWith("video/");
+async function filesFromDrop(dt) {
+  const entries = [...(dt.items || [])].map((it) => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
+  if (!entries.length) return [...dt.files];
+  const out = [];
+  const readDir = (dir) => new Promise((ok) => {
+    const r = dir.createReader(), all = [];
+    const more = () => r.readEntries((batch) => { if (!batch.length) return ok(all); all.push(...batch); more(); }, () => ok(all));
+    more();
+  });
+  const walk = async (e) => {
+    if (e.isFile) out.push(await new Promise((ok, bad) => e.file(ok, bad)));
+    else if (e.isDirectory) for (const c of await readDir(e)) await walk(c);
+  };
+  for (const e of entries) await walk(e);
+  return out;
+}
+async function handleDroppedFiles(files) {
+  const json = files.find((f) => f.name.toLowerCase().endsWith(".json"));
+  const refs = files.filter(isRefFile);
+  if (refs.length) return importReference(refs);
+  if (json) return openDocFile(json);
+  toast("Drop PNG/JPG frames, a folder of them, or a video for the reference layer, or a .json keyframe file to open.");
+}
+let dragDepth = 0;
+const dragHasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+window.addEventListener("dragenter", (e) => {
+  if (!dragHasFiles(e)) return;
+  e.preventDefault(); dragDepth++; $("dropzone").hidden = false;
+});
+window.addEventListener("dragover", (e) => { if (dragHasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
+window.addEventListener("dragleave", (e) => {
+  if (!dragHasFiles(e)) return;
+  if (--dragDepth <= 0) { dragDepth = 0; $("dropzone").hidden = true; }
+});
+window.addEventListener("drop", async (e) => {
+  if (!dragHasFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; $("dropzone").hidden = true;
+  if (S.ui.busy) return toast("Busy, try again in a moment.");
+  handleDroppedFiles(await filesFromDrop(e.dataTransfer));
 });
 
 async function generate() {
@@ -1336,6 +1384,11 @@ function renderProps() {
   if (op) op.addEventListener("input", () => { S.ref.opacity = +op.value / 100; S.ref.visible = true; render(); $("tl-refop").value = op.value; $("tl-ref").classList.add("on"); });
   const off = body.querySelector('[data-ref="offset"]');
   if (off) off.addEventListener("change", () => { S.ref.offset = Math.max(0, Math.round(+off.value || 1) - 1); grow(S.ref.offset + S.ref.images.length - 1); renderAll(); });
+  const box = body.querySelector('[data-act="refimport"]');
+  if (box) {
+    box.addEventListener("click", (e) => { e.stopImmediatePropagation(); cmds.importReference(); });
+    box.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); cmds.importReference(); } });
+  }
   const rm = body.querySelector('[data-act="refremove"]');
   if (rm) rm.addEventListener("click", (e) => { e.stopImmediatePropagation(); cmds.removeReference(); });
 }
@@ -1404,6 +1457,10 @@ function frameProps(c) {
       <div class="prow two"><label>Opacity</label><input type="range" data-ref="opacity" min="0" max="100" step="1" value="${Math.round(S.ref.opacity * 100)}"></div>
       <div class="prow two"><label>Starts at frame</label><input type="number" data-ref="offset" min="1" step="1" value="${S.ref.offset + 1}"></div>
       <button class="pbtn" data-act="refremove">Remove reference</button></div>`;
+  }
+  if (!S.ref.images.length) {
+    h += `<div class="psec"><h4>Reference layer</h4>
+      <div class="refbox" data-act="refimport" role="button" tabindex="0">Drop the animator's frames here<br><span>PNG/JPG frames, a folder, or a video<br>or click to choose files</span></div></div>`;
   }
   h += `<div class="psec"><h4>Document</h4>
     <div class="pinfo">Paper <b>${(S.cfg.canvas_width_m * 1000).toFixed(0)} × ${(S.cfg.canvas_height_m * 1000).toFixed(0)} mm</b><br>
