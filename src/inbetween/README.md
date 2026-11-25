@@ -24,6 +24,10 @@ shortcuts (press `?` in the editor for the full list).
   stroke right away, so what you see is what the robot will paint; a mark too
   complex for one stroke is split into several. Pressure maps to visible
   width: the lightest touch still leaves a mark.
+- **Pen (N)** places points like a vector pen (click = sharp, drag = curve);
+  Enter finishes and the line becomes robot strokes. **Bezier Selection (Q)**
+  outlines an area the same way and selects every stroke it touches. The
+  Selection tool's rectangle also selects every stroke it touches.
 - **F6 Insert Keyframe** copies the current drawing. Reshape it with
   **Selection (V)** (move; the round handle rotates) and **Subselection (A)** (squares move corners; round handles along the edges set
   how wide each corner's curve is, both mirrored)

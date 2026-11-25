@@ -88,7 +88,7 @@ def test_trace_generate_pin_rotate(server):
         browser.close()
 
 
-def test_marquee_selects_strokes_fully_inside(server):
+def test_marquee_selects_strokes_it_touches(server):
     with playwright.sync_playwright() as p:
         try:
             browser = p.chromium.launch()
@@ -129,9 +129,10 @@ def test_marquee_selects_strokes_fully_inside(server):
         draw([(0.6 + 0.1 * i / 10, 0.3) for i in range(11)])  # s3, top right
         pg.keyboard.press("v")
         assert box((0.1, 0.2), (0.4, 0.6)) == ["s1", "s2"]         # both left strokes
-        assert box((0.25, 0.2), (0.45, 0.4)) == []                 # s1 only partly inside
-        assert box((0.5, 0.2), (0.8, 0.4), shift=True) == ["s3"]   # Shift adds to an empty selection
-        assert box((0.1, 0.45), (0.4, 0.55), shift=True) == ["s2", "s3"]
+        assert box((0.25, 0.2), (0.45, 0.4)) == ["s1"]             # touching is enough: s1 is partly inside
+        assert box((0.26, 0.27), (0.28, 0.33)) == ["s1"]           # a box crossing s1 with no point inside
+        assert box((0.5, 0.2), (0.8, 0.4), shift=True) == ["s1", "s3"]   # Shift adds
+        assert box((0.1, 0.45), (0.4, 0.55), shift=True) == ["s1", "s2", "s3"]
         pg.mouse.click(*scr(0.5, 0.8))                             # click on empty paper clears
         assert pg.evaluate("S.ui.sel.size") == 0
         assert errors == []
@@ -795,5 +796,88 @@ def test_corner_curve_handles(server):
         assert pg.evaluate("S.doc.keys[0].strokes[0].kappa[0]") < 0.02
         pg.keyboard.press("Control+z")
         assert abs(pg.evaluate("S.doc.keys[0].strokes[0].kappa[0]") - k[0]) < 1e-9
+        assert errors == []
+        browser.close()
+
+
+
+def _editor(p, server):
+    browser = p.chromium.launch()
+    pg = browser.new_page(viewport={"width": 1440, "height": 900})
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(server)
+    pg.wait_for_function("S.cfg && S.doc")
+    st = pg.locator("#canvas").bounding_box()
+
+    def scr(px, py):
+        v = pg.evaluate("[S.view.ox, S.view.oy, S.view.scale, S.cfg.canvas_width_m/S.cfg.canvas_height_m]")
+        return st["x"] + v[0] + px * v[2] * v[3], st["y"] + v[1] + py * v[2]
+    return browser, pg, errors, scr
+
+
+def test_pen_tool_draws_fitted_strokes(server):
+    with playwright.sync_playwright() as p:
+        try:
+            browser, pg, errors, scr = _editor(p, server)
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg.keyboard.press("n")
+        assert pg.evaluate("S.ui.tool") == "pen"
+        pg.mouse.click(*scr(0.2, 0.6))                  # sharp start
+        x, y = scr(0.4, 0.3)                            # smooth middle: drag out a handle
+        pg.mouse.move(x, y); pg.mouse.down(); pg.mouse.move(x + 60, y, steps=4); pg.mouse.up()
+        pg.mouse.click(*scr(0.6, 0.6))                  # sharp end
+        assert pg.evaluate("S.ui.bez.anchors.length") == 3
+        assert pg.evaluate("S.ui.bez.anchors[1].hout !== null && S.ui.bez.anchors[1].hin !== null")
+        pg.keyboard.press("Backspace")                  # removes the last point
+        assert pg.evaluate("S.ui.bez.anchors.length") == 2
+        pg.mouse.click(*scr(0.6, 0.6))
+        pg.keyboard.press("Enter")
+        pg.wait_for_function("!pendingFit && S.doc.keys[0].strokes.length > 0", timeout=60000)
+        assert pg.evaluate("S.ui.bez") is None
+        # the fitted strokes pass through the start, the curve's top and the end
+        d = pg.evaluate("""(pts) => {
+            const path = S.doc.keys[0].strokes.flatMap(s => Geo.canvasPath(s, S.cfg));
+            const a = S.cfg.canvas_width_m / S.cfg.canvas_height_m;
+            return pts.map(q => Math.min(...path.map(p => Math.hypot((p[0] - q[0]) * a, p[1] - q[1]))));
+        }""", [[0.2, 0.6], [0.4, 0.3], [0.6, 0.6]])
+        assert max(d) < 0.01, d                         # within 1% of the paper height
+        pg.keyboard.press("Control+z")                  # one undo removes the pen line
+        assert pg.evaluate("S.doc.keys[0].strokes.length") == 0
+        # Esc cancels a path in progress
+        pg.mouse.click(*scr(0.2, 0.2)); pg.mouse.click(*scr(0.3, 0.2))
+        pg.keyboard.press("Escape")
+        assert pg.evaluate("S.ui.bez") is None and pg.evaluate("S.doc.keys[0].strokes.length") == 0
+        assert errors == []
+        browser.close()
+
+
+def test_bezier_selection_selects_touched_strokes(server):
+    with playwright.sync_playwright() as p:
+        try:
+            browser, pg, errors, scr = _editor(p, server)
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg.evaluate("""() => {
+            const mk = (id, xt, yt) => ({id, order: +id.slice(1), color: [0.05, 0.05, 0.05], xt, yt, a: 0,
+                vertices: [[0, 0], [0.02, 0], [0.04, 0], [0.06, 0]], kappa: [0.5, 0.5], z: [0.6, 0.6, 0.6, 0.6]});
+            S.doc.keys[0].strokes.push(mk('s1', 0.2, 0.3), mk('s2', 0.2, 0.6), mk('s3', 0.6, 0.3)); renderAll();
+        }""")
+        pg.keyboard.press("q")
+        # an outline around the left half of s1 only (touching is enough)
+        for q in [(0.15, 0.25), (0.25, 0.25), (0.25, 0.35)]:
+            pg.mouse.click(*scr(*q))
+        x, y = scr(0.15, 0.35)
+        pg.mouse.move(x, y); pg.mouse.down(); pg.mouse.move(x - 20, y + 10, steps=3); pg.mouse.up()
+        pg.mouse.click(*scr(0.15, 0.25))                # click the first point: closes and selects
+        assert sorted(pg.evaluate("[...S.ui.sel]")) == ["s1"]
+        # Shift on the first click adds; Enter closes
+        pg.keyboard.down("Shift"); pg.mouse.click(*scr(0.55, 0.2)); pg.keyboard.up("Shift")
+        for q in [(0.9, 0.2), (0.9, 0.4), (0.55, 0.4)]:
+            pg.mouse.click(*scr(*q))
+        pg.keyboard.press("Enter")
+        assert sorted(pg.evaluate("[...S.ui.sel]")) == ["s1", "s3"]
+        assert pg.evaluate("S.doc.keys[0].strokes.length") == 3   # selecting never draws
         assert errors == []
         browser.close()

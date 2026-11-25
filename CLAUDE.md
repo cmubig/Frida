@@ -80,6 +80,10 @@ Ours, `src/inbetween/` (see its README.md; run commands from `src/`):
   (`filletLayout`, shared with `expandStroke`); dragging sets kappa (smallest value reaching that
   length). Handles always mirror: a FRIDA corner is a circular arc, one value. Note FRIDA's
   calibration scales stroke-local x and y differently on paper (x_m vs y_m, ~8%).
+  Pen (N) and Bezier Selection (Q) share one path engine (`S.ui.bez`, anchors in canvas
+  proportions); the Pen samples the path and sends it through `finishBrush` (same fitting,
+  splitting, tracing links). Rectangle and Bezier selection use `strokesInPolygon`: a stroke is
+  selected if any part is inside or it crosses the outline.
   Reference layer (`S.ref`, File > Import Reference Frames, R): animator's PNGs or a video under
   the drawing for tracing; never in the document, exports or paintings. Drag and drop anywhere on the window
   (files or a folder; a dropped .json opens as a keyframe file), or the import box in Properties.

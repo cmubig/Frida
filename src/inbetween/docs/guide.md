@@ -52,11 +52,29 @@ message says how many.
 
 ![A zigzag split into 2 strokes](img/02-split.png)
 
+**Precise lines: the Pen (N).** For a clean line instead of a freehand one,
+click to place points, as with a vector pen tool. A click makes a sharp point;
+click and drag pulls out two mirrored handles for a smooth curve (hold **Alt**
+while dragging to move one handle on its own). Click the first point to close
+the line into a loop, or press **Enter** (or double-click) to finish it.
+**Backspace** removes the last point, **Esc** cancels. The finished line is
+fitted to robot strokes like a brush mark, split if one stroke can't follow
+it, at medium width (change pressure in Properties afterwards).
+
 **Step 3. Select with the Selection tool (V).** Click a stroke, or drag a
-rectangle around strokes (Shift adds to the selection), as in Animate. **Ctrl+A**
-selects everything, **Esc** deselects.
+rectangle over strokes (Shift adds to the selection). Every stroke the
+rectangle **touches** is selected, even if only part of it is inside.
+**Ctrl+A** selects everything, **Esc** deselects.
 
 ![Dragging a selection rectangle](img/03-marquee.png)
+
+**Bezier Selection (Q).** To pick strokes out of a tangle, outline an area
+the same way as with the Pen: click for sharp points, drag for curves. Click
+the first point or press **Enter** to close the outline; every stroke it
+touches is selected. Hold **Shift** on the first click to add to the current
+selection. Nothing is drawn or painted.
+
+![Pen line being placed and the strokes it became (top); a Bezier selection outline and its result (bottom)](img/03b-pen-and-bezier-selection.png)
 
 Drag the selection to move it; drag the round handle above it to rotate.
 
@@ -309,9 +327,11 @@ Press **?** in the editor for this list.
 
 | Key | Does |
 |---|---|
-| **V** | Selection tool: click or drag a rectangle to select (Shift adds), drag to move, round handle rotates |
+| **V** | Selection tool: click, or drag a rectangle to select every stroke it touches (Shift adds), drag to move, round handle rotates |
 | **A** | Subselection tool: drag a stroke's 4 corner points (squares), or a round curve handle along its edge for a wider or tighter corner |
 | **B** | Brush tool (pressure sets width) |
+| **N** | Pen tool: click = sharp point, drag = curve (Alt breaks the handles); click the first point to close, Enter or double-click finishes, Backspace removes the last point, Esc cancels |
+| **Q** | Bezier Selection: outline an area like the Pen; every stroke it touches is selected (Shift adds) |
 | **Alt+click a ghost** | Brush: choose which ghost the next stroke replaces |
 | **M** | Motion Path tool: click strokes (Shift adds), then drag the path they travel |
 | **L** | Link mode: click a stroke, then the ghost it continues; repeat (Esc leaves) |

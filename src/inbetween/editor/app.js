@@ -284,6 +284,7 @@ function render() {
     ctx.setLineDash([4, 3]); ctx.strokeStyle = "#222"; ctx.strokeRect(x + 0.5, y + 0.5, w, h);
     ctx.restore();
   }
+  drawBez();
   // live brush
   if (drag && drag.kind === "brush") drawLive(drag.pts);
   if (drag && drag.kind === "mpath") {
@@ -747,6 +748,7 @@ cv.addEventListener("pointerdown", (e) => {
   if (t === "zoom") { zoomAt(e.altKey ? 0.5 : 2, x, y); return; }
 
   if (S.ui.picking) { pickGhost(x, y); return; }
+  if (t === "pen" || t === "bezsel") { bezPointerDown(x, y, e, t === "pen" ? "pen" : "select"); return; }
 
   if (t === "brush") {
     if (e.altKey) { // choose which ghost the next stroke traces
@@ -816,7 +818,7 @@ cv.addEventListener("pointerdown", (e) => {
                orig: c.strokes.filter((s) => S.ui.sel.has(s.id)).map((s) => ({ id: s.id, xt: s.xt, yt: s.yt })) };
     }
   } else {
-    // empty spot: drag a dashed rectangle to select every stroke fully inside it
+    // empty spot: drag a dashed rectangle to select every stroke it touches
     // (Shift+drag adds to the selection), as with Animate's Selection tool
     if (!e.shiftKey) S.ui.sel.clear();
     drag = { kind: "marquee", x0: x, y0: y, x1: x, y1: y, base: new Set(S.ui.sel) };
@@ -827,9 +829,11 @@ cv.addEventListener("pointerdown", (e) => {
 cv.addEventListener("pointermove", (e) => {
   const x = e.offsetX, y = e.offsetY;
   if (!drag) {
-    cv.style.cursor = { hand: "grab", zoom: "zoom-in", brush: "crosshair", motion: "crosshair", link: "pointer" }[tool()] || "default";
+    cv.style.cursor = { hand: "grab", zoom: "zoom-in", brush: "crosshair", motion: "crosshair", link: "pointer", pen: "crosshair", bezsel: "crosshair" }[tool()] || "default";
+    if (S.ui.bez) { S.ui.bez.hover = toProp(x, y); render(); }
     return;
   }
+  if (drag.kind === "bezanchor") { bezDrag(x, y, e); return; }
   if (drag.kind === "pan") { S.view.ox = drag.ox + x - drag.x; S.view.oy = drag.oy + y - drag.y; S.view.fit = false; render(); return; }
   if (drag.kind === "brush") {
     addBrushPoints(e);
@@ -894,18 +898,171 @@ cv.addEventListener("pointerup", async (e) => {
   renderAll();
 });
 
+cv.addEventListener("dblclick", (e) => {
+  if (S.ui.bez && (tool() === "pen" || tool() === "bezsel")) { e.preventDefault(); bezFinish(false); }
+});
+
 cv.addEventListener("wheel", (e) => {
   e.preventDefault();
   if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.002), e.offsetX, e.offsetY);
   else { S.view.ox -= e.deltaX; S.view.oy -= e.deltaY; S.view.fit = false; render(); }
 }, { passive: false });
 
+// Any part of a stroke inside the rectangle selects it (as in Animate's Lasso/Selection
+// with "contact" selection): a point inside, or the stroke crossing the rectangle's edge.
 function strokesInRect(strokes, r) {
   const x0 = Math.min(r.x0, r.x1), x1 = Math.max(r.x0, r.x1), y0 = Math.min(r.y0, r.y1), y1 = Math.max(r.y0, r.y1);
   if (x1 - x0 < 3 && y1 - y0 < 3) return [];
-  return strokes.filter((s) => strokeScreenPath(s).every((p) => p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1))
-                .map((s) => s.id);
+  return strokesInPolygon(strokes, [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]);
 }
+// Screen-space polygon test shared by the rectangle and the Bezier selection.
+function pointInPolygon(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > p[1]) !== (yj > p[1]) && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function segmentsCross(a, b, c, d) {
+  const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+  return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b);
+}
+function strokesInPolygon(strokes, poly) {
+  if (poly.length < 3) return [];
+  return strokes.filter((s) => {
+    const pts = strokeScreenPath(s);
+    if (pts.some((p) => pointInPolygon(p, poly))) return true;
+    for (let i = 0; i + 1 < pts.length; i++)
+      for (let j = 0, k = poly.length - 1; j < poly.length; k = j++)
+        if (segmentsCross(pts[i], pts[i + 1], poly[k], poly[j])) return true;
+    return false;
+  }).map((s) => s.id);
+}
+// ---------------------------------------------- Bezier pen and selection ---
+// Pen (N) draws a precise line that is fitted to robot strokes like a brush mark;
+// Bezier Selection (Q) outlines an area and selects every stroke that touches it.
+// Click = sharp anchor; click-drag = smooth anchor with mirrored handles (Alt while
+// dragging breaks the mirror); click the first anchor to close; Enter or double-click
+// finishes; Backspace removes the last anchor; Esc cancels. Anchors are kept in canvas
+// proportions so zooming or panning mid-path is safe.
+const BEZ_CLOSE_PX = 8;
+function bezSegments(b, closed) {
+  const A = b.anchors, segs = [];
+  const n = closed ? A.length : A.length - 1;
+  for (let i = 0; i < n; i++) {
+    const a = A[i], c = A[(i + 1) % A.length];
+    segs.push([a.p, a.hout || a.p, c.hin || c.p, c.p]);
+  }
+  return segs;
+}
+function cubicAt(s, u) {
+  const v = 1 - u, w = [v * v * v, 3 * v * v * u, 3 * v * u * u, u * u * u];
+  return [0, 1].map((d) => w[0] * s[0][d] + w[1] * s[1][d] + w[2] * s[2][d] + w[3] * s[3][d]);
+}
+// Sample the path densely (about every 1.5 px on screen) in canvas proportions.
+function bezSample(b, closed) {
+  const out = [];
+  for (const s of bezSegments(b, closed)) {
+    const L = [0, 1, 2].reduce((acc, i) => acc + Math.hypot((s[i + 1][0] - s[i][0]) * paperW(), (s[i + 1][1] - s[i][1]) * paperH()), 0);
+    const n = Math.max(2, Math.ceil(L / 1.5));
+    for (let i = out.length ? 1 : 0; i <= n; i++) out.push(cubicAt(s, i / n));
+  }
+  return out;
+}
+function bezStart(mode, additive) {
+  S.ui.bez = { mode, frame: S.ui.frame, anchors: [], hover: null,
+               base: additive ? new Set(S.ui.sel) : new Set() };
+}
+function bezCancel() { if (S.ui.bez) { S.ui.bez = null; render(); } }
+async function bezFinish(closed) {
+  const b = S.ui.bez; S.ui.bez = null;
+  if (!b || b.frame !== S.ui.frame) { render(); return; }
+  // a double-click adds anchors on top of the last one: drop them
+  while (b.anchors.length > 1) {
+    const a = b.anchors[b.anchors.length - 1], c = b.anchors[b.anchors.length - 2];
+    if (Math.hypot((a.p[0] - c.p[0]) * paperW(), (a.p[1] - c.p[1]) * paperH()) < 3 && !a.hout) b.anchors.pop(); else break;
+  }
+  if (b.mode === "select") {
+    if (b.anchors.length < 3) { toast("Bezier Selection: place at least 3 points to outline an area."); renderAll(); return; }
+    const poly = bezSample(b, true).map(toScreen);
+    S.ui.sel = new Set([...b.base, ...strokesInPolygon(content(S.ui.frame).strokes, poly)]);
+    renderAll(); return;
+  }
+  if (b.anchors.length < 2) { toast("Pen: place at least 2 points."); renderAll(); return; }
+  const pts = bezSample(b, closed);
+  if (closed) pts.push(pts[0]);
+  await finishBrush(pts.map((p) => [p[0], p[1], 0.5]));
+  renderAll();
+}
+function bezPointerDown(x, y, e, mode) {
+  const c = content(S.ui.frame);
+  if (mode === "pen" && c.mode !== "key") {
+    toast(c.mode === "between" ? "Draw on keyframes. On in-betweens, adjust strokes with the Selection tools."
+                               : "Insert a keyframe first (F6 copies the drawing, F7 starts blank).");
+    return;
+  }
+  if (S.ui.bez && (S.ui.bez.frame !== S.ui.frame || S.ui.bez.mode !== mode)) S.ui.bez = null;
+  if (!S.ui.bez) bezStart(mode, e.shiftKey);
+  const b = S.ui.bez, p = toProp(x, y);
+  if (b.anchors.length >= 2) { // click on the first anchor closes the path
+    const f0 = toScreen(b.anchors[0].p);
+    if (Math.hypot(f0[0] - x, f0[1] - y) < BEZ_CLOSE_PX) { bezFinish(true); return; }
+  }
+  b.anchors.push({ p, hin: null, hout: null });
+  drag = { kind: "bezanchor", x0: x, y0: y };
+  render();
+}
+function bezDrag(x, y, e) {
+  const b = S.ui.bez; if (!b) return;
+  const a = b.anchors[b.anchors.length - 1];
+  if (Math.hypot(x - drag.x0, y - drag.y0) < 3) { a.hin = a.hout = null; render(); return; }
+  const q = toProp(x, y);
+  a.hout = q;
+  if (!e.altKey || !a.hin) a.hin = [2 * a.p[0] - q[0], 2 * a.p[1] - q[1]]; // mirrored unless Alt
+  render();
+}
+function drawBez() {
+  const b = S.ui.bez; if (!b || b.frame !== S.ui.frame || !b.anchors.length) return;
+  const sel = b.mode === "select", col = sel ? "#222" : "#2d8ceb";
+  const path = (closedPreview) => {
+    const segs = bezSegments(b, false);
+    ctx.beginPath();
+    const p0 = toScreen(b.anchors[0].p); ctx.moveTo(p0[0], p0[1]);
+    for (const s of segs) { const [a, c1, c2, d] = s.map(toScreen); ctx.bezierCurveTo(c1[0], c1[1], c2[0], c2[1], d[0], d[1]); }
+    const last = b.anchors[b.anchors.length - 1];
+    if (b.hover && !drag) { // rubber band to the pointer
+      const c1 = toScreen(last.hout || last.p), h = toScreen(b.hover);
+      ctx.bezierCurveTo(c1[0], c1[1], h[0], h[1], h[0], h[1]);
+    }
+    if (closedPreview && sel) ctx.lineTo(p0[0], p0[1]);
+  };
+  ctx.save();
+  if (sel) {
+    ctx.lineWidth = 1; path(true);
+    ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.stroke();
+    ctx.setLineDash([4, 3]); ctx.strokeStyle = "#222"; ctx.stroke(); ctx.setLineDash([]);
+  } else {
+    ctx.lineWidth = 1.5; ctx.strokeStyle = col; path(false); ctx.stroke();
+  }
+  // anchors and handles
+  ctx.lineWidth = 1;
+  b.anchors.forEach((a, i) => {
+    const p = toScreen(a.p);
+    for (const h of [a.hin, a.hout]) if (h) {
+      const q = toScreen(h);
+      ctx.strokeStyle = "rgba(45,140,235,.8)"; ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+      ctx.fillStyle = "#2d8ceb"; ctx.beginPath(); ctx.arc(q[0], q[1], 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+    const near = i === 0 && b.hover && b.anchors.length >= 2 &&
+      Math.hypot(toScreen(b.hover)[0] - p[0], toScreen(b.hover)[1] - p[1]) < BEZ_CLOSE_PX;
+    const r = near ? 6 : 4;
+    ctx.fillStyle = i === b.anchors.length - 1 ? "#2d8ceb" : "#fff"; ctx.strokeStyle = "#2d8ceb";
+    ctx.fillRect(p[0] - r, p[1] - r, 2 * r, 2 * r); ctx.strokeRect(p[0] - r, p[1] - r, 2 * r, 2 * r);
+  });
+  ctx.restore();
+}
+
 function center(s) {
   const p = Geo.canvasPath(s, S.cfg);
   return [p.reduce((a, q) => a + q[0], 0) / p.length, p.reduce((a, q) => a + q[1], 0) / p.length];
@@ -1268,7 +1425,7 @@ async function generate() {
 
 // ------------------------------------------------------------ playback ---
 let playTimer = null;
-function goto(f) { S.ui.frame = clamp(f, 0, lastFrame()); S.ui.sel.clear(); S.ui.picking = null; renderAll(); scrollTimeline(); }
+function goto(f) { S.ui.frame = clamp(f, 0, lastFrame()); S.ui.sel.clear(); S.ui.picking = null; S.ui.bez = null; renderAll(); scrollTimeline(); }
 function play() {
   S.ui.playing = true; $("tl-play").textContent = "■";
   const first = keys()[0]?.frame || 0;
@@ -1380,7 +1537,7 @@ function showContext(x, y, items) {
 }
 
 // ------------------------------------------------------------ keyboard ---
-const TOOLKEYS = { v: "selection", a: "subselection", b: "brush", m: "motion", l: "link", h: "hand", z: "zoom" };
+const TOOLKEYS = { v: "selection", a: "subselection", b: "brush", n: "pen", q: "bezsel", m: "motion", l: "link", h: "hand", z: "zoom" };
 document.addEventListener("keydown", (e) => {
   if (e.target.closest("input, select, textarea")) return;
   const k = e.key, mod = e.ctrlKey || e.metaKey;
@@ -1402,6 +1559,13 @@ document.addEventListener("keydown", (e) => {
     if (k === "0") return run("zoomFit");
     return;
   }
+  if (S.ui.bez) { // a Bezier path in progress takes Enter, Esc and Backspace
+    if (k === "Enter") { e.preventDefault(); return bezFinish(false); }
+    if (k === "Escape") { e.preventDefault(); return bezCancel(); }
+    if (k === "Backspace" || k === "Delete") {
+      e.preventDefault(); S.ui.bez.anchors.pop(); if (!S.ui.bez.anchors.length) S.ui.bez = null; render(); return;
+    }
+  }
   if (k === "F5") return run(e.shiftKey ? "removeFrame" : "insertFrame");
   if (k === "F6") return run(e.shiftKey ? "clearKeyframe" : "insertKeyframe");
   if (k === "F7") return run("insertBlankKeyframe");
@@ -1420,6 +1584,10 @@ document.addEventListener("keydown", (e) => {
 });
 document.addEventListener("keyup", (e) => { if (e.key === " ") S.ui.spaceHand = false; });
 function setTool(t) {
+  // leaving the Pen with a path in progress keeps the line; an unfinished selection outline is dropped
+  if (S.ui.bez && S.ui.tool !== t) {
+    if (S.ui.bez.mode === "pen" && S.ui.bez.anchors.length >= 2) bezFinish(false); else S.ui.bez = null;
+  }
   S.ui.tool = t; S.ui.picking = null; S.ui.linkFirst = null;
   if (t === "link") {
     S.ui.onion = true; S.ui.preview = false; S.ui.sel.clear();
@@ -1588,6 +1756,8 @@ function updateModeHint() {
   let t = "";
   if (S.ui.picking) t = "Click the ghost stroke to link to";
   else if (S.ui.tool === "link") t = S.ui.linkFirst ? "Link · click the ghost it continues (Esc leaves)" : "Link · click a stroke, then its ghost (Esc leaves)";
+  else if (S.ui.tool === "pen") t = S.ui.bez ? "Pen · click = sharp point, drag = curve (Alt breaks the handles) · click first point to close · Enter finishes · Esc cancels" : "Pen · click to start a line (drag for a curve)";
+  else if (S.ui.tool === "bezsel") t = S.ui.bez ? "Bezier Selection · click / drag points · click first point or Enter to select · Esc cancels" : "Bezier Selection · outline an area; every stroke it touches is selected (Shift adds)";
   else if (S.ui.tool === "subselection" && S.ui.sel.size) t = "Subselection · squares move corners · round handles set how wide each curve is";
   else if (S.ui.tool === "motion") t = S.ui.sel.size ? "Motion Path · drag the path the selected strokes travel" : "Motion Path · click the strokes to move";
   else if (c.mode === "key" && traceCandidates(f).length && S.ui.onion) t = "Keyframe · tracing over onion skin";
@@ -1600,7 +1770,9 @@ let toastTimer = null;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 3200); }
 function status(msg) { $("tl-status").textContent = msg; }
 function showShortcuts() {
-  const rows = [["V", "Selection tool: click or drag a rectangle to select (Shift adds), drag to move; round handle rotates"], ["A", "Subselection tool: drag corner points (squares); drag a round handle along its edge for a wider or tighter curve (both handles mirror)"], ["B", "Brush tool (stylus pressure sets width)"],
+  const rows = [["V", "Selection tool: click, or drag a rectangle (it selects every stroke it touches; Shift adds), drag to move; round handle rotates"], ["A", "Subselection tool: drag corner points (squares); drag a round handle along its edge for a wider or tighter curve (both handles mirror)"], ["B", "Brush tool (stylus pressure sets width)"],
+    ["N", "Pen tool: click for sharp points, drag for curves (Alt breaks the handles); click the first point to close, Enter or double-click finishes, Backspace removes the last point, Esc cancels. The line becomes robot strokes."],
+    ["Q", "Bezier Selection: outline an area the same way; every stroke it touches is selected (Shift adds)"],
     ["M", "Motion Path tool: click strokes (Shift adds), then drag the path they travel to the next keyframe"],
     ["L", "Link mode: click a stroke, then the ghost it continues; repeat. Esc leaves"],
     ["Esc", "Deselect (in Link mode: leave it)"], ["Ctrl+A", "Select all"],
