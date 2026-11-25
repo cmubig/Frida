@@ -75,6 +75,18 @@ are in Properties.
 
 ![Subselection: the 4 corner points of one stroke](img/06-subselection.png)
 
+**Curve handles.** Each of the two middle corners also has two round handles,
+where its curve meets the edges on either side. Drag either one along its edge:
+outward makes that corner's curve wider, inward makes it tighter, and all the
+way into the corner makes it sharp (the handles turn hollow). The two handles
+always mirror each other, like Figma's "mirror angle and length": a FRIDA
+corner is a circular arc with one roundness value, so it can't be lopsided.
+For a lopsided curve, move the corner point itself, or draw the mark as two
+strokes. A handle stops where the curve has used up an edge; the corner
+roundness slider in Properties follows along.
+
+![Curve handles: before (left) and after dragging the left corner's handle outward (right)](img/06b-curve-handles.png)
+
 Also as in Animate: **Ctrl+C / Ctrl+X / Ctrl+V** copy, cut, paste (pasted
 strokes are new strokes), **Ctrl+D** duplicates, **Ctrl+Shift+V** pastes in
 place, **Ctrl+Z** undoes. **Shift+F6** clears a keyframe.
@@ -298,7 +310,7 @@ Press **?** in the editor for this list.
 | Key | Does |
 |---|---|
 | **V** | Selection tool: click or drag a rectangle to select (Shift adds), drag to move, round handle rotates |
-| **A** | Subselection tool: drag a stroke's 4 corner points |
+| **A** | Subselection tool: drag a stroke's 4 corner points (squares), or a round curve handle along its edge for a wider or tighter corner |
 | **B** | Brush tool (pressure sets width) |
 | **Alt+click a ghost** | Brush: choose which ghost the next stroke replaces |
 | **M** | Motion Path tool: click strokes (Shift adds), then drag the path they travel |

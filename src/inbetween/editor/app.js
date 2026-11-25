@@ -609,6 +609,39 @@ function motionProps(paths) {
 
 function diamond(x, y, r) { ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.fill(); }
 
+// ------------------------------------------------- corner handles ---
+// Each interior corner of a FRIDA stroke is a circular arc with one roundness value, so
+// its two tangent handles always mirror each other (as Figma's "mirror angle and length").
+// Dragging either along its edge sets how far from the corner the curve starts.
+const SHARP_HANDLE_PX = 10; // where the handles sit on a sharp corner, so they can be grabbed
+function cornerHandleScreen(s) {
+  const toS = (pt) => toScreen(Geo.toCanvas([pt], s, S.cfg)[0]);
+  return Geo.cornerHandles(s).filter((h) => !h.flat).map((h) => {
+    const P = toS(h.P);
+    const end = (u) => {
+      if (h.t > 1e-6) return toS([h.P[0] + u[0] * h.t, h.P[1] + u[1] * h.t]);
+      const far = toS([h.P[0] + u[0] * h.tMax, h.P[1] + u[1] * h.tMax]); // sharp: a short stub
+      const dx = far[0] - P[0], dy = far[1] - P[1], L = Math.hypot(dx, dy) || 1;
+      return [P[0] + dx / L * SHARP_HANDLE_PX, P[1] + dy / L * SHARP_HANDLE_PX];
+    };
+    return { k: h.i - 1, P, a: end(h.ua), b: end(h.ub), sharp: h.t <= 1e-6, h };
+  });
+}
+// Smallest roundness whose curve starts tDesired from the corner (t only grows with
+// roundness, then stops where an edge is used up: the smallest value avoids a dead zone).
+function kappaForTangent(s, k, tDesired) {
+  const tAt = (kap) => {
+    const x = { ...s, kappa: s.kappa.map((v, j) => (j === k ? kap : v)) };
+    return Geo.cornerHandles(x)[k].t;
+  };
+  if (tDesired <= 0) return 0;
+  const tTop = tAt(1);
+  const goal = Math.min(tDesired, tTop);
+  let lo = 0, hi = 1;
+  for (let it = 0; it < 30; it++) { const mid = (lo + hi) / 2; if (tAt(mid) < goal - 1e-9) lo = mid; else hi = mid; }
+  return hi;
+}
+
 function drawSelection(s) {
   const pts = strokeScreenPath(s);
   ctx.save(); ctx.strokeStyle = "#2d8ceb"; ctx.lineWidth = 1.2;
@@ -619,6 +652,16 @@ function drawSelection(s) {
     ctx.beginPath(); V.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke();
     ctx.setLineDash([]);
     V.forEach((p) => { ctx.fillStyle = "#fff"; ctx.fillRect(p[0] - 4, p[1] - 4, 8, 8); ctx.strokeStyle = "#2d8ceb"; ctx.strokeRect(p[0] - 4, p[1] - 4, 8, 8); });
+    // curve handles: where each corner's curve meets its two edges
+    for (const c of cornerHandleScreen(s)) {
+      const active = drag && drag.kind === "corner" && drag.id === s.id && drag.k === c.k;
+      ctx.strokeStyle = active ? "#2d8ceb" : "rgba(45,140,235,.8)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(c.a[0], c.a[1]); ctx.lineTo(c.P[0], c.P[1]); ctx.lineTo(c.b[0], c.b[1]); ctx.stroke();
+      for (const q of [c.a, c.b]) {
+        ctx.beginPath(); ctx.arc(q[0], q[1], 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = c.sharp ? "#fff" : "#2d8ceb"; ctx.fill(); ctx.strokeStyle = "#2d8ceb"; ctx.stroke();
+      }
+    }
   } else {
     const b = bbox(pts);
     ctx.setLineDash([4, 3]); ctx.strokeRect(b[0] - 4, b[1] - 4, b[2] - b[0] + 8, b[3] - b[1] + 8);
@@ -734,6 +777,16 @@ cv.addEventListener("pointerdown", (e) => {
   // selection / subselection
   if (t === "subselection" && S.ui.sel.size) {
     for (const s of c.strokes) if (S.ui.sel.has(s.id)) {
+      for (const h of cornerHandleScreen(s)) {
+        for (const [q, u] of [[h.a, "ua"], [h.b, "ub"]]) {
+          if (Math.hypot(q[0] - x, q[1] - y) < 7) {
+            if (!canEdit()) return;
+            pushUndo(); drag = { kind: "corner", id: s.id, k: h.k, side: u }; render(); return;
+          }
+        }
+      }
+    }
+    for (const s of c.strokes) if (S.ui.sel.has(s.id)) {
       const V = Geo.toCanvas(s.vertices, s, S.cfg).map(toScreen);
       const i = V.findIndex((p) => Math.abs(p[0] - x) < 7 && Math.abs(p[1] - y) < 7);
       if (i >= 0) {
@@ -798,6 +851,15 @@ cv.addEventListener("pointermove", (e) => {
     const p = toProp(x, y), dx = p[0] - drag.start[0], dy = p[1] - drag.start[1];
     if (!drag.moved) { if (Math.hypot(dx * paperW(), dy * paperH()) < 2) return; if (!canEdit()) { drag = null; return; } pushUndo(); drag.moved = true; }
     for (const o of drag.orig) mutateStroke(o.id, (s) => { s.xt = o.xt + dx; s.yt = o.yt + dy; });
+    changed(); return;
+  }
+  if (drag.kind === "corner") {
+    const s0 = content(S.ui.frame).strokes.find((s) => s.id === drag.id);
+    const h = Geo.cornerHandles(s0)[drag.k];
+    const m = Geo.toLocal(toProp(x, y), s0, S.cfg), u = h[drag.side];
+    const along = (m[0] - h.P[0]) * u[0] + (m[1] - h.P[1]) * u[1];
+    const kap = kappaForTangent(s0, drag.k, Math.max(0, along));
+    mutateStroke(drag.id, (s) => { s.kappa[drag.k] = Math.round(kap * 1000) / 1000; });
     changed(); return;
   }
   if (drag.kind === "vertex") {
@@ -1526,6 +1588,7 @@ function updateModeHint() {
   let t = "";
   if (S.ui.picking) t = "Click the ghost stroke to link to";
   else if (S.ui.tool === "link") t = S.ui.linkFirst ? "Link · click the ghost it continues (Esc leaves)" : "Link · click a stroke, then its ghost (Esc leaves)";
+  else if (S.ui.tool === "subselection" && S.ui.sel.size) t = "Subselection · squares move corners · round handles set how wide each curve is";
   else if (S.ui.tool === "motion") t = S.ui.sel.size ? "Motion Path · drag the path the selected strokes travel" : "Motion Path · click the strokes to move";
   else if (c.mode === "key" && traceCandidates(f).length && S.ui.onion) t = "Keyframe · tracing over onion skin";
   else if (c.mode === "key") t = "Keyframe";
@@ -1537,7 +1600,7 @@ let toastTimer = null;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 3200); }
 function status(msg) { $("tl-status").textContent = msg; }
 function showShortcuts() {
-  const rows = [["V", "Selection tool: click or drag a rectangle to select (Shift adds), drag to move; round handle rotates"], ["A", "Subselection tool: drag corner points"], ["B", "Brush tool (stylus pressure sets width)"],
+  const rows = [["V", "Selection tool: click or drag a rectangle to select (Shift adds), drag to move; round handle rotates"], ["A", "Subselection tool: drag corner points (squares); drag a round handle along its edge for a wider or tighter curve (both handles mirror)"], ["B", "Brush tool (stylus pressure sets width)"],
     ["M", "Motion Path tool: click strokes (Shift adds), then drag the path they travel to the next keyframe"],
     ["L", "Link mode: click a stroke, then the ghost it continues; repeat. Esc leaves"],
     ["Esc", "Deselect (in Link mode: leave it)"], ["Ctrl+A", "Select all"],

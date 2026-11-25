@@ -25,7 +25,8 @@ shortcuts (press `?` in the editor for the full list).
   complex for one stroke is split into several. Pressure maps to visible
   width: the lightest touch still leaves a mark.
 - **F6 Insert Keyframe** copies the current drawing. Reshape it with
-  **Selection (V)** (move; the round handle rotates) and **Subselection (A)**
+  **Selection (V)** (move; the round handle rotates) and **Subselection (A)** (squares move corners; round handles along the edges set
+  how wide each corner's curve is, both mirrored)
   (drag corner points). Strokes keep their identity, so in-betweening knows
   what moves where.
 - **F7 Insert Blank Keyframe** starts empty with onion skin on. Redraw strokes

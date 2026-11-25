@@ -76,6 +76,10 @@ Ours, `src/inbetween/` (see its README.md; run commands from `src/`):
   (`linkClick`: stroke, then ghost; one undo step per link); `linkState` = unlinked strokes /
   ghosts without partner (red with onion skin) and the "n of m linked" count. `editor/geometry.js`
   must stay identical in behavior to FRIDA's path math (tested by `test_editor_geometry.py`).
+  Curve handles (Subselection): `Geo.cornerHandles` exposes each corner's fillet tangent length
+  (`filletLayout`, shared with `expandStroke`); dragging sets kappa (smallest value reaching that
+  length). Handles always mirror: a FRIDA corner is a circular arc, one value. Note FRIDA's
+  calibration scales stroke-local x and y differently on paper (x_m vs y_m, ~8%).
   Reference layer (`S.ref`, File > Import Reference Frames, R): animator's PNGs or a video under
   the drawing for tracing; never in the document, exports or paintings. Drag and drop anywhere on the window
   (files or a folder; a dropped .json opens as a keyframe file), or the import box in Properties.

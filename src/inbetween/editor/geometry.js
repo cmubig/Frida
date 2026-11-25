@@ -43,10 +43,10 @@ const Geo = (() => {
 
   const radiiFromKappa = (V, kappa) => maxFilletRadii(V).map((r, i) => clamp(kappa[i], 0, 1) * r);
 
-  function expandStroke(V, radii) {
+  // Fillet layout of every interior corner: the arc's tangent length t (how far the curve
+  // starts from the corner along each edge), after edges shared by two corners are trimmed.
+  function filletLayout(V, radii) {
     const n = V.length;
-    const line = (a, b) => ({ p0: a, p1: mul(add(a, b), 0.5), p2: b, w1: 1 });
-    if (n === 2) return [line(V[0], V[1])];
     const rReq = radii.map(relu);
     const trimIn = new Array(n).fill(0), trimOut = new Array(n).fill(0), metas = new Array(n).fill(null);
     for (let i = 1; i < n - 1; i++) {
@@ -76,6 +76,14 @@ const Geo = (() => {
       if (t < EPS) { m.skip = true; m.r = 0; trimIn[i] = 0; trimOut[i] = 0; continue; }
       trimIn[i] = t; trimOut[i] = t; m.t = t; m.r = t * Math.tan(m.alpha * 0.5);
     }
+    return metas;
+  }
+
+  function expandStroke(V, radii) {
+    const n = V.length;
+    const line = (a, b) => ({ p0: a, p1: mul(add(a, b), 0.5), p2: b, w1: 1 });
+    if (n === 2) return [line(V[0], V[1])];
+    const metas = filletLayout(V, radii);
     const pieces = [];
     const addLine = (a, b) => { if (len(sub(a, b)) >= EPS) pieces.push(line(a, b)); };
     let cursor = V[0];
@@ -139,6 +147,22 @@ const Geo = (() => {
     return out;
   }
 
+  // Corner handles for the editor (stroke-local meters). For interior corner i (1..n-2):
+  // P the corner, ua / ub unit vectors toward the previous / next vertex, t the current
+  // tangent length, tMax the tangent length at roundness 1 (before edge sharing).
+  // Roundness k gives t = k * tMax unless a shared edge is too short for both corners.
+  function cornerHandles(s) {
+    const V = s.vertices, metas = filletLayout(V, radiiFromKappa(V, s.kappa)), out = [];
+    for (let i = 1; i < V.length - 1; i++) {
+      const P = V[i], A = V[i - 1], B = V[i + 1], m = metas[i];
+      const L0 = Math.max(len(sub(P, A)), EPS), L1 = Math.max(len(sub(B, P)), EPS);
+      const flat = !m || (m.skip && m.r === 0 && (m.alpha < 1e-3 || Math.PI - m.alpha < FLAT_ANGLE));
+      out.push({ i, P, ua: norm(sub(A, P)), ub: norm(sub(B, P)), t: m && !m.skip ? m.t : 0,
+                 tMax: Math.min(L0, L1) * EDGE_TRIM_FRAC, flat });
+    }
+    return out;
+  }
+
   function localPath(s) {
     const V = s.vertices;
     const pieces = expandStroke(V, radiiFromKappa(V, s.kappa));
@@ -186,7 +210,7 @@ const Geo = (() => {
     return pts.map((p, i) => [p[0], p[1], thickness(z[i], cfg)]);
   }
 
-  return { canvasPath, localPath, pathZ, toCanvas, toLocal, thickness, N_PATH };
+  return { canvasPath, localPath, pathZ, toCanvas, toLocal, thickness, cornerHandles, N_PATH };
 })();
 
 if (typeof module !== "undefined") module.exports = Geo;

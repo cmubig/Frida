@@ -748,3 +748,52 @@ def test_drag_and_drop_reference_and_keyframe_file(server, tmp_path):
         assert pg.evaluate("S.doc.keys[1].frame") == 6
         assert errors == []
         browser.close()
+
+
+def test_corner_curve_handles(server):
+    with playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no Chromium: {e}")
+        pg = browser.new_page(viewport={"width": 1440, "height": 900})
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(server)
+        pg.wait_for_function("S.cfg && S.doc")
+        # one stroke with two clear corners, set directly so the test doesn't depend on the fitter
+        pg.evaluate("""() => {
+            const s = {id: 's1', order: 0, color: [0.05, 0.05, 0.05], xt: 0.3, yt: 0.4, a: 0,
+                       vertices: [[0, 0], [0.06, 0], [0.06, 0.06], [0.12, 0.06]], kappa: [0.1, 0.1], z: [0.6, 0.6, 0.6, 0.6]};
+            S.doc.keys[0].strokes.push(s); S.ui.sel = new Set(['s1']); S.ui.tool = 'subselection'; renderAll();
+        }""")
+        st = pg.locator("#canvas").bounding_box()
+        hs = pg.evaluate("cornerHandleScreen(S.doc.keys[0].strokes[0]).map(c => ({P: c.P, a: c.a, b: c.b}))")
+        assert len(hs) == 2
+        h = hs[0]
+        # drag the handle on the first edge outward along that edge: the first corner gets rounder
+        dx, dy = h["a"][0] - h["P"][0], h["a"][1] - h["P"][1]
+        L = (dx * dx + dy * dy) ** 0.5
+        pg.mouse.move(st["x"] + h["a"][0], st["y"] + h["a"][1])
+        pg.mouse.down()
+        pg.mouse.move(st["x"] + h["P"][0] + dx / L * (L + 25), st["y"] + h["P"][1] + dy / L * (L + 25), steps=5)
+        pg.mouse.up()
+        k = pg.evaluate("S.doc.keys[0].strokes[0].kappa")
+        assert k[0] > 0.15 and abs(k[1] - 0.1) < 1e-9   # only that corner changed
+        # the two handles mirror: same distance from the corner along each edge
+        a2 = pg.evaluate("cornerHandleScreen(S.doc.keys[0].strokes[0])[0]")
+        # in stroke space (FRIDA's calibration scales x and y slightly differently on paper)
+        da, db = pg.evaluate("""() => { const s = S.doc.keys[0].strokes[0], c = cornerHandleScreen(s)[0];
+            const A = Geo.toLocal(toProp(c.a[0], c.a[1]), s, S.cfg), B = Geo.toLocal(toProp(c.b[0], c.b[1]), s, S.cfg);
+            const P = c.h.P; return [Math.hypot(A[0] - P[0], A[1] - P[1]), Math.hypot(B[0] - P[0], B[1] - P[1])]; }""")
+        assert abs(da - db) < 1e-4  # meters
+        # drag the other handle all the way into the corner: sharp
+        pg.mouse.move(st["x"] + a2["b"][0], st["y"] + a2["b"][1])
+        pg.mouse.down()
+        pg.mouse.move(st["x"] + a2["P"][0], st["y"] + a2["P"][1], steps=5)
+        pg.mouse.up()
+        assert pg.evaluate("S.doc.keys[0].strokes[0].kappa[0]") < 0.02
+        pg.keyboard.press("Control+z")
+        assert abs(pg.evaluate("S.doc.keys[0].strokes[0].kappa[0]") - k[0]) < 1e-9
+        assert errors == []
+        browser.close()
